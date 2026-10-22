@@ -1,5 +1,1 @@
-KM16 version 2
-
-Sur GitHub : ouvrez kravmaga16/km16-app > Add file > Upload files. Importez les fichiers à la racine du dépôt (pas le dossier). Confirmez avec Commit changes. Attendez la publication Pages, puis rechargez la page.
-
-Les horaires, tarifs et événements sont à vérifier avant diffusion. Les photographies de la maquette ne sont pas incluses ; aucune photo d’instructeur fictive n’est publiée.
+KM16 V3 : connexion Google Sheets. IMPORTANT : mettre à jour Code.gs avec la prise en charge du paramètre callback puis déployer une NOUVELLE VERSION du déploiement Apps Script. Les anciennes cartes indicatives restent affichées sous les nouvelles informations.

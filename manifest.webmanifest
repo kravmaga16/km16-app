@@ -1,1 +1,21 @@
-{"name":"KM16 – Krav Maga Paris 16","short_name":"KM16","description":"Cours, stages et inscriptions KM16","lang":"fr","start_url":"./","scope":"./","display":"standalone","background_color":"#111111","theme_color":"#151515","icons":[{"src":"icon-192.png","sizes":"192x192","type":"image/png","purpose":"any maskable"},{"src":"icon-512.png","sizes":"512x512","type":"image/png","purpose":"any maskable"}]}
+{
+  "name": "KM16 – Krav Maga Paris 16",
+  "short_name": "KM16",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#ffffff",
+  "icons": [
+    {
+      "src": "./icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "./icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}

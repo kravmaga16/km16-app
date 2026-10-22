@@ -1,1 +1,1 @@
-KM16 V10 — rubrique Équipe : 11 portraits, grades et photo collective. Les fonctionnalités V9 (Google Sheets, stages, planning, Fighty) sont conservées. Décompresser et remplacer tous les fichiers sur l’hébergement, puis actualiser la page.
+KM16 V13 : portrait de Vincent (ceinture marron) ajouté. Les 13 instructeurs ont leur photo. Décompresser et transférer tous les fichiers sur l’hébergement.

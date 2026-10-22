@@ -1,3 +1,1 @@
-KM16 Version 9 — photo officielle de groupe dans la rubrique Équipe.
-Importer tous les fichiers à la racine du dépôt GitHub km16-app et remplacer les fichiers existants.
-Conserve la connexion Google Sheets, le planning, les stages et Fighty.
+KM16 V10 — rubrique Équipe : 11 portraits, grades et photo collective. Les fonctionnalités V9 (Google Sheets, stages, planning, Fighty) sont conservées. Décompresser et remplacer tous les fichiers sur l’hébergement, puis actualiser la page.

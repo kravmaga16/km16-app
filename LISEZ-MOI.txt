@@ -1,4 +1,3 @@
-KM16 V8 — affichage du champ Description dans chaque fiche de stage, avant le bouton Fighty.
-Importer tous les fichiers dans la racine du dépôt GitHub km16-app puis Commit changes.
-Le champ Description doit se trouver dans la ligne 1 de l’onglet Stages (colonne H).
-Aucune modification Google Apps Script nécessaire.
+KM16 Version 9 — photo officielle de groupe dans la rubrique Équipe.
+Importer tous les fichiers à la racine du dépôt GitHub km16-app et remplacer les fichiers existants.
+Conserve la connexion Google Sheets, le planning, les stages et Fighty.

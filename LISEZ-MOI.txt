@@ -1,8 +1,4 @@
-KM16 version 6 — Planning interactif relié à Google Sheets.
-
-Importer TOUS les fichiers de ce dossier à la racine du dépôt GitHub kravmaga16/km16-app (remplacer les anciens fichiers), puis valider Commit changes.
-
-Le tableau Planning doit contenir en ligne 1 : Catégorie | Jour | Heure de début | Heure de fin | Lieu | Instructeur | Publier.
-Les lignes affichées doivent contenir « oui » dans Publier.
-Les stages restent dans leur rubrique.
-Si une ancienne version reste visible sur iPhone, fermer et rouvrir l’application ou actualiser après la publication GitHub Pages.
+KM16 V7 — stages en fiches, lien Fighty commun.
+Importer tous les fichiers dans la racine du dépôt GitHub km16-app, puis Commit changes.
+Les champs Date, Nom du stage, Horaires, Lieu, Tarif et Publier viennent de Google Sheets.
+Aucune modification de Google Apps Script nécessaire.

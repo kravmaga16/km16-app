@@ -1,4 +1,4 @@
-KM16 V7 — stages en fiches, lien Fighty commun.
-Importer tous les fichiers dans la racine du dépôt GitHub km16-app, puis Commit changes.
-Les champs Date, Nom du stage, Horaires, Lieu, Tarif et Publier viennent de Google Sheets.
-Aucune modification de Google Apps Script nécessaire.
+KM16 V8 — affichage du champ Description dans chaque fiche de stage, avant le bouton Fighty.
+Importer tous les fichiers dans la racine du dépôt GitHub km16-app puis Commit changes.
+Le champ Description doit se trouver dans la ligne 1 de l’onglet Stages (colonne H).
+Aucune modification Google Apps Script nécessaire.

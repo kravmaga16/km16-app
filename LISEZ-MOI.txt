@@ -1,6 +1,8 @@
-KM16 PWA Version 4 — 22 octobre 2026
+KM16 version 6 — Planning interactif relié à Google Sheets.
 
-Correction : une seule rubrique affichée à la fois, les données Google Sheets apparaissent uniquement dans leur rubrique, et les exemples sont masqués quand des données publiées existent.
+Importer TOUS les fichiers de ce dossier à la racine du dépôt GitHub kravmaga16/km16-app (remplacer les anciens fichiers), puis valider Commit changes.
 
-Importer tous les fichiers du dossier à la racine du dépôt GitHub kravmaga16/km16-app.
-Aucun changement nécessaire dans Google Sheets ou Apps Script.
+Le tableau Planning doit contenir en ligne 1 : Catégorie | Jour | Heure de début | Heure de fin | Lieu | Instructeur | Publier.
+Les lignes affichées doivent contenir « oui » dans Publier.
+Les stages restent dans leur rubrique.
+Si une ancienne version reste visible sur iPhone, fermer et rouvrir l’application ou actualiser après la publication GitHub Pages.

@@ -1,6 +1,5 @@
-KM16 — Version 16
-
-Page d’accueil : photo officielle de l’équipe en grand, accès cours/inscription, actualités Google Sheets, aperçu des prochains stages publiés dans Google Sheets, raccourcis planning/tarifs/contact.
-Toutes les fonctionnalités V15 sont conservées.
-
-Installation : envoyer le contenu du ZIP à la racine du dépôt GitHub Pages, remplacer les anciens fichiers et attendre le déploiement.
+KM16 V17 – Optimisation SEO
+Téléverser tous les fichiers à la racine du dépôt GitHub Pages.
+Ajouts : titre et description SEO, balises sociales, données structurées SportsClub, robots.txt et sitemap.xml.
+Ensuite : déclarer https://kravmaga16.github.io/km16-app/sitemap.xml dans Google Search Console.
+La présence dans les résultats Google et le classement ne sont pas garantis.

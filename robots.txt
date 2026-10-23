@@ -1,0 +1,3 @@
+User-agent: *
+Allow: /
+Sitemap: https://kravmaga16.github.io/km16-app/sitemap.xml

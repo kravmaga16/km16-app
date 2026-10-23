@@ -1,6 +1,6 @@
-KM16 PWA Version 4 — 22 octobre 2026
+KM16 — Version 16
 
-Correction : une seule rubrique affichée à la fois, les données Google Sheets apparaissent uniquement dans leur rubrique, et les exemples sont masqués quand des données publiées existent.
+Page d’accueil : photo officielle de l’équipe en grand, accès cours/inscription, actualités Google Sheets, aperçu des prochains stages publiés dans Google Sheets, raccourcis planning/tarifs/contact.
+Toutes les fonctionnalités V15 sont conservées.
 
-Importer tous les fichiers du dossier à la racine du dépôt GitHub kravmaga16/km16-app.
-Aucun changement nécessaire dans Google Sheets ou Apps Script.
+Installation : envoyer le contenu du ZIP à la racine du dépôt GitHub Pages, remplacer les anciens fichiers et attendre le déploiement.

@@ -1,1 +1,4 @@
-KM16 V13 : portrait de Vincent (ceinture marron) ajouté. Les 13 instructeurs ont leur photo. Décompresser et transférer tous les fichiers sur l’hébergement.
+KM16 V14 : rubrique Tarifs 2026-2027 et liaison Google Sheets.
+Colonnes de l’onglet Tarifs : Catégorie | Tarif | Accès | Description | Publier.
+Publier = oui pour chaque ligne validée.
+Importer tous les fichiers à la racine du dépôt GitHub Pages.

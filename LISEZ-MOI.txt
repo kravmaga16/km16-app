@@ -1,4 +1,4 @@
-KM16 V14 : rubrique Tarifs 2026-2027 et liaison Google Sheets.
-Colonnes de l’onglet Tarifs : Catégorie | Tarif | Accès | Description | Publier.
-Publier = oui pour chaque ligne validée.
-Importer tous les fichiers à la racine du dépôt GitHub Pages.
+KM16 V15 — Contact et formulaire.
+Le formulaire utilise FormSubmit (service tiers). IMPORTANT : le propriétaire de contact@km16.fr doit valider le premier e-mail d’activation FormSubmit avant que les messages soient effectivement distribués. Effectuer ensuite un test réel de réception.
+Les messages sont soumis au prestataire FormSubmit.
+Déployer tous les fichiers à la racine du dépôt GitHub Pages.

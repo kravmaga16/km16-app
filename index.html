@@ -1,4 +1,10 @@
-<!doctype html><html lang="fr"><head><!-- Google tag (gtag.js) -->
+<!doctype html><html lang="fr"><head><script>
+// Preserve email confirmation before the tab navigation consumes the hash.
+if (/[#&](access_token|error|error_code)=/.test(location.hash)) {
+  window.KM16_AUTH_FRAGMENT = location.hash.slice(1);
+  history.replaceState(null, '', location.pathname + location.search + '#videos');
+}
+</script><!-- Google tag (gtag.js) -->
 <script async src="https://www.googletagmanager.com/gtag/js?id=G-342F411VV9"></script>
 <script>
   window.dataLayer = window.dataLayer || [];
@@ -96,6 +102,9 @@
 @media(max-width:640px){.bottom{display:flex;overflow-x:auto;justify-content:space-around}.bottom button{flex:1 0 46px;min-height:48px;font-size:9px}.video-how{grid-template-columns:1fr;gap:10px}.video-intro{padding:22px 18px}}
 
 .admin-link{display:inline-block;margin-top:12px;padding:9px 15px;border:1px solid #666;border-radius:8px;color:#eee;text-decoration:none;font-size:13px}.admin-link:hover{background:#333;color:white}
+
+#videos [hidden]{display:none!important}.kv-layout{display:grid;grid-template-columns:320px 1fr;gap:24px;margin:24px 0;align-items:start}.kv-account{position:sticky;top:20px}.kv-account form{display:grid;gap:12px}.kv-account input{width:100%;box-sizing:border-box;padding:13px;border:1px solid #ccc;border-radius:9px;font:inherit;min-width:0}.kv-account label{font-weight:600;font-size:14px}.kv-modes{display:flex;gap:8px;margin-bottom:18px}.kv-modes button{flex:1;padding:10px 6px;border:1px solid #ddd;background:#fff;border-radius:8px;font:inherit;font-size:13px;cursor:pointer}.kv-modes button[aria-pressed=true]{background:#202020;color:white;border-color:#202020}.kv-link{display:block;border:0;background:none;color:#a51219;text-decoration:underline;padding:12px 0;cursor:pointer;font:inherit;font-size:14px}.kv-status{padding:14px 18px;background:#f4f4f4;border-radius:10px;margin-top:20px;line-height:1.6}.kv-status.kv-error{background:#fff0f0;color:#92151a}.kv-price{font-size:22px;font-weight:800}.kv-price small{font-size:14px;font-weight:400}.kv-video{margin-bottom:18px}.kv-layout>.kv-account h3{margin-top:0}#kv-catalog .cta{margin-top:8px}#kv-player{scroll-margin-top:20px;border:1px solid #ddd;border-radius:14px;padding:18px;background:white;margin-top:20px}#kv-player iframe{border:0;width:100%;aspect-ratio:16/9;display:block;background:#111}#kv-user-email{overflow-wrap:anywhere}#videos button:disabled{opacity:.6;cursor:wait}#videos input:focus-visible,#videos button:focus-visible{outline:3px solid #c81920;outline-offset:3px}
+@media(max-width:760px){.kv-layout{grid-template-columns:1fr;gap:12px}.kv-account{position:static}.kv-modes button{padding:12px}.kv-layout .home-section-head{margin-top:12px}}
 </style></head><body><header><div class="top"><img class="logo" src="./logo-km16.png" alt="Logo officiel KM16 Krav Maga Team"><span>KRAV MAGA · PARIS 16</span></div></header><aside class="club-news" aria-label="Actualités du club"><div class="club-news-inner"><span class="club-news-label">Actualités du club</span><div class="club-news-window"><div class="club-news-track"><p><strong>Cours du dimanche maintenu pendant les vacances scolaires excepté le 1/11</strong></p><p aria-hidden="true"><strong>Cours du dimanche maintenu pendant les vacances scolaires excepté le 1/11</strong></p></div></div><button class="club-news-toggle" type="button" aria-label="Mettre le défilement en pause" aria-pressed="false">Ⅱ</button></div></aside><div class="hero"><div class="hero-inner"><div class="hero-copy"><div class="eyebrow">Krav Maga · Paris 16e</div><h1>Votre club<br>Votre équipe<br>Votre progression</h1><p>Enfants, adolescents et adultes : progressez en Krav Maga avec l’équipe pédagogique KM16, dans un cadre exigeant et convivial.</p><div class="hero-actions"><button class="cta" type="button" data-go="planning">Découvrir nos cours →</button><a class="cta cta-outline" href="https://app.fighty.com/forms/view/km16-2026-2027" target="_blank" rel="noopener noreferrer">S'inscrire ↗</a></div></div><figure class="hero-photo"><img src="./equipe-km16.jpg" alt="Photo officielle de l'équipe pédagogique KM16" fetchpriority="high"><figcaption>L'équipe KM16</figcaption></figure></div></div><main class="wrap"><div class="live-status" id="live-status" role="status" style="display:none!important">Connexion aux informations publiées par KM16…</div><nav class="tabs" aria-label="Rubriques de KM16"></nav>
 <section class="panel active" id="accueil"><div class="live-cards cards" data-live="actualites"></div><div class="home-section-head"><h2>Prochains stages</h2><button class="home-link" type="button" data-go="stages">Tous les stages →</button></div><div id="home-stage-preview" class="cards" aria-live="polite"></div><div class="home-section-head"><h2>Infos pratiques</h2></div><div class="home-shortcuts"><button class="home-shortcut" type="button" data-go="planning"><strong>Horaires des cours →</strong><span>Consulter le planning par catégorie</span></button><button class="home-shortcut" type="button" data-go="tarifs"><strong>Tarifs 2026–2027 →</strong><span>Enfants, adolescents et adultes</span></button><button class="home-shortcut" type="button" data-go="contact"><strong>Nous contacter →</strong><span>Formulaire, téléphone et dojos</span></button></div><h2>Bienvenue chez KM16</h2><p class="lead">Le Krav Maga accessible à tous les niveaux, avec des cours adaptés à chaque âge.</p><div class="cards fallback-cards"><article class="card"><span class="tag">6–9 ans</span><h3>Enfants</h3><p>Découverte, coordination, confiance en soi et premiers réflexes de self-défense.</p><button class="cta mini" data-go="planning">Voir le planning →</button></article><article class="card"><span class="tag">10–14 ans</span><h3>Adolescents</h3><p>Développer ses capacités, sa maîtrise et ses réflexes dans un cadre encadré.</p><button class="cta mini" data-go="planning">Voir le planning →</button></article><article class="card"><span class="tag">Tous niveaux</span><h3>Adultes</h3><p>Technique, condition physique, gestion de la distance et mises en situation.</p><button class="cta mini" data-go="contact">Nous contacter →</button></article></div></section>
 <section class="panel" id="planning"><h2>Planning des cours</h2><p class="lead" id="planning-lead">Horaires indicatifs à valider avec KM16 avant publication définitive.</p><div id="planning-filters" class="planning-filters" hidden></div><div class="live-cards cards" data-live="planning"></div><div class="cards fallback-cards"><article class="card"><span class="tag">6–9 ans</span><h3>Enfants</h3><div class="line"><strong>Lundi</strong><span>17h15 – 18h15</span></div><div class="line"><strong>Mercredi</strong><span>17h – 18h</span></div><div class="line"><strong>Dimanche</strong><span>9h – 10h</span></div><p class="muted">Lieux de chaque séance à confirmer.</p></article><article class="card"><span class="tag">10–14 ans</span><h3>Adolescents</h3><div class="line"><strong>Lundi, mercredi, jeudi</strong><span>18h – 19h</span></div><div class="line"><strong>Dimanche</strong><span>9h – 10h</span></div><p class="muted">Lieux de chaque séance à confirmer.</p></article><article class="card"><span class="tag">Tous niveaux / Préparation noire et plus</span><h3>Adultes</h3><div class="line"><strong>Lundi, mardi, jeudi</strong><span>19h–21h · Saint-Jean-de-Passy</span></div><div class="line"><strong>Mercredi</strong><span>19h–20h · Saint-Jean-de-Passy</span></div><div class="line"><strong>Mercredi · Prépa noire+</strong><span>20h30–22h · Suchet</span></div><div class="line"><strong>Dimanche · Prépa noire+</strong><span>9h–10h · Suchet</span></div><div class="line"><strong>Dimanche</strong><span>11h–13h · Suchet</span></div></article></div></section>
@@ -103,13 +112,22 @@
 <section class="panel" id="stages"><div class="live-cards cards" data-live="stages"></div><h2>Stages & événements</h2><p class="lead">Préparation aux ceintures et ateliers thématiques.</p><div class="cards fallback-cards"><article class="card"><span class="tag">À confirmer</span><h3>Stage bâton</h3><p>Dimanche 25 octobre 2026 · 13h–15h · Tarif annoncé : 30 €.</p><p class="muted">Lieu et maintien de la session à vérifier.</p><a class="cta mini" href="https://app.fighty.com/forms/view/km16-2026-2027" target="_blank" rel="noopener noreferrer">Renseignements / inscription ↗</a></article><article class="card"><span class="tag">À confirmer</span><h3>Stage spécial couteaux</h3><p>Dimanche 15 novembre 2026 · Informations pratiques à confirmer.</p><a class="cta mini" href="https://app.fighty.com/forms/view/km16-2026-2027" target="_blank" rel="noopener noreferrer">Renseignements / inscription ↗</a></article></div></section>
 <section class="panel" id="tarifs"><h2>Tarifs & adhésion</h2><p class="lead">Cotisations annuelles · Saison 2026–2027. Accès libre à tous les cours de votre catégorie, dans la limite du planning proposé.</p><div class="live-cards cards" data-live="tarifs"></div><div class="cards fallback-cards tarifs-grid"><article class="card tarif-card"><span class="tag">Adultes</span><h3>630 € <small>/ saison</small></h3><p><strong>Jusqu’à 9 h de cours par semaine</strong></p><p>Accès illimité aux cours adultes de votre catégorie.</p><a class="cta mini" href="https://app.fighty.com/forms/view/km16-2026-2027" target="_blank" rel="noopener noreferrer">S'inscrire sur Fighty ↗</a></article><article class="card tarif-card"><span class="tag">Adolescents · 10–14 ans</span><h3>610 € <small>/ saison</small></h3><p><strong>Jusqu’à 5 h de cours par semaine</strong></p><p>Accès illimité aux cours adolescents.</p><a class="cta mini" href="https://app.fighty.com/forms/view/km16-2026-2027" target="_blank" rel="noopener noreferrer">S'inscrire sur Fighty ↗</a></article><article class="card tarif-card"><span class="tag">Enfants · 6–9 ans</span><h3>455 € <small>/ saison</small></h3><p><strong>Jusqu’à 3 h de cours par semaine</strong></p><p>Accès illimité aux cours enfants.</p><a class="cta mini" href="https://app.fighty.com/forms/view/km16-2026-2027" target="_blank" rel="noopener noreferrer">S'inscrire sur Fighty ↗</a></article></div><p class="muted">Les conditions particulières et éventuelles réductions sont à confirmer auprès de KM16.</p></section>
 <section class="panel" id="videos" hidden>
-<div class="video-intro"><span class="tag">Créations originales KM16</span><h2>Vidéos KM16</h2><p class="lead">Approfondissez votre pratique avec les vidéos pédagogiques de l’équipe KM16, à acheter à l’unité</p><span class="video-coming">Vidéothèque prochainement disponible</span></div>
-<div class="video-how"><article><span>01</span><h3>Découvrez</h3><p>Consultez le thème, le niveau, la durée et l’extrait de chaque vidéo</p></article><article><span>02</span><h3>Choisissez</h3><p>Achetez uniquement la vidéo qui vous intéresse, sans abonnement</p></article><article><span>03</span><h3>Progressez</h3><p>Retrouvez les explications de vos instructeurs pour compléter votre entraînement</p></article></div>
-<div class="home-section-head"><h2>La vidéothèque</h2></div>
-<div class="video-empty"><span class="video-play" aria-hidden="true">▷</span><h3>Les premières vidéos arrivent bientôt</h3><p>Le catalogue et les tarifs seront annoncés ici dès leur disponibilité</p><button class="cta" type="button" disabled>Vente bientôt disponible</button><p class="muted">Aucun achat n’est actuellement proposé</p></div>
-<div class="video-faq"><h3>Vos questions</h3><details><summary>Faut-il un abonnement ?</summary><p>Non, les vidéos seront proposées à l’unité</p></details><details><summary>Comment accéder à une vidéo achetée ?</summary><p>Les modalités de connexion, de lecture et la durée d’accès seront précisées sur chaque fiche avant l’ouverture des ventes</p></details><details><summary>Que trouverai-je sur chaque fiche ?</summary><p>Le titre, l’instructeur, le niveau conseillé, la durée, le programme, un extrait et le prix avant de choisir votre vidéo</p></details><details><summary>Une question sur les vidéos ?</summary><p><a href="mailto:contact@km16.fr?subject=Vidéos%20KM16">Écrivez à contact@km16.fr</a></p></details></div>
-<p class="muted">Les vidéos complètent les cours encadrés et ne remplacent pas l’accompagnement d’un instructeur</p>
-</section><section class="panel" id="contact"><div class="live-cards cards" data-live="contact"></div><h2>Contacter KM16</h2><p class="lead">Une question sur les cours, les stages ou les inscriptions ? Nous sommes à votre écoute.</p><div class="contact-grid"><div><article class="card"><h3>Nos coordonnées</h3><p><strong>Téléphone</strong><br><a href="tel:+33762013294">07 62 01 32 94</a></p><p><strong>E-mail</strong><br><a href="mailto:contact@km16.fr">contact@km16.fr</a></p><div class="contact-actions"><a href="tel:+33762013294">☎ Appeler</a><a href="mailto:contact@km16.fr">✉ Écrire</a></div></article><article class="card" style="margin-top:16px"><h3>Nos dojos</h3><p><strong>Saint-Jean-de-Passy</strong><br>72 rue Raynouard, 75016 Paris<br><a href="https://www.google.com/maps/search/?api=1&amp;query=72+rue+Raynouard+75016+Paris" target="_blank" rel="noopener noreferrer">Itinéraire ↗</a></p><p><strong>Dojo Suchet</strong><br>1 square Henry-Bataille, 75016 Paris<br><a href="https://www.google.com/maps/search/?api=1&amp;query=1+square+Henry+Bataille+75016+Paris" target="_blank" rel="noopener noreferrer">Itinéraire ↗</a></p></article></div><article class="card"><h3>Envoyer un message</h3><form class="contact-form" id="km16-contact-form"><label for="cf-nom">Nom *</label><input id="cf-nom" name="Nom" required maxlength="100" autocomplete="family-name"><label for="cf-prenom">Prénom *</label><input id="cf-prenom" name="Prénom" required maxlength="100" autocomplete="given-name"><label for="cf-email">Adresse e-mail *</label><input id="cf-email" type="email" name="email" required maxlength="254" autocomplete="email"><label for="cf-objet">Objet *</label><select id="cf-objet" name="Objet" required><option value="">Choisir un objet</option><option>Renseignements sur les cours</option><option>Inscription</option><option>Stages</option><option>Autre demande</option></select><label for="cf-message">Message *</label><textarea id="cf-message" name="message" required minlength="10" maxlength="5000"></textarea><div class="hidden-trap" aria-hidden="true"><label for="cf-site">Ne pas remplir</label><input id="cf-site" name="_honey" tabindex="-1" autocomplete="off"></div><label class="consent"><input type="checkbox" required> J'accepte que KM16 utilise les informations transmises uniquement pour répondre à ma demande. *</label><p class="muted">Les données du formulaire sont transmises à un prestataire d'envoi d'e-mails (FormSubmit). Ne communiquez pas de données sensibles.</p><button class="cta" type="submit">Envoyer mon message →</button><p id="km16-form-result" class="form-result" role="status" aria-live="polite"></p></form></article></div></section><div class="foot">KM16 · Krav Maga Paris 16 · Version 17.2</div></main><nav class="bottom" aria-label="Navigation mobile"></nav><footer>© KM16 · Association sportive · Paris 16e<br><a class="admin-link" href="https://script.google.com/macros/s/AKfycbyY2dS_sWLYF7KFSFLxRY4-KPLYSRQuxNm38zXS60XZ16Ek3S-QTtfSpkkxc10TXoDk_Q/exec" target="_blank" rel="noopener noreferrer">Administration ↗</a></footer><script>
+<div class="video-intro"><span class="tag">Créations originales KM16</span><h2>Votre entraînement continue ici</h2><p class="lead">Les explications de l’équipe KM16, à retrouver à votre rythme. Achat à l’unité, sans abonnement.</p><span>Accès permanent aux vidéos achetées · Lecture en streaming</span></div>
+<div id="kv-status" role="status" aria-live="polite" class="kv-status">Chargement de la vidéothèque…</div>
+<div class="kv-layout">
+<article class="card kv-account"><h3>Mon espace vidéo</h3>
+<div id="kv-guest"><div class="kv-modes" aria-label="Accès au compte"><button type="button" data-kv-mode="login" aria-pressed="true">Se connecter</button><button type="button" data-kv-mode="signup" aria-pressed="false">Créer un compte</button></div>
+<form id="kv-auth"><label for="kv-email">Adresse e-mail</label><input id="kv-email" type="email" autocomplete="email" required maxlength="254"><label for="kv-password">Mot de passe</label><input id="kv-password" type="password" autocomplete="current-password" required maxlength="128"><p id="kv-signup-hint" hidden>Choisissez au moins 12 caractères. Un e-mail permettra de confirmer votre compte.</p><button class="cta" id="kv-auth-submit" type="submit" disabled>Se connecter</button><button class="kv-link" type="button" id="kv-forgot">Mot de passe oublié ?</button></form>
+<p class="muted">Utilisez la même adresse e-mail pour retrouver vos achats sur vos appareils. Votre compte vidéo est distinct de l’inscription aux cours.</p></div>
+<div id="kv-member" hidden><p>Connecté avec<br><strong id="kv-user-email"></strong></p><button type="button" class="cta mini" id="kv-refresh">Actualiser mes achats</button><button type="button" class="kv-link" id="kv-logout">Se déconnecter</button></div>
+<form id="kv-reset" hidden><label for="kv-new-password">Nouveau mot de passe</label><input id="kv-new-password" type="password" autocomplete="new-password" required minlength="12" maxlength="128"><button class="cta" type="submit">Enregistrer mon mot de passe</button></form>
+</article>
+<div><div class="home-section-head"><h2>La vidéothèque</h2></div><div id="kv-catalog"><article class="card"><span class="tag">Préparation ceinture noire</span><h3>KM16 – Shadow boxing</h3><p>Une vidéo pédagogique pour compléter votre préparation à l’UV2.</p><p class="kv-price">9,99 € <small>· achat unique</small></p><p>Ouverture des ventes prochainement</p></article></div><div id="kv-player" hidden></div></div>
+</div>
+<div class="video-faq"><h3>Vos questions</h3><details><summary>Comment fonctionne l’achat ?</summary><p>Créez votre compte, confirmez votre adresse e-mail, puis connectez-vous. Choisissez une vidéo et réglez votre achat sur la page sécurisée Stripe. Elle apparaîtra ensuite dans votre espace.</p></details><details><summary>Combien de temps ai-je accès à ma vidéo ?</summary><p>L’achat donne un accès permanent, sans abonnement. Reconnectez-vous avec le même compte pour la regarder.</p></details><details><summary>Puis-je télécharger la vidéo ?</summary><p>Les vidéos se regardent uniquement en streaming, avec une connexion Internet. Le téléchargement n’est pas proposé.</p></details><details><summary>Besoin d’aide ?</summary><p>Écrivez à <a href="mailto:contact@km16.fr?subject=Vidéos%20KM16">contact@km16.fr</a> en indiquant l’adresse e-mail de votre compte.</p></details></div>
+<p class="muted">Les vidéos complètent les cours encadrés et ne remplacent pas l’accompagnement d’un instructeur.</p>
+</section>
+<section class="panel" id="contact"><div class="live-cards cards" data-live="contact"></div><h2>Contacter KM16</h2><p class="lead">Une question sur les cours, les stages ou les inscriptions ? Nous sommes à votre écoute.</p><div class="contact-grid"><div><article class="card"><h3>Nos coordonnées</h3><p><strong>Téléphone</strong><br><a href="tel:+33762013294">07 62 01 32 94</a></p><p><strong>E-mail</strong><br><a href="mailto:contact@km16.fr">contact@km16.fr</a></p><div class="contact-actions"><a href="tel:+33762013294">☎ Appeler</a><a href="mailto:contact@km16.fr">✉ Écrire</a></div></article><article class="card" style="margin-top:16px"><h3>Nos dojos</h3><p><strong>Saint-Jean-de-Passy</strong><br>72 rue Raynouard, 75016 Paris<br><a href="https://www.google.com/maps/search/?api=1&amp;query=72+rue+Raynouard+75016+Paris" target="_blank" rel="noopener noreferrer">Itinéraire ↗</a></p><p><strong>Dojo Suchet</strong><br>1 square Henry-Bataille, 75016 Paris<br><a href="https://www.google.com/maps/search/?api=1&amp;query=1+square+Henry+Bataille+75016+Paris" target="_blank" rel="noopener noreferrer">Itinéraire ↗</a></p></article></div><article class="card"><h3>Envoyer un message</h3><form class="contact-form" id="km16-contact-form"><label for="cf-nom">Nom *</label><input id="cf-nom" name="Nom" required maxlength="100" autocomplete="family-name"><label for="cf-prenom">Prénom *</label><input id="cf-prenom" name="Prénom" required maxlength="100" autocomplete="given-name"><label for="cf-email">Adresse e-mail *</label><input id="cf-email" type="email" name="email" required maxlength="254" autocomplete="email"><label for="cf-objet">Objet *</label><select id="cf-objet" name="Objet" required><option value="">Choisir un objet</option><option>Renseignements sur les cours</option><option>Inscription</option><option>Stages</option><option>Autre demande</option></select><label for="cf-message">Message *</label><textarea id="cf-message" name="message" required minlength="10" maxlength="5000"></textarea><div class="hidden-trap" aria-hidden="true"><label for="cf-site">Ne pas remplir</label><input id="cf-site" name="_honey" tabindex="-1" autocomplete="off"></div><label class="consent"><input type="checkbox" required> J'accepte que KM16 utilise les informations transmises uniquement pour répondre à ma demande. *</label><p class="muted">Les données du formulaire sont transmises à un prestataire d'envoi d'e-mails (FormSubmit). Ne communiquez pas de données sensibles.</p><button class="cta" type="submit">Envoyer mon message →</button><p id="km16-form-result" class="form-result" role="status" aria-live="polite"></p></form></article></div></section><div class="foot">KM16 · Krav Maga Paris 16 · Version 18.0</div></main><nav class="bottom" aria-label="Navigation mobile"></nav><footer>© KM16 · Association sportive · Paris 16e<br><a class="admin-link" href="https://script.google.com/macros/s/AKfycbyY2dS_sWLYF7KFSFLxRY4-KPLYSRQuxNm38zXS60XZ16Ek3S-QTtfSpkkxc10TXoDk_Q/exec" target="_blank" rel="noopener noreferrer">Administration ↗</a></footer><script>
 const navIcons={"videos":"<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><rect x=\"3\" y=\"4\" width=\"18\" height=\"16\" rx=\"3\"/><path d=\"m10 8 6 4-6 4Z\"/></svg>","accueil": "<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\" focusable=\"false\"><path d=\"m3 10 9-7 9 7v10a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1Z\"/></svg>", "planning": "<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\" focusable=\"false\"><rect x=\"3\" y=\"5\" width=\"18\" height=\"16\" rx=\"2\"/><path d=\"M16 3v4M8 3v4M3 11h18M8 15h2M14 15h2M8 18h2\"/></svg>", "equipe": "<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\" focusable=\"false\"><circle cx=\"9\" cy=\"8\" r=\"3\"/><path d=\"M3 21v-2a6 6 0 0 1 12 0v2M16 5a3 3 0 0 1 0 6M21 21v-2a6 6 0 0 0-4-5.65\"/></svg>", "stages": "<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\" focusable=\"false\"><circle cx=\"12\" cy=\"12\" r=\"9\"/><circle cx=\"12\" cy=\"12\" r=\"5\"/><circle cx=\"12\" cy=\"12\" r=\"1\"/></svg>", "tarifs": "<span class=\"nav-euro\">€</span>", "contact": "<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\" focusable=\"false\"><path d=\"M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1 1 .4 2 .7 2.9a2 2 0 0 1-.5 2.1L8 10a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.5c.9.3 1.9.6 2.9.7a2 2 0 0 1 1.7 2Z\"/></svg>"};
 const tabs=[['accueil','⌂','Accueil'],['planning','▦','Planning'],['equipe','♟','Équipe'],['stages','▣','Stages'],['tarifs','▤','Tarifs'],['videos','▷','Vidéos'],['contact','☎','Contact']];function renderNav(){for(const selector of ['.tabs','.bottom']){document.querySelector(selector).innerHTML=tabs.map(([id,ico,label])=>`<button type="button" data-go="${id}" aria-selected="${id==='accueil'}">${selector==='.bottom'?`<b aria-hidden="true">${navIcons[id]}</b>`:''}${label}</button>`).join('')}}function show(id,scroll=true){if(!tabs.some(t=>t[0]===id))id='accueil';document.querySelectorAll('.panel').forEach(p=>{const active=p.id===id;p.classList.toggle('active',active);p.hidden=!active});document.querySelectorAll('[data-go]').forEach(b=>b.setAttribute('aria-selected',String(b.dataset.go===id)));if(location.hash!=='#'+id)history.replaceState(null,'','#'+id);if(scroll)window.scrollTo({top:document.querySelector('.wrap').offsetTop,behavior:'smooth'})}renderNav();document.addEventListener('click',e=>{const b=e.target.closest('[data-go]');if(b)show(b.dataset.go)});show(location.hash.slice(1)||'accueil',false);window.addEventListener('hashchange',()=>show(location.hash.slice(1),false));if('serviceWorker'in navigator)window.addEventListener('load',()=>navigator.serviceWorker.register('./sw.js').catch(()=>{}));
 
@@ -282,4 +300,205 @@ function km16UpdateHomeStages(){
 (function(){const form=document.getElementById('km16-contact-form');if(!form)return;const status=document.getElementById('km16-form-result');form.addEventListener('submit',async e=>{e.preventDefault();if(!form.reportValidity())return;const btn=form.querySelector('button[type=submit]');btn.disabled=true;status.textContent='Envoi en cours…';try{const data=new FormData(form);data.append('_subject','KM16 — Nouveau message depuis le site');data.append('_captcha','true');data.append('_template','table');const res=await fetch('https://formsubmit.co/ajax/contact@km16.fr',{method:'POST',body:data,headers:{Accept:'application/json'}});const body=await res.json();if(!res.ok||body.success===false||body.success==='false')throw Error('Réponse non confirmée');status.textContent='Demande transmise au service de messagerie. Si le service est en cours d’activation, KM16 devra confirmer son adresse e-mail pour recevoir les messages.';form.reset()}catch(err){status.textContent='L’envoi n’a pas pu être confirmé. Vous pouvez écrire à contact@km16.fr ou appeler le 07 62 01 32 94.'}finally{btn.disabled=false}})})();
 </script><script>
 (function(){const box=document.querySelector('.club-news');const btn=box&&box.querySelector('.club-news-toggle');if(!btn)return;btn.addEventListener('click',function(){const paused=box.classList.toggle('is-paused');btn.setAttribute('aria-pressed',String(paused));btn.setAttribute('aria-label',paused?'Reprendre le défilement':'Mettre le défilement en pause');btn.textContent=paused?'▶':'Ⅱ';});})();
+</script><script>
+(async function () {
+  'use strict';
+  const BASE = 'https://tlfewpbgbwesdriklxzb.supabase.co';
+  const KEY = 'sb_publishable_OGRSgobOGf54jlfmXGmS8g_04Ftvfsn';
+  const REDIRECT = 'https://app.km16.fr/';
+  const el = id => document.getElementById(id);
+  let client, session = null, mode = 'login', recovery = false;
+  let catalog = [], owned = new Set(), generation = 0, playerVideo = null;
+  let busy = false, pollCount = 0, paymentTimer;
+  const emptyCatalog = el('kv-catalog').innerHTML;
+  const paymentReturn = new URLSearchParams(location.search).get('payment');
+  function message(text, error = false) {
+    el('kv-status').textContent = text;
+    el('kv-status').classList.toggle('kv-error', error);
+  }
+  function clearPlayer() {
+    el('kv-player').replaceChildren();
+    el('kv-player').hidden = true;
+    playerVideo = null;
+  }
+  function setMode(value) {
+    mode = value;
+    el('kv-auth-submit').textContent = value === 'signup' ? 'Créer mon compte' : 'Se connecter';
+    el('kv-password').autocomplete = value === 'signup' ? 'new-password' : 'current-password';
+    el('kv-password').minLength = value === 'signup' ? 12 : 1;
+    el('kv-signup-hint').hidden = value !== 'signup';
+    document.querySelectorAll('[data-kv-mode]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.kvMode === value)));
+  }
+  function account(next) {
+    generation++;
+    session = next;
+    owned = new Set();
+    clearPlayer();
+    el('kv-guest').hidden = !!next || recovery;
+    el('kv-member').hidden = !next || recovery;
+    el('kv-reset').hidden = !next || !recovery;
+    el('kv-user-email').textContent = next?.user?.email || '';
+    render();
+  }
+  function render() {
+    if (!catalog.length) { el('kv-catalog').innerHTML = emptyCatalog; return; }
+    el('kv-catalog').replaceChildren();
+    catalog.forEach(video => {
+      const card = document.createElement('article'); card.className = 'card kv-video';
+      const tag = document.createElement('span'); tag.className = 'tag'; tag.textContent = owned.has(video.id) ? 'Dans ma vidéothèque' : 'Vidéo pédagogique KM16';
+      const title = document.createElement('h3'); title.textContent = video.title;
+      const description = document.createElement('p'); description.textContent = video.description;
+      const price = document.createElement('p'); price.className = 'kv-price';
+      price.textContent = new Intl.NumberFormat('fr-FR', {style:'currency',currency:video.currency}).format(video.price_cents / 100) + ' · achat unique';
+      const button = document.createElement('button'); button.className = 'cta'; button.type = 'button';
+      const has = owned.has(video.id);
+      button.textContent = has ? 'Regarder la vidéo ▷' : session ? 'Acheter cette vidéo →' : 'Se connecter pour acheter →';
+      button.disabled = busy || recovery;
+      button.addEventListener('click', () => {
+        if (!session) { el('kv-email').focus(); message('Connectez-vous ou créez un compte pour acheter.'); }
+        else if (has) watch(video);
+        else checkout(video);
+      });
+      card.append(tag, title, description, price, button);
+      el('kv-catalog').append(card);
+    });
+  }
+  async function refresh(silent = false) {
+    const current = ++generation, userId = session?.user.id;
+    try {
+      const {data: videos, error} = await client.from('km16_videos').select('id,title,description,price_cents,currency').eq('published',true).order('title');
+      if (error) throw error;
+      let purchases = [];
+      if (userId) {
+        const result = await client.from('km16_purchases').select('video_id').eq('user_id',userId).eq('status','paid');
+        if (result.error) throw result.error;
+        purchases = result.data;
+      }
+      if (current !== generation) return;
+      catalog = videos; owned = new Set(purchases.map(p => p.video_id));
+      if (playerVideo && !owned.has(playerVideo)) clearPlayer();
+      render();
+      if (!silent) {
+        if (!catalog.length) message('Les ventes ne sont pas encore ouvertes. Vous pouvez déjà créer votre compte.');
+        else if (paymentReturn === 'success' && !owned.size) message('Retour du paiement : confirmation en cours. Actualisez vos achats dans quelques instants.');
+        else message(userId ? (owned.size ? 'Vos vidéos achetées sont disponibles.' : 'Vous êtes connecté. Choisissez votre vidéo.') : 'Connectez-vous ou créez votre compte pour acheter une vidéo.');
+      }
+      if (paymentReturn === 'success' && owned.size) {
+        clearTimeout(paymentTimer);
+        message('Votre achat est disponible dans votre vidéothèque.');
+      }
+    } catch {
+      if (current !== generation) return;
+      owned = new Set(); clearPlayer(); render();
+      message('Impossible de vérifier la vidéothèque. Vérifiez votre connexion puis actualisez vos achats.', true);
+    }
+  }
+  async function checkout(video) {
+    if (busy) return;
+    busy = true; render(); message('Ouverture du paiement sécurisé…');
+    try {
+      const {data, error} = await client.auth.getSession();
+      if (error || !data.session) throw new Error('Votre session a expiré. Reconnectez-vous.');
+      const response = await fetch(BASE + '/functions/v1/km16-create-checkout', {
+        method:'POST', headers:{'Content-Type':'application/json', apikey:KEY, Authorization:'Bearer ' + data.session.access_token},
+        body:JSON.stringify({video_id:video.id})
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || 'Le paiement est indisponible. Réessayez plus tard.');
+      const url = new URL(result.url);
+      if (url.protocol !== 'https:' || url.hostname !== 'checkout.stripe.com') throw new Error('Adresse de paiement non reconnue.');
+      location.assign(url.href);
+    } catch (error) { message(error.message || 'Le paiement est indisponible.', true); }
+    finally { busy = false; render(); }
+  }
+  async function watch(video) {
+    clearPlayer();
+    const current = generation, userId = session?.user.id;
+    message('Vérification de votre accès…');
+    try {
+      const {data, error} = await client.from('km16_video_assets').select('vimeo_id,start_seconds').eq('video_id',video.id).maybeSingle();
+      if (current !== generation || userId !== session?.user.id) return;
+      if (error || !data || !/^\d+$/.test(data.vimeo_id)) throw new Error('Accès non confirmé. Actualisez vos achats ou contactez KM16.');
+      const heading = document.createElement('h3'); heading.textContent = video.title;
+      const close = document.createElement('button'); close.type='button'; close.className='kv-link'; close.textContent='Fermer la vidéo'; close.onclick=clearPlayer;
+      const frame = document.createElement('iframe'); frame.title=video.title;
+      frame.src='https://player.vimeo.com/video/' + data.vimeo_id + '?dnt=1&autopause=1#t=' + Math.max(0,Number(data.start_seconds)||0) + 's';
+      frame.allow='fullscreen; picture-in-picture; encrypted-media'; frame.allowFullscreen=true;
+      frame.referrerPolicy='strict-origin-when-cross-origin';
+      el('kv-player').append(heading,close,frame); el('kv-player').hidden=false; playerVideo=video.id;
+      el('kv-player').scrollIntoView({behavior:'smooth',block:'start'}); message('Bonne séance avec KM16.');
+    } catch (error) { message(error.message || 'Lecture indisponible.',true); }
+  }
+  function authError(error) {
+    if (error?.status === 429) return 'Trop de tentatives. Patientez quelques minutes avant de réessayer.';
+    if (error?.code === 'email_not_confirmed') return 'Confirmez votre adresse avec le lien reçu par e-mail, puis reconnectez-vous.';
+    if (error?.code === 'invalid_credentials') return 'Adresse e-mail ou mot de passe incorrect.';
+    return 'La demande n’a pas abouti. Vérifiez vos informations et votre connexion, puis réessayez.';
+  }
+  try {
+    await new Promise((resolve,reject) => {
+      const script=document.createElement('script'); script.src='https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js';
+      script.onload=resolve; script.onerror=reject; document.head.append(script);
+    });
+    client = window.supabase.createClient(BASE,KEY,{auth:{flowType:'implicit',detectSessionInUrl:false,storageKey:'km16-video-auth'}});
+    client.auth.onAuthStateChange((_event,next) => {
+      if (next?.user.id !== session?.user.id) {
+        account(next); setTimeout(() => refresh(),0);
+      } else session=next;
+    });
+    const fragment=new URLSearchParams(window.KM16_AUTH_FRAGMENT || '');
+    delete window.KM16_AUTH_FRAGMENT;
+    if (fragment.get('access_token') && fragment.get('refresh_token')) {
+      recovery=fragment.get('type')==='recovery';
+      const {error}=await client.auth.setSession({access_token:fragment.get('access_token'),refresh_token:fragment.get('refresh_token')});
+      if (error) { recovery=false; message('Ce lien a expiré. Demandez un nouveau lien.',true); }
+    }
+    const {data}=await client.auth.getSession(); account(data.session);
+    el('kv-auth-submit').disabled=false;
+    document.querySelectorAll('[data-kv-mode]').forEach(b=>b.onclick=()=>setMode(b.dataset.kvMode));
+    el('kv-auth').onsubmit=async event=>{
+      event.preventDefault(); const button=el('kv-auth-submit'); button.disabled=true;
+      try {
+        const credentials={email:el('kv-email').value.trim(),password:el('kv-password').value};
+        const result=mode==='signup' ? await client.auth.signUp({...credentials,options:{emailRedirectTo:REDIRECT}}) : await client.auth.signInWithPassword(credentials);
+        if (result.error) throw result.error;
+        el('kv-password').value='';
+        if (result.data.session) { account(result.data.session); await refresh(); }
+        else message('Consultez votre boîte e-mail et vos indésirables pour confirmer votre compte. Si vous avez déjà un compte, connectez-vous.');
+      } catch(error) {message(authError(error),true);} finally {button.disabled=false;}
+    };
+    el('kv-forgot').onclick=async()=>{
+      if (!el('kv-email').reportValidity() || !el('kv-email').value) {el('kv-email').focus();return;}
+      const button=el('kv-forgot'); button.disabled=true;
+      try {
+        const {error}=await client.auth.resetPasswordForEmail(el('kv-email').value.trim(),{redirectTo:REDIRECT});
+        if(error)throw error; message('Si cette adresse correspond à un compte, un lien de réinitialisation vous sera envoyé.');
+      }catch(error){message(authError(error),true);}finally{button.disabled=false;}
+    };
+    el('kv-reset').onsubmit=async event=>{
+      event.preventDefault(); const button=event.submitter; button.disabled=true;
+      try {
+        const {error}=await client.auth.updateUser({password:el('kv-new-password').value});
+        if(error)throw error; el('kv-new-password').value=''; recovery=false; account(session); await refresh(); message('Votre nouveau mot de passe est enregistré.');
+      }catch(error){message(authError(error),true);}finally{button.disabled=false;}
+    };
+    el('kv-logout').onclick=async()=>{
+      account(null);
+      await client.auth.signOut({scope:'local'});
+      message('Vous êtes déconnecté.');
+    };
+    el('kv-refresh').onclick=()=>refresh();
+    document.addEventListener('click',event=>{const tab=event.target.closest('[data-go]');if(tab && tab.dataset.go!=='videos')clearPlayer();});
+    window.addEventListener('hashchange',()=>{if(location.hash!=='#videos')clearPlayer();});
+    await refresh();
+    if (recovery) message('Choisissez votre nouveau mot de passe.');
+    if (paymentReturn==='cancelled') message('Paiement annulé. Aucun accès supplémentaire n’a été accordé.');
+    if (paymentReturn==='success' && session && !owned.size) {
+      const poll=async()=>{await refresh();if(!owned.size && ++pollCount<12)paymentTimer=setTimeout(poll,5000);};
+      paymentTimer=setTimeout(poll,3000);
+    }
+    setInterval(()=>{if(session && !document.hidden && !el('videos').hidden)refresh(true);},30000);
+  } catch { message('L’espace vidéo ne peut pas se charger. Vérifiez votre connexion et rechargez la page.',true); }
+})();
+
 </script></body></html>

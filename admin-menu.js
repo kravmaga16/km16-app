@@ -6,6 +6,7 @@
   const sections = [
     ['', [['Accueil', './', 'M3 10l9-7 9 7v10H3z M9 20v-7h6v7']]],
     ['Gestion', [
+      ['Actualités', './news-admin.html#workspace', 'M4 3h16v18H4z M8 7h8 M8 11h8 M8 15h5'],
       ['Tableau de bord', './clients.html#money-summary', 'M3 3h7v7H3z M14 3h7v7h-7z M3 14h7v7H3z M14 14h7v7h-7z'],
       ['Inscriptions aux cours', courseAdmin, 'M3 5h18v16H3z M7 2v6 M17 2v6 M3 10h18'],
       ['Planning', './#planning', 'M3 5h18v16H3z M7 2v6 M17 2v6 M3 10h18'],

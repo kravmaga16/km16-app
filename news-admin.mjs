@@ -22,6 +22,20 @@ async function load(){
   const body=document.createElement('p');body.textContent=row.body;
   const edit=document.createElement('button');edit.textContent='Modifier';edit.onclick=()=>{if(busy)return;selected=row;$('title').value=row.title;$('body').value=row.body;clearImage();imagePath=row.image_path;renderImage();$('expires-on').value=row.expires_on||'';$('scheduled-for').value=parisInput(row.scheduled_for);$('schedule-mode').value=row.scheduled_notify?'notify':'only';$('schedule-fields').hidden=!!(row.published_at||row.push_started_at);$('editor-title').textContent='Modifier l’actualité';$('category').value=row.category||'cours';paintAudience();$('category').disabled=!!row.push_started_at;$('publish-notify').hidden=!!(row.published_at||row.push_started_at);$('save').hidden=!!row.published_at;$('publish').textContent=row.published_at?'Enregistrer les modifications':'Publier seulement';$('editor').scrollIntoView({block:'start'});};
   const category=document.createElement('p');category.textContent=row.category==='stages'?'Stages et événements':'Infos cours et fermetures';card.append(title,state,category);appendImage(card,row.image_path,row.title);card.append(body,edit);
+  const duplicate=document.createElement('button');duplicate.type='button';duplicate.textContent='Dupliquer';
+  duplicate.onclick=()=>{
+   if(busy)return;
+   reset();
+   $('title').value=(row.title+' — copie').slice(0,120);
+   $('body').value=row.body;
+   $('category').value=row.category||'cours';
+   imagePath=row.image_path||null;renderImage();paintAudience();
+   $('editor-title').textContent='Copie — nouveau brouillon';
+   say('Copie préparée. Vérifie le contenu, puis enregistre le brouillon. Les dates sont effacées et aucune notification n’a été envoyée.');
+   $('editor').scrollIntoView({block:'start'});$('title').focus({preventScroll:true});
+  };
+  card.append(duplicate);
+
   if(row.published_at&&!expired(row)){const send=document.createElement('button');send.textContent=row.push_started_at?'Voir / poursuivre l’envoi':'Notifier les téléphones inscrits';send.onclick=async()=>{if(busy)return;if(!row.push_started_at&&!confirm('Envoyer cette actualité aux téléphones inscrits ?'))return;lock(true);try{await notifyNews(row.id);await load();}catch(e){say('Actualité publiée. Envoi interrompu : '+e.message+' Utilise « Voir / poursuivre l’envoi ».');}finally{lock(false);}};card.append(send);}
 
   if(row.published_at){const withdraw=document.createElement('button');withdraw.textContent='Retirer de l’app';withdraw.onclick=async()=>{if(busy)return;lock(true);try{const {error}=await db.from('km16_news').update({published_at:null,scheduled_for:null,scheduled_notify:false}).eq('id',row.id);if(error)throw error;reset();await load();say('Actualité retirée. Elle est conservée en brouillon.');}catch(e){say(e.message);}finally{lock(false);}};card.append(withdraw);}

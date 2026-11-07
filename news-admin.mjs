@@ -46,7 +46,7 @@ async function save(publish,notify=false){
 }
 $('editor').onsubmit=e=>{e.preventDefault();save(false);};$('publish').onclick=()=>save(true);$('publish-notify').onclick=()=>save(true,true);
 $('new').onclick=()=>{reset();$('title').focus();};$('refresh').onclick=load;
-async function state(s){epoch++;stats=null;$('push-stats').textContent='';reset();$('list').replaceChildren();const admin=s?.user?.email?.toLowerCase()==='alexandre.marchat@gmail.com';$('login').hidden=!!s;$('forbidden').hidden=!s||admin;$('workspace').hidden=!admin;$('password').value='';if(admin)await load();}
+async function state(s){epoch++;$('history').replaceChildren();stats=null;$('push-stats').textContent='';reset();$('list').replaceChildren();const admin=s?.user?.email?.toLowerCase()==='alexandre.marchat@gmail.com';$('login').hidden=!!s;$('forbidden').hidden=!s||admin;$('workspace').hidden=!admin;$('password').value='';if(admin)await load();}
 $('login-form').onsubmit=async e=>{e.preventDefault();const button=e.submitter;button.disabled=true;try{const {error}=await db.auth.signInWithPassword({email:$('email').value.trim(),password:$('password').value});if(error)throw error;say('');}catch(e){say(e.message);}finally{button.disabled=false;$('password').value='';}};
 async function logout(){await db.auth.signOut();await state(null);}
 $('logout').onclick=logout;$('other').onclick=logout;
@@ -71,6 +71,28 @@ async function loadStats(){
   paintAudience();
  }catch{if(current())$('push-stats').textContent='Compteur indisponible. Clique sur Actualiser pour réessayer.';}
 }
+let historyBusy=false;
+$('history-refresh').onclick=async()=>{
+ if(historyBusy)return;historyBusy=true;
+ const gen=epoch;const button=$('history-refresh');button.disabled=true;
+ $('history').textContent='Chargement…';
+ try{
+  const {data:{session}}=await db.auth.getSession();if(!session)throw Error();
+  const r=await fetch('https://tlfewpbgbwesdriklxzb.supabase.co/functions/v1/km16-notifications',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+session.access_token},body:JSON.stringify({action:'history'})});
+  const d=await r.json();if(!r.ok||!Array.isArray(d.history))throw Error();
+  if(gen!==epoch)return;
+  $('history').replaceChildren();
+  if(!d.history.length)$('history').textContent='Aucun envoi de notification enregistré.';
+  for(const row of d.history){
+   const article=document.createElement('article');article.className='card';
+   const h=document.createElement('h3');h.textContent=row.title;
+   const p=document.createElement('p');p.textContent=new Date(row.started_at).toLocaleString('fr-FR',{timeZone:'Europe/Paris'})+' · '+(row.category==='stages'?'Stages et événements':'Infos cours et fermetures');
+   const result=document.createElement('p');result.textContent='Acceptées : '+row.accepted+' · Échecs : '+row.failed+' · En attente : '+row.pending+' · En cours ou résultat incertain : '+row.uncertain;
+   article.append(h,p,result);$('history').append(article);
+  }
+ }catch{if(gen===epoch)$('history').textContent='Historique indisponible. Réessaie après avoir vérifié ta connexion.';}
+ finally{historyBusy=false;button.disabled=false;}
+};
 db.auth.onAuthStateChange((_e,s)=>setTimeout(()=>state(s),0));const {data}=await db.auth.getSession();await state(data.session);
 
 async function notifyNews(id){

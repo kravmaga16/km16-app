@@ -11,7 +11,11 @@ function lock(value){busy=value;$('news-image').disabled=value;for(const b of do
 function reset(){clearImage();selected=null;$('schedule-fields').hidden=false;$('category').disabled=false;$('publish-notify').hidden=false;$('editor').reset();paintAudience();$('editor-title').textContent='Nouvelle actualité';$('save').hidden=false;$('publish').textContent='Publier seulement';}
 async function load(){
  void loadStats();
- const gen=epoch;const {data,error}=await db.from('km16_news').select('*').order('created_at',{ascending:false}).limit(200);
+ const gen=epoch,showArchives=$('show-archives').checked;
+ let query=db.from('km16_news').select('*').order('created_at',{ascending:false}).limit(200);
+ if(!showArchives)query=query.is('archived_at',null);
+ const {data,error}=await query;
+ if(showArchives!==$('show-archives').checked)return;
  if(gen!==epoch)return;
  if(error){say('Chargement impossible : '+error.message);return;}
  $('list').replaceChildren();
@@ -35,6 +39,19 @@ async function load(){
    $('editor').scrollIntoView({block:'start'});$('title').focus({preventScroll:true});
   };
   card.append(duplicate);
+  if(!row.published_at&&!row.scheduled_for){
+   const archive=document.createElement('button');archive.type='button';archive.textContent=row.archived_at?'Restaurer le brouillon':'Archiver le brouillon';
+   archive.onclick=async()=>{
+    if(busy)return;lock(true);
+    try{
+     const {error}=await db.from('km16_news').update({archived_at:row.archived_at?null:new Date().toISOString()}).eq('id',row.id).is('published_at',null).is('scheduled_for',null).select().single();
+     if(error)throw error;
+     reset();await load();say(row.archived_at?'Brouillon restauré.':'Brouillon archivé. Aucune notification envoyée.');
+    }catch{say('Archivage impossible. Actualise la liste et réessaie.');}finally{lock(false);}
+   };
+   card.append(archive);
+   if(row.archived_at){state.textContent='Brouillon archivé';edit.remove();duplicate.remove();}
+  }
 
   if(row.published_at&&!expired(row)){const send=document.createElement('button');send.textContent=row.push_started_at?'Voir / poursuivre l’envoi':'Notifier les téléphones inscrits';send.onclick=async()=>{if(busy)return;if(!row.push_started_at&&!confirm('Envoyer cette actualité aux téléphones inscrits ?'))return;lock(true);try{await notifyNews(row.id);await load();}catch(e){say('Actualité publiée. Envoi interrompu : '+e.message+' Utilise « Voir / poursuivre l’envoi ».');}finally{lock(false);}};card.append(send);}
 
@@ -92,6 +109,7 @@ async function state(s){epoch++;$('history').replaceChildren();stats=null;$('pus
 $('login-form').onsubmit=async e=>{e.preventDefault();const button=e.submitter;button.disabled=true;try{const {error}=await db.auth.signInWithPassword({email:$('email').value.trim(),password:$('password').value});if(error)throw error;say('');}catch(e){say(e.message);}finally{button.disabled=false;$('password').value='';}};
 async function logout(){await db.auth.signOut();await state(null);}
 $('logout').onclick=logout;$('other').onclick=logout;
+$('show-archives').onchange=load;
 $('category').onchange=paintAudience;
 function paintAudience(){
  const count=stats?.[$('category').value];

@@ -1,3 +1,4 @@
+import {parisInput,parisInstant} from './paris-time.mjs';
 const $=id=>document.getElementById(id);
 const db=window.supabase.createClient('https://tlfewpbgbwesdriklxzb.supabase.co','sb_publishable_OGRSgobOGf54jlfmXGmS8g_04Ftvfsn',{auth:{storageKey:'km16-video-auth',detectSessionInUrl:false}});
 let selected=null,busy=false,epoch=0,stats=null,statsRequest=0;
@@ -5,7 +6,7 @@ const todayParis=()=>new Intl.DateTimeFormat('sv-SE',{timeZone:'Europe/Paris',ye
 const expired=row=>!!row.expires_on&&row.expires_on<todayParis();
 const say=text=>{$('status').textContent=text;};
 function lock(value){busy=value;for(const b of document.querySelectorAll('#workspace button'))b.disabled=value;}
-function reset(){selected=null;$('category').disabled=false;$('publish-notify').hidden=false;$('editor').reset();paintAudience();$('editor-title').textContent='Nouvelle actualité';$('save').hidden=false;$('publish').textContent='Publier seulement';}
+function reset(){selected=null;$('schedule-fields').hidden=false;$('category').disabled=false;$('publish-notify').hidden=false;$('editor').reset();paintAudience();$('editor-title').textContent='Nouvelle actualité';$('save').hidden=false;$('publish').textContent='Publier seulement';}
 async function load(){
  void loadStats();
  const gen=epoch;const {data,error}=await db.from('km16_news').select('*').order('created_at',{ascending:false}).limit(200);
@@ -15,18 +16,26 @@ async function load(){
  for(const row of data){
   const card=document.createElement('article');card.className='card';
   const title=document.createElement('h3');title.textContent=row.title;
-  const state=document.createElement('small');state.textContent=expired(row)?'Date de fin dépassée — hors de l’accueil':row.published_at?'Publié le '+new Date(row.published_at).toLocaleString('fr-FR'):'Brouillon';
+  const state=document.createElement('small');state.textContent=row.scheduled_for?'Programmée le '+parisInput(row.scheduled_for).replace('T',' à ')+' (Paris) · '+(row.scheduled_notify?'avec notification':'sans notification'):expired(row)?'Date de fin dépassée — hors de l’accueil':row.published_at?'Publié le '+new Date(row.published_at).toLocaleString('fr-FR'):'Brouillon';
   const body=document.createElement('p');body.textContent=row.body;
-  const edit=document.createElement('button');edit.textContent='Modifier';edit.onclick=()=>{if(busy)return;selected=row;$('title').value=row.title;$('body').value=row.body;$('expires-on').value=row.expires_on||'';$('editor-title').textContent='Modifier l’actualité';$('category').value=row.category||'cours';paintAudience();$('category').disabled=!!row.push_started_at;$('publish-notify').hidden=!!(row.published_at||row.push_started_at);$('save').hidden=!!row.published_at;$('publish').textContent=row.published_at?'Enregistrer les modifications':'Publier seulement';$('editor').scrollIntoView({block:'start'});};
+  const edit=document.createElement('button');edit.textContent='Modifier';edit.onclick=()=>{if(busy)return;selected=row;$('title').value=row.title;$('body').value=row.body;$('expires-on').value=row.expires_on||'';$('scheduled-for').value=parisInput(row.scheduled_for);$('schedule-mode').value=row.scheduled_notify?'notify':'only';$('schedule-fields').hidden=!!(row.published_at||row.push_started_at);$('editor-title').textContent='Modifier l’actualité';$('category').value=row.category||'cours';paintAudience();$('category').disabled=!!row.push_started_at;$('publish-notify').hidden=!!(row.published_at||row.push_started_at);$('save').hidden=!!row.published_at;$('publish').textContent=row.published_at?'Enregistrer les modifications':'Publier seulement';$('editor').scrollIntoView({block:'start'});};
   const category=document.createElement('p');category.textContent=row.category==='stages'?'Stages et événements':'Infos cours et fermetures';card.append(title,state,category,body,edit);
   if(row.published_at&&!expired(row)){const send=document.createElement('button');send.textContent=row.push_started_at?'Voir / poursuivre l’envoi':'Notifier les téléphones inscrits';send.onclick=async()=>{if(busy)return;if(!row.push_started_at&&!confirm('Envoyer cette actualité aux téléphones inscrits ?'))return;lock(true);try{await notifyNews(row.id);await load();}catch(e){say('Actualité publiée. Envoi interrompu : '+e.message+' Utilise « Voir / poursuivre l’envoi ».');}finally{lock(false);}};card.append(send);}
 
-  if(row.published_at){const withdraw=document.createElement('button');withdraw.textContent='Retirer de l’app';withdraw.onclick=async()=>{if(busy)return;lock(true);try{const {error}=await db.from('km16_news').update({published_at:null}).eq('id',row.id);if(error)throw error;reset();await load();say('Actualité retirée. Elle est conservée en brouillon.');}catch(e){say(e.message);}finally{lock(false);}};card.append(withdraw);}
+  if(row.published_at){const withdraw=document.createElement('button');withdraw.textContent='Retirer de l’app';withdraw.onclick=async()=>{if(busy)return;lock(true);try{const {error}=await db.from('km16_news').update({published_at:null,scheduled_for:null,scheduled_notify:false}).eq('id',row.id);if(error)throw error;reset();await load();say('Actualité retirée. Elle est conservée en brouillon.');}catch(e){say(e.message);}finally{lock(false);}};card.append(withdraw);}
+  if(row.scheduled_for){const cancel=document.createElement('button');cancel.textContent='Annuler la programmation';cancel.onclick=async()=>{
+   if(busy)return;lock(true);
+   try{
+    const {error}=await db.from('km16_news').update({scheduled_for:null,scheduled_notify:false}).eq('id',row.id).eq('scheduled_for',row.scheduled_for).is('published_at',null).select().single();
+    if(error)throw error;reset();await load();say('Programmation annulée. Actualité conservée en brouillon.');
+   }catch{say('La programmation a changé ou la publication a déjà commencé. Actualise la liste.');}
+   finally{lock(false);}
+  };card.append(cancel);}
   $('list').append(card);
  }
  if(!data.length)$('list').textContent='Aucune actualité pour le moment.';
 }
-async function save(publish,notify=false){
+async function save(publish,notify=false,schedule=false){
  if(busy||!$('editor').reportValidity())return;
  const title=$('title').value.trim(),body=$('body').value.trim();
  if(!title||!body){say('Renseigne le titre et le message.');return;}
@@ -34,17 +43,28 @@ async function save(publish,notify=false){
  if(publish&&expires_on&&expires_on<todayParis()){say('Choisis une date de fin à partir d’aujourd’hui, ou laisse ce champ vide.');return;}
  lock(true);
  try{
-  const payload={title,body,expires_on,category:selected?.push_started_at?selected.category:$('category').value,published_at:publish?(selected?.published_at||new Date().toISOString()):null};
-  const query=selected?db.from('km16_news').update(payload).eq('id',selected.id):db.from('km16_news').insert(payload);
+  let scheduled_for=null;
+  if(schedule){
+   if(selected?.published_at||selected?.push_started_at)throw Error('Cette actualité ne peut plus être programmée.');
+   scheduled_for=parisInstant($('scheduled-for').value);
+   if(new Date(scheduled_for).getTime()<=Date.now()+60000)throw Error('Choisis une heure située à plus d’une minute.');
+   if(expires_on&&expires_on<$('scheduled-for').value.slice(0,10))throw Error('La date de fin doit être le jour de publication ou après.');
+   const {data:{session}}=await db.auth.getSession();if(!session)throw Error('Session expirée');
+   const r=await fetch('https://tlfewpbgbwesdriklxzb.supabase.co/functions/v1/km16-notifications',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+session.access_token},body:JSON.stringify({action:'schedule-ready'})});
+   const ready=await r.json();if(!r.ok||!ready.ready)throw Error('La programmation serveur n’est pas encore activée. Aucune programmation enregistrée.');
+  }
+  const payload={title,body,expires_on,scheduled_for,scheduled_notify:schedule&&$('schedule-mode').value==='notify',category:selected?.push_started_at?selected.category:$('category').value,published_at:publish?(selected?.published_at||new Date().toISOString()):null};
+  let query=selected?db.from('km16_news').update(payload).eq('id',selected.id):db.from('km16_news').insert(payload);
+  if(selected?.scheduled_for)query=query.eq('scheduled_for',selected.scheduled_for).is('published_at',null);
   const {data,error}=await query.select().single();if(error)throw error;
   const shouldNotify=publish&&notify&&!data.push_started_at;
   selected=data;reset();await load();
-  say(publish?'Actualité publiée dans l’app.':'Brouillon enregistré.');
+  say(schedule?'Actualité programmée pour le '+parisInput(data.scheduled_for).replace('T',' à ')+' (Paris).':publish?'Actualité publiée dans l’app.':'Brouillon enregistré.');
   if(shouldNotify){try{await notifyNews(data.id);await load();}catch(e){say('Actualité publiée, mais envoi interrompu : '+e.message+' Utilise « Voir / poursuivre l’envoi » pour vérifier.');}}
 
  }catch(e){say('Enregistrement impossible : '+e.message);}finally{lock(false);}
 }
-$('editor').onsubmit=e=>{e.preventDefault();save(false);};$('publish').onclick=()=>save(true);$('publish-notify').onclick=()=>save(true,true);
+$('editor').onsubmit=e=>{e.preventDefault();save(false);};$('publish').onclick=()=>save(true);$('publish-notify').onclick=()=>save(true,true);$('schedule').onclick=()=>save(false,false,true);
 $('new').onclick=()=>{reset();$('title').focus();};$('refresh').onclick=load;
 async function state(s){epoch++;$('history').replaceChildren();stats=null;$('push-stats').textContent='';reset();$('list').replaceChildren();const admin=s?.user?.email?.toLowerCase()==='alexandre.marchat@gmail.com';$('login').hidden=!!s;$('forbidden').hidden=!s||admin;$('workspace').hidden=!admin;$('password').value='';if(admin)await load();}
 $('login-form').onsubmit=async e=>{e.preventDefault();const button=e.submitter;button.disabled=true;try{const {error}=await db.auth.signInWithPassword({email:$('email').value.trim(),password:$('password').value});if(error)throw error;say('');}catch(e){say(e.message);}finally{button.disabled=false;$('password').value='';}};

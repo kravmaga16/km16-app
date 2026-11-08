@@ -69,10 +69,10 @@ Nous vous donnons rendez-vous pour un stage de Krav Maga consacré à [THÈME DU
 Au programme : [PRÉSENTATION DU CONTENU ET DES OBJECTIFS].
 
 📅 Date : [JOUR ET DATE]
-🕒 Horaires : [HEURE DE DÉBUT – HEURE DE FIN]
-📍 Lieu : [NOM DU DOJO ET ADRESSE]
-🥊 Public : [ENFANTS / ADOS / ADULTES – NIVEAU REQUIS]
-💶 Tarif : [MONTANT] €
+🕒 Horaires : 10 h – 13 h
+📍 Lieu : Dojo Suchet
+🥊 Public : Tous publics
+💶 Tarif : 40 €
 
 Équipement à prévoir : [LISTE DES ÉQUIPEMENTS].
 

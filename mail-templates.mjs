@@ -74,7 +74,21 @@ Au programme : [PRÉSENTATION DU CONTENU ET DES OBJECTIFS].
 🥊 Public : Tous publics
 💶 Tarif : 40 €
 
-Équipement à prévoir : [LISTE DES ÉQUIPEMENTS].
+Équipement à prévoir :
+
+- Bas de kimono noir
+- Protège-tibias
+- Coquille de protection
+  - Pour les femmes, une protection de hockey convient parfaitement (disponible dans les magasins spécialisés en patin à glace)
+- Protège-dents
+- Protection poitrine pour les femmes (recommandée mais non obligatoire)
+- Gants de boxe :
+  - 8 oz minimum pour les enfants de 6 à 9 ans
+  - 12 oz minimum pour les ados de 10 à 14 ans
+  - 14 oz minimum pour les adultes
+- Tee-shirt blanc du club :
+  - 18 € l’unité
+  - 30 € les deux
 
 Pour vous inscrire, rendez-vous dans la rubrique Stages de l’app KM16 :
 https://app.km16.fr/#stages

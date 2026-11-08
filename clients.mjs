@@ -1,4 +1,4 @@
-import {initCommunications} from './communications.mjs?v=mail-templates6';
+import {initCommunications} from './communications.mjs?v=mail-templates7';
 import {SEASON,seasonState} from './seasons.mjs?v=1';
 import {clientsWorkbook,stagesMonthly} from './clients-excel.mjs?v=import-actifs1';
 const $=id=>document.getElementById(id),ADMIN='alexandre.marchat@gmail.com';

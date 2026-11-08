@@ -66,7 +66,7 @@ L’équipe KRAV MAGA 16`
 
 Nous vous donnons rendez-vous pour un stage de Krav Maga consacré à [THÈME DU STAGE] !
 
-Au programme : Préparation de ceinture.
+Au programme : Préparation de ceinture par niveau, de la jaune à la 4D.
 
 📅 Date : [JOUR ET DATE]
 🕒 Horaires : 10 h – 13 h

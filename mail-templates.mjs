@@ -66,7 +66,7 @@ L’équipe KRAV MAGA 16`
 
 Nous vous donnons rendez-vous pour un stage de Krav Maga consacré à [THÈME DU STAGE] !
 
-Au programme : [PRÉSENTATION DU CONTENU ET DES OBJECTIFS].
+Au programme : Préparation de ceinture.
 
 📅 Date : [JOUR ET DATE]
 🕒 Horaires : 10 h – 13 h

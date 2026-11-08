@@ -1,0 +1,5 @@
+const vm=require('node:vm'),fs=require('node:fs'),assert=require('node:assert/strict'),path=require('node:path');
+const context=vm.createContext({Intl,Date});vm.runInContext(fs.readFileSync(path.resolve(__dirname,'../stage-visibility.js'),'utf8'),context);const {day,cutoff,visible}=context.KM16StageVisibility;
+assert.equal(day('8/11/2026'),'2026-11-08');assert.equal(day('06/12/2026'),'2026-12-06');assert.equal(day('2026-11-08T00:00:00.000Z'),'2026-11-08');assert.equal(day('31/02/2027'),null);
+for(const [date,end] of [['8/11/2026','2026-11-08T14:00:00Z'],['06/06/2027','2027-06-06T13:00:00Z'],['28/03/2027','2027-03-28T13:00:00Z'],['31/10/2027','2027-10-31T14:00:00Z']]){const time=Date.parse(end);assert.equal(cutoff(date),time);assert.equal(visible(date,time-1),true);assert.equal(visible(date,time),false);assert.equal(visible(date,time+86400000),false);}
+assert.equal(visible('Date à confirmer'),true);console.log('PASS: Sheets date formats, exact 15:00 Paris cutoff, winter/summer and DST transition dates');

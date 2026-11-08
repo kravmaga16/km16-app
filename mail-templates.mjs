@@ -28,5 +28,34 @@ Nous vous souhaitons une excellente journée et avons hâte de vous retrouver su
 
 Cordialement,
 L’équipe KRAV MAGA 16`
+ },
+ {
+  id: 'reinscriptions-2027-2028',
+  name: 'Réinscriptions – Saison 2027/2028',
+  subject: 'KM16 – Réinscriptions pour la saison 2027/2028',
+  body: `Bonjour la Team,
+
+Les réinscriptions pour la saison 2027/2028 ouvriront à partir du mardi 1er juin 2027.
+En tant qu’adhérents actuels, vous bénéficiez d’un accès prioritaire afin de garantir votre place pour la prochaine saison.
+
+⚠️ Nombre de places limitées :
+
+- 40 places pour les enfants
+- 90 places pour les ados
+- 100 places pour les adultes
+
+Les inscriptions seront ensuite ouvertes aux nouveaux adhérents à compter du mardi 15 juin 2027.
+
+Pour les élèves de Saint-Jean, un justificatif de scolarité pour l’année 2027/2028 vous sera demandé en septembre 2027.
+
+Afin de garantir votre place, merci d’utiliser le lien correspondant à votre formule d’abonnement sur l’app KM16 :
+https://app.km16.fr/
+
+Nous avons hâte de vous retrouver pour cette nouvelle saison !
+
+Belle journée à tous.
+
+Cordialement,
+L’équipe KRAV MAGA 16`
  }
 ];

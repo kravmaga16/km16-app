@@ -64,7 +64,7 @@ L’équipe KRAV MAGA 16`
   subject: 'KM16 – Stage [THÈME] le [DATE]',
   body: `Bonjour la Team,
 
-Nous vous donnons rendez-vous pour un stage de Krav Maga consacré à [THÈME DU STAGE] !
+Nous vous donnons rendez-vous pour un stage de Krav Maga consacré à la préparation de votre examen.
 
 Au programme : Préparation de ceinture par niveau, de la jaune à la 4D.
 

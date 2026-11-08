@@ -432,6 +432,7 @@ function km16UpdateHomeStages(){
     });
     client = window.supabase.createClient(BASE,KEY,{auth:{flowType:'implicit',detectSessionInUrl:false,storageKey:'km16-video-auth'}});
     client.auth.onAuthStateChange((_event,next) => {
+      setTimeout(() => window.dispatchEvent(new Event('km16-auth-change')),0);
       if (next?.user.id !== session?.user.id) {
         account(next); setTimeout(() => refresh(),0);
       } else session=next;
@@ -508,4 +509,6 @@ function decide(value){const wasLoaded=loaded;choice=value;window['ga-disable-'+
 document.getElementById('km16-cookie-accept').onclick=()=>decide('accepted');document.getElementById('km16-cookie-refuse').onclick=()=>decide('refused');manage.onclick=show;
 window.addEventListener('storage',e=>{if(e.key===KEY)location.reload();});
 if(choice==='accepted')start();else clearAnalytics();if(!choice)box.hidden=false;
-})();</script><script type="module" src="./news-public.mjs?v=images1"></script><script type="module" src="./notifications.mjs?v=categories1"></script></body></html>
+})();</script><script type="module" src="./news-public.mjs?v=images1"></script><script type="module" src="./notifications.mjs?v=trials1"></script>
+<script type="module" src="./trial-notifications.mjs?v=1"></script>
+</body></html>

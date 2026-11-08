@@ -15,6 +15,7 @@
     ['Membres', [
       ['Équipe', './#equipe', 'M16 21v-3a4 4 0 00-4-4H7a4 4 0 00-4 4v3 M21 21v-3a4 4 0 00-3-4 M9.5 11a4 4 0 100-8 4 4 0 000 8z M17 3a4 4 0 010 8'],
       ['Fichier clients', './clients.html#workspace', 'M3 3h18v18H3z M7 17v-2a5 5 0 0110 0v2 M12 11a3 3 0 100-6 3 3 0 000 6z'],
+      ['Cours d’essai et rappels', './trials.html#workspace', 'M4 5h16v16H4z M8 2v6 M16 2v6 M4 11h16 M8 15l3 3 5-5'],
       ['Adhésions', './adhesion.html#admin', 'M2 5h20v14H2z M2 10h20'],
       ['Liens d’achat', './adhesion.html#link-form', 'M10 13a4 4 0 006 0l4-4a4 4 0 00-6-6l-2 2 M14 11a4 4 0 00-6 0l-4 4a4 4 0 006 6l2-2'],
     ]],

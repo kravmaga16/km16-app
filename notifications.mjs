@@ -24,7 +24,7 @@ if(!('serviceWorker'in navigator)||!('PushManager'in window)||!('Notification'in
  status.textContent='Sur iPhone : ouvre KM16 depuis son icône sur l’écran d’accueil (iOS 16.4 minimum).';label.hidden=true;label.style.display='none';
 }else{
  let reg,key,token,subscription,working=false,categories=null;
- function paint(){button.checked=!!subscription;button.disabled=working||!key;group.hidden=!subscription||!categories;for(const c of choices){c.checked=categories?.includes(c.value)||false;c.disabled=working;}}
+ function paint(){window.dispatchEvent(new Event('km16-push-change'));button.checked=!!subscription;button.disabled=working||!key;group.hidden=!subscription||!categories;for(const c of choices){c.checked=categories?.includes(c.value)||false;c.disabled=working;}}
  try{
   token=localStorage.getItem('km16-push-token');
   if(!token){token=b64(crypto.getRandomValues(new Uint8Array(32)));localStorage.setItem('km16-push-token',token);}

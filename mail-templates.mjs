@@ -57,5 +57,35 @@ Belle journée à tous.
 
 Cordialement,
 L’équipe KRAV MAGA 16`
+ },
+ {
+  id: 'annonce-stage',
+  name: 'Stage – Annonce et inscription',
+  subject: 'KM16 – Stage [THÈME] le [DATE]',
+  body: `Bonjour la Team,
+
+Nous vous donnons rendez-vous pour un stage de Krav Maga consacré à [THÈME DU STAGE] !
+
+Au programme : [PRÉSENTATION DU CONTENU ET DES OBJECTIFS].
+
+📅 Date : [JOUR ET DATE]
+🕒 Horaires : [HEURE DE DÉBUT – HEURE DE FIN]
+📍 Lieu : [NOM DU DOJO ET ADRESSE]
+🥊 Public : [ENFANTS / ADOS / ADULTES – NIVEAU REQUIS]
+💶 Tarif : [MONTANT] €
+
+Équipement à prévoir : [LISTE DES ÉQUIPEMENTS].
+
+Pour vous inscrire, rendez-vous dans la rubrique Stages de l’app KM16 :
+https://app.km16.fr/#stages
+
+⚠️ Le nombre de places est limité : pensez à réserver votre participation !
+
+Nous avons hâte de vous retrouver sur les tatamis pour partager ce moment d’entraînement.
+
+Belle journée à tous.
+
+Cordialement,
+L’équipe KRAV MAGA 16`
  }
 ];

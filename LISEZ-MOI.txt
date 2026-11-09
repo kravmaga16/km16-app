@@ -1,5 +1,6 @@
-KM16 V17 – Optimisation SEO
-Téléverser tous les fichiers à la racine du dépôt GitHub Pages.
-Ajouts : titre et description SEO, balises sociales, données structurées SportsClub, robots.txt et sitemap.xml.
-Ensuite : déclarer https://kravmaga16.github.io/km16-app/sitemap.xml dans Google Search Console.
-La présence dans les résultats Google et le classement ne sont pas garantis.
+KM16 – Référencement du domaine actuel
+Le site public de référence est https://app.km16.fr/.
+Les anciennes adresses https://kravmaga16.github.io/km16-app/ redirigent vers ce domaine ; leur exclusion « Page avec redirection » est normale dans Google Search Console.
+Dans Search Console, utiliser la propriété https://app.km16.fr/ (ou la propriété de domaine km16.fr), soumettre https://app.km16.fr/sitemap.xml puis inspecter https://app.km16.fr/ pour demander son indexation.
+Conserver la redirection GitHub Pages et le HTTPS obligatoire dans Settings > Pages.
+Les pages d’administration et les parcours privés restent exclus de l’indexation.

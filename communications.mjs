@@ -1,4 +1,4 @@
-import {MAIL_TEMPLATES} from './mail-templates.mjs?v=8';
+import {MAIL_TEMPLATES} from './mail-templates.mjs?v=ages1';
 export const emailAddress=value=>{const s=String(value||'').trim().toLowerCase();return s.length<=254&&/^[^\s@<>;,]+@[^\s@<>;,]+\.[^\s@<>;,]+$/.test(s)?s:null;};
 export function mobileNumber(value){let s=String(value||'').replace(/[\s.()\-]/g,'');if(/^0[67]\d{8}$/.test(s))s='+33'+s.slice(1);if(/^00/.test(s))s='+'+s.slice(2);return /^\+[1-9]\d{7,14}$/.test(s)?s:null;}
 export function smsRecipients(clients,group){const rows=clients.filter(c=>!group||c.group===group);const contacts=new Map();let missing=0;for(const c of rows){const phone=mobileNumber(c.phone);if(!phone){missing++;continue;}if(!contacts.has(phone))contacts.set(phone,{phone,name:[c.first_name,c.last_name].filter(Boolean).join(' ')});}return {contacts:[...contacts.values()],missing,people:rows.length};}

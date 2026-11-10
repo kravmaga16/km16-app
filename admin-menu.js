@@ -1,5 +1,6 @@
 (() => {
   'use strict';
+  if(new URLSearchParams(location.search).get('embed')==='1'&&window.parent!==window)return;
   const panel = document.querySelector('#admin, #workspace');
   if (!panel) return;
   const courseAdmin = 'https://script.google.com/macros/s/AKfycbyY2dS_sWLYF7KFSFLxRY4-KPLYSRQuxNm38zXS60XZ16Ek3S-QTtfSpkkxc10TXoDk_Q/exec';

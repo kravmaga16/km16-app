@@ -29,7 +29,50 @@ $('login').onsubmit=async e=>{e.preventDefault();if(!client)return note('Connexi
 $('logout').onclick=async()=>{await client.auth.signOut({scope:'local'});};
 $('order').onsubmit=async e=>{e.preventDefault();if(busy||!session||!selected||!enabled)return;busy=true;buttonState();note('Préparation de votre demande…');const payload={action:'checkout',request_id:requestId,product_id:selected.id,...(linkToken?{link_token:linkToken}:{}),count:Number($('count').value)};for(const id of ['first_name','last_name','birth_date','phone','guardian_name'])payload[id]=$(id).value;for(const id of ['license','terms','privacy','eligibility','installments'])payload[id]=$(id).checked;
  try{const r=await api(payload);if(r.free){note('Votre demande gratuite a été enregistrée. KM16 doit la valider.');requestId=crypto.randomUUID();await orders();}else{const u=new URL(r.url);if(u.protocol!=='https:'||u.hostname!=='checkout.stripe.com')throw Error('Adresse de paiement invalide');(embedded?window.top:window).location.assign(u.href);}}catch(e){note(e.message,true);}finally{busy=false;buttonState();}};
-async function orders(){if(!session)return;const gen=generation;try{const r=await api({action:'orders'});if(gen!==generation)return;const liveOrders=r.orders.filter(o=>o.livemode===true);$('orders').replaceChildren();for(const o of liveOrders){const box=document.createElement('div');box.className='summary';text('strong',o.title,box);const payments=r.payments.filter(p=>p.order_id===o.id);const paid=payments.filter(p=>p.status==='paid').reduce((s,p)=>s+p.amount_cents-p.refunded_cents,0);text('div',money(paid)+' encaissés sur '+money(o.total_cents)+' · Dossier : '+({pending:'en attente de validation',approved:'validé',rejected:'refusé'}[o.approval]),box);if(payments.some(p=>p.status==='failed'))text('div','Échéance non réglée : contactez KM16 pour régulariser.',box);if(payments.some(p=>['refunded','disputed'].includes(p.status)))text('div','Paiement remboursé ou en litige. Contactez KM16.',box);for(const p of payments)text('div',money(p.amount_cents)+' · '+({paid:'payé',failed:'à régulariser',pending:'en attente',refunded:'remboursé',disputed:'en litige'}[p.status]),box);documentSummary(box,(r.documents||[]).find(d=>d.order_id===o.id));$('orders').append(box);}if(!liveOrders.length)text('p','Aucune inscription enregistrée.',$('orders'));}catch(e){if(gen===generation)note(e.message,true);}}
+let myOrderGroup='Tous les achats',myOrderData={orders:[],payments:[],documents:[]};
+const orderGroupNames=['Adhésions','Stages','Cours et essais','Équipements','Autres achats'];
+function orderGroup(order){
+ const product=products.find(p=>p.id===order.product_id);
+ if(product){
+  if(product.category==='Stages')return 'Stages';
+  if(product.kind==='annual'||product.kind==='monthly')return 'Adhésions';
+  if(product.category==='Découverte')return 'Cours et essais';
+  if(product.category==='Équipement')return 'Équipements';
+ }
+ const title=String(order.title||'').toLocaleLowerCase('fr');
+ if(/stage|préparation ceinture|spécial (combat|bâton|couteau)/.test(title))return 'Stages';
+ if(/cours|essai/.test(title))return 'Cours et essais';
+ if(/tee.?shirt|équipement/.test(title))return 'Équipements';
+ if(/adulte|ados|enfant|adhésion|cotisation|abonnement/.test(title))return 'Adhésions';
+ return 'Autres achats';
+}
+function renderMyOrders(){
+ const all=myOrderData.orders.filter(o=>o.livemode===true);
+ const groups=['Tous les achats',...orderGroupNames.filter(g=>all.some(o=>orderGroup(o)===g))];
+ if(!groups.includes(myOrderGroup))myOrderGroup='Tous les achats';
+ const filters=$('order-filters');filters.replaceChildren();
+ for(const group of groups){
+  const count=group==='Tous les achats'?all.length:all.filter(o=>orderGroup(o)===group).length;
+  const button=text('button',group+' ('+count+')',filters);button.type='button';
+  button.setAttribute('aria-pressed',String(group===myOrderGroup));
+  button.onclick=()=>{myOrderGroup=group;renderMyOrders();Array.from(filters.children).find(b=>b.getAttribute('aria-pressed')==='true')?.focus({preventScroll:true});};
+ }
+ const visible=all.filter(o=>myOrderGroup==='Tous les achats'||orderGroup(o)===myOrderGroup);
+ $('orders').replaceChildren();
+ for(const o of visible){
+  const box=document.createElement('div');box.className='summary';text('strong',o.title,box);
+  const payments=myOrderData.payments.filter(p=>p.order_id===o.id);
+  const paid=payments.filter(p=>p.status==='paid').reduce((s,p)=>s+p.amount_cents-p.refunded_cents,0);
+  text('div',money(paid)+' encaissés sur '+money(o.total_cents)+' · Dossier : '+({pending:'en attente de validation',approved:'validé',rejected:'refusé'}[o.approval]),box);
+  if(payments.some(p=>p.status==='failed'))text('div','Échéance non réglée : contactez KM16 pour régulariser.',box);
+  if(payments.some(p=>['refunded','disputed'].includes(p.status)))text('div','Paiement remboursé ou en litige. Contactez KM16.',box);
+  for(const p of payments)text('div',money(p.amount_cents)+' · '+({paid:'payé',failed:'à régulariser',pending:'en attente',refunded:'remboursé',disputed:'en litige'}[p.status]),box);
+  documentSummary(box,(myOrderData.documents||[]).find(d=>d.order_id===o.id));$('orders').append(box);
+ }
+ if(!visible.length)text('p','Aucune inscription enregistrée.',$('orders'));
+}
+async function orders(){if(!session)return;const gen=generation;try{const r=await api({action:'orders'});if(gen!==generation)return;myOrderData=r;renderMyOrders();}catch(e){if(gen===generation)note(e.message,true);}}
+
 const docStatus={missing:'Manquant',received:'Reçu — à vérifier',validated:'Validé',not_required:'Non demandé'};
 const mailStatus={pending:'Programmé',sending:'En cours',sent:'Accepté par la messagerie',skipped:'Non nécessaire',failed:'Configuration à vérifier',uncertain:'Envoi à vérifier — aucun renvoi automatique'};
 function documentSummary(parent,d){
@@ -66,7 +109,7 @@ async function admin(){const gen=generation;try{
  }
  $('admin-orders').replaceChildren(table);
 }catch(e){if(gen===generation)note(e.message,true);}}
-async function authState(s){generation++;session=s;$('login').hidden=!!s;$('connected').hidden=!s;$('identity').textContent=s?.user.email||'';$('my-orders').hidden=!s;const isAdmin=s?.user.email==='alexandre.marchat@gmail.com';$('admin').hidden=!isAdmin||embedded;buttonState();if(!s){$('orders').replaceChildren();$('admin-orders').replaceChildren();$('links-list').replaceChildren();$('link-result').hidden=true;$('link-url').value='';$('link-email').value='';$('order').reset();if(specialOffer)choose(specialOffer.product);return;}await orders();if(isAdmin&&!embedded){initLinks();await Promise.all([admin(),listLinks()]);}}
+async function authState(s){generation++;session=s;$('login').hidden=!!s;$('connected').hidden=!s;$('identity').textContent=s?.user.email||'';$('my-orders').hidden=!s;const isAdmin=s?.user.email==='alexandre.marchat@gmail.com';$('admin').hidden=!isAdmin||embedded;buttonState();if(!s){myOrderGroup='Tous les achats';myOrderData={orders:[],payments:[],documents:[]};$('order-filters').replaceChildren();$('orders').replaceChildren();$('admin-orders').replaceChildren();$('links-list').replaceChildren();$('link-result').hidden=true;$('link-url').value='';$('link-email').value='';$('order').reset();if(specialOffer)choose(specialOffer.product);return;}await orders();if(isAdmin&&!embedded){initLinks();await Promise.all([admin(),listLinks()]);}}
 $('refresh').onclick=orders;$('admin-refresh').onclick=admin;
 
 function initLinks(){

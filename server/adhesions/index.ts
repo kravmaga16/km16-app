@@ -106,7 +106,7 @@ Deno.serve(async req=>{
    return ok?reply({ok:true}):reply({error:'Lien déjà utilisé ou indisponible. Vérifiez le dossier dans Stripe.'},409);
   }
   if(data.action==='orders'){
-   const orders=await db('km16_membership_orders?user_id=eq.'+user.id+'&select=id,title,livemode,total_cents,count,amounts,approval,created_at,stripe_session_id,schedule_id&order=created_at.desc');
+   const orders=await db('km16_membership_orders?user_id=eq.'+user.id+'&select=id,product_id,title,livemode,total_cents,count,amounts,approval,created_at,stripe_session_id,schedule_id&order=created_at.desc');
    const ids=orders.map(o=>o.id);
    return reply({orders,payments:await db('km16_membership_payments?user_id=eq.'+user.id+'&select=order_id,reference,amount_cents,refunded_cents,status,created_at&order=created_at.desc'),documents:ids.length?await db('km16_membership_documents?order_id=in.('+ids.join(',')+')&select=order_id,health_kind,health_status,school_required,school_status,paid_at,updated_at'):[]});
   }

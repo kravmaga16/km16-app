@@ -182,4 +182,3 @@ try{
 }catch{note('Chargement impossible. Rechargez la page ou contactez contact@km16.fr.',true);}
 
 if(embedded){window.addEventListener('message',event=>{if(event.origin!==location.origin||event.source!==parent||event.data?.type!=='km16-payment-category')return;category=categoryFor(event.data.category);render();});document.dispatchEvent(new Event('km16-payment-ready'));parent.postMessage({type:'km16-payment-ready',enabled},location.origin);}
-

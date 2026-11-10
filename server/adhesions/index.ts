@@ -1,5 +1,6 @@
 // Fichier autonome pour index.ts. Verify JWT OFF : contrôle Supabase Auth ci-dessous.
 import Stripe from 'npm:stripe@22';
+import jpeg from 'npm:jpeg-js@0.4.4';
 function splitAmount(total, count) {
  if (!Number.isSafeInteger(total) || total < 0 || ![1,3,4].includes(count)) throw Error('Échéancier invalide');
  const regular=Math.floor(total/count);
@@ -24,7 +25,7 @@ function validateOrder(product, data, today) {
  const age=ageOn(data.birth_date,today);
  if(age<0||age>110||product.min_age!=null&&age<product.min_age||product.max_age!=null&&age>product.max_age)throw Error('L’âge ne correspond pas à cette formule : contactez KM16');
  if(age<18&&!String(data.guardian_name||'').trim())throw Error('Représentant légal requis pour un mineur');
- if(!/^\+?[\d ().-]{8,25}$/.test(String(data.phone||'')))throw Error('Téléphone invalide');
+ if(!/^\+?[\d ().-]{8,25}$/.test(String(data.phone||''))||String(data.phone||'').replace(/\D/g,'').length<8)throw Error('Téléphone invalide');
  if(data.terms!==true||data.license!==true||data.privacy!==true||n>1&&data.installments!==true||product.review&&data.eligibility!==true)throw Error('Veuillez compléter les confirmations');
  return {count:n,amounts:splitAmount(product.amount,n),age};
 }
@@ -83,6 +84,29 @@ Deno.serve(async req=>{
   if(!ar.ok)return reply({error:'Session expirée, reconnectez-vous'},401);
   const user=await ar.json();if(!user.email_confirmed_at||user.is_anonymous)return reply({error:'Confirmez votre adresse e-mail'},403);
   const admin=user.email?.toLowerCase()==='alexandre.marchat@gmail.com';
+  if(data.action==='photo-upload'){
+   if(!/^[0-9a-f-]{36}$/i.test(data.request_id))return reply({error:'Demande invalide'},400);
+   const existing=(await db('km16_member_photos?id=eq.'+data.request_id))[0];
+   if(existing&&existing.user_id!==user.id)return reply({error:'Demande indisponible'},403);
+   if((await db('km16_membership_orders?id=eq.'+data.request_id+'&select=id')).length){if(existing?.user_id===user.id)return reply({ok:true});return reply({error:'Ce dossier existe déjà. Contactez KM16 pour modifier sa photo.'},409);}
+   const recent=await db('km16_member_photos?user_id=eq.'+user.id+'&created_at=gte.'+encodeURIComponent(new Date(Date.now()-86400000).toISOString())+'&select=id');
+   if(recent.length>=20)return reply({error:'Trop de photos envoyées. Contactez KM16.'},429);
+   const input=String(data.photo||'');
+   if(input.length>2000000||!/^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/.test(input))return reply({error:'Photo JPEG convertie requise'},400);
+   let bytes;try{bytes=Uint8Array.from(atob(input.split(',')[1]),c=>c.charCodeAt(0));const image=jpeg.decode(bytes,{useTArray:true,maxResolutionInMP:2,maxMemoryUsageInMB:64});if(image.width<100||image.height<100||image.width>1200||image.height>1200)throw Error();}catch{return reply({error:'Photo non valide : utilisez une photo de 100 à 1200 pixels après conversion.'},400);}
+   const path=user.id+'/'+data.request_id+'.jpg';
+   const upload=await fetch(base+'/storage/v1/object/km16-member-photos/'+path,{method:'POST',headers:{apikey:key,Authorization:'Bearer '+key,'Content-Type':'image/jpeg','x-upsert':'true'},body:bytes});
+   if(!upload.ok)throw Error('Stockage photo indisponible');
+   await db('km16_member_photos','POST',{id:data.request_id,user_id:user.id,path},'resolution=merge-duplicates');
+   return reply({ok:true});
+  }
+  if(data.action==='photo-view'){
+   if(!/^[0-9a-f-]{36}$/i.test(data.order_id))return reply({error:'Dossier invalide'},400);
+   const photo=(await db('km16_member_photos?id=eq.'+data.order_id+(admin?'':'&user_id=eq.'+user.id)))[0];
+   if(!photo)return reply({error:'Photo indisponible'},404);
+   const r=await fetch(base+'/storage/v1/object/sign/km16-member-photos/'+photo.path,{method:'POST',headers:{apikey:key,Authorization:'Bearer '+key,'Content-Type':'application/json'},body:JSON.stringify({expiresIn:60})});
+   if(!r.ok)throw Error('Photo indisponible');const signed=await r.json();return reply({url:base+'/storage/v1'+signed.signedURL});
+  }
   if(data.action==='links-create'){
    if(!admin)return reply({error:'Accès privé'},403);
    const p=(await db('km16_membership_products?id=eq.'+encodeURIComponent(String(data.product_id))))[0];
@@ -153,6 +177,8 @@ Deno.serve(async req=>{
   if(recent.length>=8)return reply({error:'Trop de demandes, contactez KM16'},429);
   if(Deno.env.get('KM16_ADHESIONS_STRIPE_SECRET_KEY')?.startsWith('sk_live_')&&Deno.env.get('KM16_ADHESIONS_ALLOW_LIVE')!=='true')return reply({error:'Paiements réels non activés'},503);
   const id=data.request_id;
+  if(!user.email||! /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(user.email))return reply({error:'E-mail confirmé obligatoire'},400);
+  if(!(await db('km16_member_photos?id=eq.'+id+'&user_id=eq.'+user.id+'&select=id')).length)return reply({error:'Ajoutez obligatoirement une photo du pratiquant avant de payer.'},400);
   let participantKey=null;
   if(product.kind==='annual'){
    const normalized=[Deno.env.get('KM16_ADHESIONS_STRIPE_SECRET_KEY').startsWith('sk_live_')?'live':'test',user.id,config.season_end,data.first_name.trim().toLowerCase(),data.last_name.trim().toLowerCase(),data.birth_date].join('|');
@@ -171,7 +197,7 @@ Deno.serve(async req=>{
   const customer=await stripe.customers.create({email:user.email,preferred_locales:['fr'],metadata:{km16_order:id}},{idempotencyKey:'km16-member-customer-'+id});
   const metadata={km16_source:'km16-membership-v1',km16_order:id};
   const consent=valid.count>1?'Cotisation totale '+(product.amount/100).toFixed(2)+' EUR, sans frais supplémentaires. Première échéance aujourd’hui, puis '+(valid.count-1)+' prélèvements mensuels de '+(valid.amounts[1]/100).toFixed(2)+' EUR. Vous autorisez KM16 à réutiliser cette carte pour ces échéances uniquement.':'';
-  const session=await stripe.checkout.sessions.create({mode:'payment',customer:customer.id,billing_address_collection:'required',customer_update:{name:'auto',address:'auto'},payment_method_types:['card'],line_items:[{price_data:{currency:'eur',unit_amount:valid.amounts[0],product_data:{name:product.title+' · '+(valid.count>1?'Échéance 1/'+valid.count:'Paiement intégral'),description:'Licence payée séparément. '+(valid.count>1?'Total cotisation : '+(product.amount/100).toFixed(2)+' EUR.':'')}},quantity:1}],metadata,payment_intent_data:{metadata,receipt_email:user.email,...(valid.count>1?{setup_future_usage:'off_session'}:{})},consent_collection:{terms_of_service:'required'},custom_text:{terms_of_service_acceptance:{message:'J’accepte les [conditions KM16]('+config.terms_url+').'},...(consent?{submit:{message:consent}}:{})},success_url:SITE+'/adhesion.html?paid=1',cancel_url:SITE+'/adhesion.html?cancel=1',locale:'fr',expires_at:Math.floor(Date.now()/1000)+1800},{idempotencyKey:'km16-member-checkout-'+id});
+  const session=await stripe.checkout.sessions.create({mode:'payment',customer:customer.id,billing_address_collection:'required',customer_update:{name:'auto',address:'auto'},payment_method_types:['card'],line_items:[{price_data:{currency:'eur',unit_amount:valid.amounts[0],product_data:{name:product.title+' · '+(valid.count>1?'Échéance 1/'+valid.count:'Paiement intégral'),description:'Licence payée séparément. '+(valid.count>1?'Total cotisation : '+(product.amount/100).toFixed(2)+' EUR.':'')}},quantity:1}],metadata,payment_intent_data:{metadata,receipt_email:user.email,...(valid.count>1?{setup_future_usage:'off_session'}:{})},consent_collection:{terms_of_service:'required'},custom_text:{terms_of_service_acceptance:{message:'J’accepte les [conditions KM16]('+config.terms_url+').'},...(consent?{submit:{message:consent}}:{})},success_url:SITE+'/adhesion.html?espace=1&paid=1&order='+id,cancel_url:SITE+'/adhesion.html?cancel=1',locale:'fr',expires_at:Math.floor(Date.now()/1000)+1800},{idempotencyKey:'km16-member-checkout-'+id});
   await db('km16_membership_orders?id=eq.'+id,'PATCH',{stripe_session_id:session.id,customer_id:customer.id});
   return reply({url:session.url});
  }catch(e){console.error('KM16 adhésions',e?.type||e?.name);return reply({error:'Demande non aboutie. Contactez contact@km16.fr avant de recommencer si vous avez été débité'},500);}

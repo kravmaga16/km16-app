@@ -1,3 +1,4 @@
+import {preparePhoto} from './member-photo.mjs?v=1';
 import {parseEuro,eligibleProducts} from './purchase-links.mjs?v=liens1';
 import {splitAmount,ageOn} from './rules.mjs';
 const $=id=>document.getElementById(id),money=n=>new Intl.NumberFormat('fr-FR',{style:'currency',currency:'EUR'}).format(n/100);
@@ -11,6 +12,8 @@ const categoryFor=value=>{const s=String(value).toLowerCase();return s.includes(
 let products=[],selected=null,session=null,enabled=false,category='Tous',busy=false,requestId=crypto.randomUUID(),generation=0;
 const linkToken=new URLSearchParams(location.hash.slice(1)).get('offre')||'';
 let specialOffer=null;
+let photoData='',photoRevision=0;
+$('member_photo').onchange=async()=>{const revision=++photoRevision;photoData='';$('photo-preview').hidden=true;$('photo-status').textContent='Préparation de la photo…';try{const value=await preparePhoto($('member_photo').files[0]);if(revision!==photoRevision)return;photoData=value;$('photo-preview').src=value;$('photo-preview').hidden=false;$('photo-status').textContent='Photo prête. Elle sera envoyée avec votre demande.';}catch(e){if(revision===photoRevision){$('member_photo').value='';$('photo-status').textContent=e.message;}}};
 if(accountView){
  document.body.classList.add('account-view');document.title='Mon espace adhérent · KM16';
  document.querySelector('header h1').textContent='Mon espace adhérent';
@@ -36,7 +39,7 @@ $('birth_date').onchange=()=>{let minor=true;try{minor=ageOn($('birth_date').val
 $('login').onsubmit=async e=>{e.preventDefault();if(!client)return note('Connexion indisponible',true);const b=e.submitter;b.disabled=true;const {error}=await client.auth.signInWithPassword({email:$('email').value.trim(),password:$('password').value});$('password').value='';b.disabled=false;if(error)note('Connexion impossible. Vérifiez vos identifiants et la confirmation de votre e-mail.',true);};
 $('logout').onclick=async()=>{await client.auth.signOut({scope:'local'});};
 $('order').onsubmit=async e=>{e.preventDefault();if(busy||!session||!selected||!enabled)return;busy=true;buttonState();note('Préparation de votre demande…');const payload={action:'checkout',request_id:requestId,product_id:selected.id,...(linkToken?{link_token:linkToken}:{}),count:Number($('count').value)};for(const id of ['first_name','last_name','birth_date','phone','guardian_name'])payload[id]=$(id).value;for(const id of ['license','terms','privacy','eligibility','installments'])payload[id]=$(id).checked;
- try{const r=await api(payload);if(r.free){note('Votre demande gratuite a été enregistrée. KM16 doit la valider.');requestId=crypto.randomUUID();await orders();}else{const u=new URL(r.url);if(u.protocol!=='https:'||u.hostname!=='checkout.stripe.com')throw Error('Adresse de paiement invalide');(embedded?window.top:window).location.assign(u.href);}}catch(e){note(e.message,true);}finally{busy=false;buttonState();}};
+ try{if(!photoData)throw Error('Ajoutez une photo et attendez la fin de sa préparation.');await api({action:'photo-upload',request_id:requestId,photo:photoData});const r=await api(payload);if(r.free){note('Votre demande gratuite a été enregistrée. KM16 doit la valider.');requestId=crypto.randomUUID();await orders();}else{const u=new URL(r.url);if(u.protocol!=='https:'||u.hostname!=='checkout.stripe.com')throw Error('Adresse de paiement invalide');(embedded?window.top:window).location.assign(u.href);}}catch(e){note(e.message,true);}finally{busy=false;buttonState();}};
 let myOrderGroup='Tous les achats',myOrderData={orders:[],payments:[],documents:[]};
 const orderGroupNames=['Adhésions','Stages','Cours et essais','Équipements','Autres achats'];
 function orderGroup(order){
@@ -65,7 +68,8 @@ function renderMyOrders(){
   button.setAttribute('aria-pressed',String(group===myOrderGroup));
   button.onclick=()=>{myOrderGroup=group;renderMyOrders();Array.from(filters.children).find(b=>b.getAttribute('aria-pressed')==='true')?.focus({preventScroll:true});};
  }
- const visible=all.filter(o=>myOrderGroup==='Tous les achats'||orderGroup(o)===myOrderGroup);
+ const returningOrder=new URLSearchParams(location.search).get('order');
+ const visible=all.filter(o=>myOrderGroup==='Tous les achats'||orderGroup(o)===myOrderGroup).sort((a,b)=>Number(b.id===returningOrder)-Number(a.id===returningOrder));
  $('orders').replaceChildren();
  for(const o of visible){
   const box=document.createElement('div');box.className='summary';text('strong',o.title,box);
@@ -75,6 +79,11 @@ function renderMyOrders(){
   if(payments.some(p=>p.status==='failed'))text('div','Échéance non réglée : contactez KM16 pour régulariser.',box);
   if(payments.some(p=>['refunded','disputed'].includes(p.status)))text('div','Paiement remboursé ou en litige. Contactez KM16.',box);
   for(const p of payments)text('div',money(p.amount_cents)+' · '+({paid:'payé',failed:'à régulariser',pending:'en attente',refunded:'remboursé',disputed:'en litige'}[p.status]),box);
+  const photoButton=text('button','Voir la photo du dossier',box);photoButton.type='button';photoButton.onclick=async()=>{photoButton.disabled=true;try{const r=await api({action:'photo-view',order_id:o.id});const image=document.createElement('img');image.src=r.url;image.alt='Photo du pratiquant';image.style.cssText='display:block;max-width:160px;max-height:180px;margin-top:12px';box.append(image);photoButton.remove();}catch(e){note(e.message,true);photoButton.disabled=false;}};
+  if(orderGroup(o)==='Adhésions'&&paid>0&&!payments.some(p=>['disputed','refunded'].includes(p.status))){
+   const step=document.createElement('div');step.className='notice';text('strong','Étape obligatoire : votre licence FEKM',step);text('p','Votre règlement KM16 ne comprend pas la licence. Souscrivez-la directement auprès de la FEKM, puis présentez votre justificatif à KM16 pour validation du dossier. L’ouverture du site ne prouve pas le paiement de la licence.',step);const a=text('a','Acheter ma licence sur le site FEKM ↗',step);a.href='https://www.krav-maga.net/connexion/';a.target='_blank';a.rel='noopener noreferrer';box.append(step);
+   if(new URLSearchParams(location.search).get('order')===o.id){box.style.outline='2px solid #c81920';const key='km16-fekm-return-'+o.id;if(new URLSearchParams(location.search).has('paid')&&!sessionStorage.getItem(key)){sessionStorage.setItem(key,'1');note('Paiement confirmé. Vous allez être dirigé vers la FEKM pour souscrire votre licence. Le justificatif restera à présenter à KM16.');setTimeout(()=>location.assign(a.href),5000);}}
+  }
   documentSummary(box,(myOrderData.documents||[]).find(d=>d.order_id===o.id));$('orders').append(box);
  }
  if(!visible.length)text('p','Aucune inscription enregistrée.',$('orders'));
@@ -107,7 +116,7 @@ async function admin(){const gen=generation;try{
  const table=document.createElement('table'),head=document.createElement('tr');
  for(const h of ['Pratiquant','Formule','Échéances','Paiement net','Dossier','Justificatifs','E-mails'])text('th',h,head);table.append(head);
  for(const o of r.orders){
-  const row=document.createElement('tr');text('td',o.first_name+' '+o.last_name,row);text('td',(o.livemode?'':'[TEST] ')+o.title,row);text('td',o.count+' fois',row);
+  const row=document.createElement('tr');const identity=text('td',o.first_name+' '+o.last_name,row);const photo=text('button','Voir la photo',identity);photo.type='button';photo.onclick=async()=>{try{const r=await api({action:'photo-view',order_id:o.id});const img=document.createElement('img');img.src=r.url;img.alt='Photo du pratiquant';img.style.cssText='display:block;max-width:100px;max-height:120px';identity.append(img);photo.remove();}catch(e){note(e.message,true);}};text('td',(o.livemode?'':'[TEST] ')+o.title,row);text('td',o.count+' fois',row);
   const p=r.payments.filter(p=>p.order_id===o.id);text('td',money(p.filter(x=>x.status==='paid').reduce((s,x)=>s+x.amount_cents-x.refunded_cents,0))+' / '+money(o.total_cents)+(p.some(x=>x.status==='failed')?' · IMPAYÉ':''),row);
   const td=document.createElement('td'),s=document.createElement('select');s.setAttribute('aria-label','Validation du dossier de '+o.first_name+' '+o.last_name);
   for(const [v,t] of [['pending','À vérifier'],['approved','Validé'],['rejected','Refusé']])s.add(new Option(t,v));s.value=o.approval;
@@ -117,7 +126,7 @@ async function admin(){const gen=generation;try{
  }
  $('admin-orders').replaceChildren(table);
 }catch(e){if(gen===generation)note(e.message,true);}}
-async function authState(s){generation++;session=s;$('login').hidden=!!s;$('connected').hidden=!s;$('identity').textContent=s?.user.email||'';$('my-orders').hidden=!s;const isAdmin=s?.user.email==='alexandre.marchat@gmail.com';$('admin').hidden=!isAdmin||embedded||accountView;buttonState();if(!s){myOrderGroup='Tous les achats';myOrderData={orders:[],payments:[],documents:[]};$('order-filters').replaceChildren();$('orders').replaceChildren();$('admin-orders').replaceChildren();$('links-list').replaceChildren();$('link-result').hidden=true;$('link-url').value='';$('link-email').value='';$('order').reset();if(specialOffer)choose(specialOffer.product);return;}await orders();if(isAdmin&&!embedded&&!accountView){initLinks();await Promise.all([admin(),listLinks()]);}}
+async function authState(s){generation++;session=s;$('login').hidden=!!s;$('connected').hidden=!s;$('identity').textContent=s?.user.email||'';$('contact_email').value=s?.user.email||'';$('my-orders').hidden=!s;const isAdmin=s?.user.email==='alexandre.marchat@gmail.com';$('admin').hidden=!isAdmin||embedded||accountView;buttonState();if(!s){myOrderGroup='Tous les achats';myOrderData={orders:[],payments:[],documents:[]};$('order-filters').replaceChildren();$('orders').replaceChildren();$('admin-orders').replaceChildren();$('links-list').replaceChildren();$('link-result').hidden=true;$('link-url').value='';$('link-email').value='';$('order').reset();photoData='';photoRevision++;$('photo-preview').removeAttribute('src');$('photo-preview').hidden=true;$('photo-status').textContent='';if(specialOffer)choose(specialOffer.product);return;}await orders();if(isAdmin&&!embedded&&!accountView){initLinks();await Promise.all([admin(),listLinks()]);}}
 $('refresh').onclick=orders;$('admin-refresh').onclick=admin;
 
 function initLinks(){
@@ -166,7 +175,7 @@ try{
   catch(e){$('offer-notice').hidden=false;$('offer-notice').textContent=e.message;$('order').hidden=true;selected=null;}
  }
  if(client){client.auth.onAuthStateChange((_e,s)=>setTimeout(()=>authState(s),0));const {data}=await client.auth.getSession();await authState(data.session);}
- const params=new URLSearchParams(location.search);if(params.has('paid')){note('Retour de Stripe : actualisez Mes inscriptions pour vérifier la prise en compte. Le retour sur cette page seul ne confirme pas le paiement.');setTimeout(orders,3500);}if(params.has('cancel'))note('Vous avez quitté le paiement. Consultez Mes inscriptions avant de recommencer.');
+ const params=new URLSearchParams(location.search);if(params.has('paid')){note('Dernière étape après confirmation du paiement : ouvrez le site FEKM depuis votre adhésion ci-dessous pour acheter votre licence. Si le paiement apparaît en attente, actualisez dans quelques instants. Le retour de Stripe seul ne confirme pas le paiement.');setTimeout(orders,3500);}if(params.has('cancel'))note('Vous avez quitté le paiement. Consultez Mes inscriptions avant de recommencer.');
 }catch{note('Chargement impossible. Rechargez la page ou contactez contact@km16.fr.',true);}
 
 if(embedded){window.addEventListener('message',event=>{if(event.origin!==location.origin||event.source!==parent||event.data?.type!=='km16-payment-category')return;category=categoryFor(event.data.category);render();});document.dispatchEvent(new Event('km16-payment-ready'));parent.postMessage({type:'km16-payment-ready',enabled},location.origin);}

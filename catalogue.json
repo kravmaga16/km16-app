@@ -124,12 +124,12 @@
   },
   {
     "id": "essai",
-    "title": "Cours d’essai",
+    "title": "Cours d’essai offert",
     "category": "Découverte",
-    "amount": 1500,
+    "amount": 0,
     "kind": "single",
     "review": false,
-    "note": "Date du cours à convenir avec KM16"
+    "note": "Offert à tous · Date du cours à convenir avec KM16 · Demande soumise à validation du club"
   },
   {
     "id": "essai-saint-jean",

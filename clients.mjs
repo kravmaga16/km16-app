@@ -17,12 +17,41 @@ function showSeason(){
 const euro=n=>new Intl.NumberFormat('fr-FR',{style:'currency',currency:'EUR'}).format(n/100);
 const moneyFields=[['total_cents','Achats'],['gross_cents','Encaissé brut'],['refunded_cents','Remboursements'],['net_cents','Encaissé net'],['future_cents','Échéances futures'],['planned_cents','CA planifié · net + futur'],['overdue_cents','Échues impayées'],['cancelled_cents','Échéances annulées'],['disputed_cents','Montants contestés inclus dans le net']];
 const status=(text,error=false)=>{$('status').textContent=text;$('status').className=error?'status error':'status';};
-function clear(){all=[];$('stage-rows').replaceChildren();$('money-summary').replaceChildren();$('rows').replaceChildren();$('data-status').textContent='';$('imports-note').textContent='';$('export').disabled=true;for(const g of ['enfants','ados','adultes'])$('split-'+g).textContent='';for(const id of ['count-enfants','count-ados','count-adultes'])$(id).textContent='0';}
+function clear(){all=[];$('stage-rows').replaceChildren();$('money-summary').replaceChildren();$('money-breakdown').replaceChildren();$('money-alerts').replaceChildren();$('money-alerts').hidden=true;$('rows').replaceChildren();$('data-status').textContent='';$('imports-note').textContent='';$('export').disabled=true;for(const g of ['enfants','ados','adultes'])$('split-'+g).textContent='';for(const id of ['count-enfants','count-ados','count-adultes'])$(id).textContent='0';}
 const matches=c=>{const q=$('search').value.normalize('NFKC').toLocaleLowerCase('fr-FR').trim();return !q||[c.last_name,c.first_name,c.email,c.phone,c.guardian_name,...c.address,c.import_email,c.import_phone,c.additional_addresses,...c.products.map(p=>p.title)].join(' ').normalize('NFKC').toLocaleLowerCase('fr-FR').includes(q);};
 function cell(row,text){const td=document.createElement('td');td.textContent=text;row.appendChild(td);return td;}
+function renderMoneySummary(){
+ const totals=Object.fromEntries(moneyFields.map(([key])=>[key,all.reduce((n,c)=>n+(c.amounts?.[key]||0),0)]));
+ const partial=all.some(c=>c.forecast_unknown),forecastKeys=['future_cents','planned_cents','overdue_cents','cancelled_cents'];
+ const primary=[['net_cents','Encaissé','Après remboursements'],['future_cents','À venir','Échéances futures vérifiées'],['planned_cents','Total prévu','Encaissé + échéances à venir']];
+ $('money-scope').textContent=($('test').checked?'TEST · ':'')+'Saison '+$('season').value+' · Tous les groupes · Hors filtres de recherche';
+ $('money-summary').replaceChildren();
+ for(const [key,label,hint] of primary){
+  const card=document.createElement('div');card.className='money-card';
+  const title=document.createElement('div');title.className='money-label';title.textContent=label;
+  const value=document.createElement('strong');value.className='money-value';value.textContent=euro(totals[key]);
+  const help=document.createElement('p');help.className='muted';help.textContent=hint;card.append(title,value,help);
+  if(partial&&forecastKeys.includes(key)){const badge=document.createElement('span');badge.className='money-badge';badge.textContent='Montant partiel';card.append(badge);}
+  $('money-summary').append(card);
+ }
+ const alerts=$('money-alerts');alerts.replaceChildren();
+ const messages=[];
+ if($('test').checked)messages.push('TEST : aucun de ces montants ne correspond à un encaissement réel.');
+ if(totals.overdue_cents)messages.push('Impayés échus : '+euro(totals.overdue_cents)+(partial?' · montant partiel':'')+'.');
+ if(totals.disputed_cents)messages.push('Paiements contestés : '+euro(totals.disputed_cents)+' — inclus dans l’encaissé.');
+ if(partial)messages.push('Prévision incomplète : certains échéanciers restent à vérifier.');
+ for(const message of messages){const p=document.createElement('p');p.textContent=message;alerts.append(p);}alerts.hidden=!messages.length;
+ $('money-breakdown').replaceChildren();
+ for(const [key,label] of moneyFields.filter(([key])=>!primary.some(([k])=>k===key))){
+  const term=document.createElement('dt');term.textContent=label;
+  const value=document.createElement('dd');value.textContent=euro(totals[key]);
+  if(partial&&forecastKeys.includes(key)){const badge=document.createElement('span');badge.className='money-badge';badge.textContent='Partiel';value.append(badge);}
+  $('money-breakdown').append(term,value);
+ }
+}
 function render(){
  communications.update();
- $('money-summary').replaceChildren();for(const [key,label] of moneyFields){const box=document.createElement('div');box.className='panel';const text=document.createElement('div');text.textContent=label;const value=document.createElement('strong');value.textContent=euro(all.reduce((n,c)=>n+(c.amounts?.[key]||0),0))+((['future_cents','planned_cents','overdue_cents','cancelled_cents'].includes(key)&&all.some(c=>c.forecast_unknown))?' · PARTIEL À VÉRIFIER':'');box.append(text,value);$('money-summary').append(box);}
+ renderMoneySummary();
  $('stage-rows').replaceChildren();for(const m of stagesMonthly(all)){const tr=document.createElement('tr');for(const v of [m.month,m.sold,m.refunded,m.retained,euro(m.amount_cents),euro(m.net_cents)])cell(tr,String(v));$('stage-rows').append(tr);}
  $('rows').replaceChildren();const shown=all.filter(c=>(!group||c.group===group)&&matches(c));
  for(const c of shown){const row=document.createElement('tr');cell(row,c.group);

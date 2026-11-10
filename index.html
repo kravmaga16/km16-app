@@ -130,6 +130,7 @@ function km16SafeLink(raw){try{const u=new URL(raw);return ['https:','mailto:','
 function km16Text(tag,value,cls){const el=document.createElement(tag);if(cls)el.className=cls;el.textContent=value;return el}
 const KM16_DAYS=['Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi','Dimanche'];
 function km16AgeLabel(value){return String(value??'').replace(/6[–-]9 ans/g,'6–8 ans').replace(/10[–-]14 ans/g,'9–14 ans');}
+function km16CourseKey(row){return JSON.stringify(['Jour','Heure de début','Heure de fin','Catégorie','Lieu'].map(key=>String(row[key]||'')));}
 let km16PlanningRows=[];
 let km16SelectedGroup='Tous';
 function km16Group(category){const v=String(category||'').toLowerCase();if(v.includes('enfant'))return 'Enfants';if(v.includes('ado'))return 'Adolescents';if(v.includes('adulte')&&(/noire|noir|préparation/.test(v)))return 'Préparation noire et plus';if(v.includes('adulte'))return 'Adultes tous niveaux';return 'Autres'}
@@ -171,7 +172,7 @@ function km16RenderPlanning(){
   tr.appendChild(km16Text('td',String(row.Instructeur||'À préciser')));
   const bookingCell=document.createElement('td');
   const bookingLink=km16Text('a','Je m’inscris','cta mini');
-  const courseKey=JSON.stringify([row.Jour,row['Heure de début'],row['Heure de fin'],row.Catégorie,row.Lieu].map(x=>String(x||'')));
+  const courseKey=row.bookingKey||km16CourseKey(row);
   bookingLink.href=KM16_DATA_URL+'?action=reserver&cours='+encodeURIComponent(courseKey);
   bookingLink.target='_blank';bookingLink.rel='noopener noreferrer';
   bookingLink.setAttribute('aria-label','S’inscrire : '+row.Jour+' '+String(row['Heure de début'])+' · '+row.Catégorie+' (nouvelle fenêtre)');
@@ -202,7 +203,7 @@ window.KM16_receive=function(data){
  const status=document.getElementById('live-status');let total=0;
  for(const [sheet,slot] of Object.entries(KM16_SHEETS)){
    const target=document.querySelector('[data-live="'+slot+'"]');if(!target)continue;target.replaceChildren();
-   const rows=Array.isArray(data&&data[sheet])?data[sheet].filter(r=>r&&typeof r==='object').map(row=>Object.fromEntries(Object.entries(row).map(([key,value])=>[key,typeof value==='string'?km16AgeLabel(value):value]))):[];
+   const rows=Array.isArray(data&&data[sheet])?data[sheet].filter(r=>r&&typeof r==='object').map(row=>{const display=Object.fromEntries(Object.entries(row).map(([key,value])=>[key,typeof value==='string'?km16AgeLabel(value):value]));if(sheet==='Planning')Object.defineProperty(display,'bookingKey',{value:km16CourseKey(row)});return display;}):[];
    if(sheet==='Actualités')km16UpdateNews(rows);
    if(sheet==='Stages'){
      const fallback=target.parentElement.querySelector('.fallback-cards');

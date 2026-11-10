@@ -1,3 +1,5 @@
+import {enhanceBirthDate} from './birth-date-input.mjs?v=1';
+enhanceBirthDate(document.getElementById('birth_date'));
 import {preparePhoto} from './member-photo.mjs?v=1';
 import {parseEuro,eligibleProducts} from './purchase-links.mjs?v=liens1';
 import {splitAmount,ageOn} from './rules.mjs';
@@ -180,3 +182,4 @@ try{
 }catch{note('Chargement impossible. Rechargez la page ou contactez contact@km16.fr.',true);}
 
 if(embedded){window.addEventListener('message',event=>{if(event.origin!==location.origin||event.source!==parent||event.data?.type!=='km16-payment-category')return;category=categoryFor(event.data.category);render();});document.dispatchEvent(new Event('km16-payment-ready'));parent.postMessage({type:'km16-payment-ready',enabled},location.origin);}
+

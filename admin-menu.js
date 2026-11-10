@@ -9,7 +9,7 @@
     ['Gestion du club', [
       ['Actualités du club', './news-admin.html#workspace', 'M4 3h16v18H4z M8 7h8 M8 11h8 M8 15h5'],
       ['Finances et encaissements', './clients.html#money-summary', 'M3 3h7v7H3z M14 3h7v7h-7z M3 14h7v7H3z M14 14h7v7h-7z'],
-      ['Inscriptions aux cours', courseAdmin, 'M3 5h18v16H3z M7 2v6 M17 2v6 M3 10h18'],
+      ['Inscriptions aux cours', courseAdmin, 'M9 4H5v17h14V4h-4 M9 3h6v4H9z M8 12l2 2 5-5 M8 18h8'],
       ['Horaires des cours', './#planning', 'M3 5h18v16H3z M7 2v6 M17 2v6 M3 10h18'],
       ['Ventes de stages', './clients.html#stages-panel', 'M8 3h8v6a4 4 0 01-8 0z M8 5H4v3a4 4 0 004 4 M16 5h4v3a4 4 0 01-4 4 M12 13v7 M8 21h8'],
     ]],

@@ -40,7 +40,7 @@ async function makePdf(bill){
  const date=t=>new Date(t).toLocaleDateString('fr-FR',{timeZone:'Europe/Paris'});
  if(!bill.livemode){line('TEST - DOCUMENT SANS VALEUR COMPTABLE',12,true,red);y-=10;}
  line('KM16',32,true,red);line('KRAV MAGA 16 - Association loi 1901',11,true);
- line("5 avenue Thierry",10);
+ line("19 avenue des Cèdres",10);
  line("92410 Ville-d'Avray",10);line('SIRET : 839 486 552 00020  |  RNA : W922007927',9,false,gray);
  line('contact@km16.fr  |  app.km16.fr',9,false,gray);y-=24;
  line('FACTURE ACQUITTÉE',22,true);line('N° '+bill.number,12,true);

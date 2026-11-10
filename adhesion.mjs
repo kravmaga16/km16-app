@@ -4,17 +4,25 @@ const $=id=>document.getElementById(id),money=n=>new Intl.NumberFormat('fr-FR',{
 const client=window.supabase?.createClient('https://tlfewpbgbwesdriklxzb.supabase.co','sb_publishable_OGRSgobOGf54jlfmXGmS8g_04Ftvfsn',{auth:{storageKey:'km16-video-auth',detectSessionInUrl:false,flowType:'implicit'}});
 const endpoint='https://tlfewpbgbwesdriklxzb.supabase.co/functions/v1/km16-adhesions';
 const embedded=new URLSearchParams(location.search).get('embed')==='1'&&parent!==window;
+const accountView=new URLSearchParams(location.search).get('espace')==='1'&&!embedded&&!location.hash.includes('offre=');
 const requestedCategory=new URLSearchParams(location.search).get('categorie')||'Tous';
 const requestedStageDate=new URLSearchParams(location.search).get('stage_date')||'';
 const categoryFor=value=>{const s=String(value).toLowerCase();return s.includes('adulte')?'Adultes':s.includes('enfant')?'Enfants':s.includes('ado')?'Ados':['Tous','Stages','Découverte','Équipement'].includes(value)?value:'Tous';};
 let products=[],selected=null,session=null,enabled=false,category='Tous',busy=false,requestId=crypto.randomUUID(),generation=0;
 const linkToken=new URLSearchParams(location.hash.slice(1)).get('offre')||'';
 let specialOffer=null;
+if(accountView){
+ document.body.classList.add('account-view');document.title='Mon espace adhérent · KM16';
+ document.querySelector('header h1').textContent='Mon espace adhérent';
+ document.querySelector('header>p:last-child').textContent='Retrouvez vos inscriptions, vos stages et le suivi de vos paiements.';
+ const link=document.createElement('a');link.href='./#tarifs';link.className='member-purchase-link';link.textContent='Acheter une adhésion ou un stage →';$('my-orders').querySelector('.row').append(link);
+}
+
 const today=()=>new Intl.DateTimeFormat('en-CA',{timeZone:'Europe/Paris',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
 function note(t,error=false){$('status').textContent=t;$('status').className=error?'error':'';}
 function text(tag,t,parent,cls){const e=document.createElement(tag);e.textContent=t;if(cls)e.className=cls;parent.append(e);return e;}
 async function api(data){const {data:{session:s}}=await client.auth.getSession();const r=await fetch(endpoint,{method:'POST',headers:{'Content-Type':'application/json',...(s?{Authorization:'Bearer '+s.access_token}:{})},body:JSON.stringify(data)});const result=await r.json();if(!r.ok)throw Error(result.error||'Service indisponible');return result;}
-function buttonState(){ $('pay').disabled=busy||!session||!enabled||!selected||selected.draft;$('pay').textContent=!enabled?'Ouverture prochaine':!session?'Connectez-vous pour continuer':selected?.amount===0?'Envoyer ma demande gratuite':'Continuer vers le paiement';}
+function buttonState(){ $('pay').disabled=busy||!session||!enabled||!selected||selected.draft;$('pay').textContent=!enabled?'Paiement indisponible':!session?'Connectez-vous pour continuer':selected?.amount===0?'Envoyer ma demande gratuite':'Continuer vers le paiement';}
 function render(){
  if(linkToken){$('catalogue').replaceChildren();$('filters').replaceChildren();return;}
  const offered=products.filter(p=>p.category!=='Interne'&&(!p.event_date||p.event_date>=today())&&(!embedded||!p.draft));
@@ -109,7 +117,7 @@ async function admin(){const gen=generation;try{
  }
  $('admin-orders').replaceChildren(table);
 }catch(e){if(gen===generation)note(e.message,true);}}
-async function authState(s){generation++;session=s;$('login').hidden=!!s;$('connected').hidden=!s;$('identity').textContent=s?.user.email||'';$('my-orders').hidden=!s;const isAdmin=s?.user.email==='alexandre.marchat@gmail.com';$('admin').hidden=!isAdmin||embedded;buttonState();if(!s){myOrderGroup='Tous les achats';myOrderData={orders:[],payments:[],documents:[]};$('order-filters').replaceChildren();$('orders').replaceChildren();$('admin-orders').replaceChildren();$('links-list').replaceChildren();$('link-result').hidden=true;$('link-url').value='';$('link-email').value='';$('order').reset();if(specialOffer)choose(specialOffer.product);return;}await orders();if(isAdmin&&!embedded){initLinks();await Promise.all([admin(),listLinks()]);}}
+async function authState(s){generation++;session=s;$('login').hidden=!!s;$('connected').hidden=!s;$('identity').textContent=s?.user.email||'';$('my-orders').hidden=!s;const isAdmin=s?.user.email==='alexandre.marchat@gmail.com';$('admin').hidden=!isAdmin||embedded||accountView;buttonState();if(!s){myOrderGroup='Tous les achats';myOrderData={orders:[],payments:[],documents:[]};$('order-filters').replaceChildren();$('orders').replaceChildren();$('admin-orders').replaceChildren();$('links-list').replaceChildren();$('link-result').hidden=true;$('link-url').value='';$('link-email').value='';$('order').reset();if(specialOffer)choose(specialOffer.product);return;}await orders();if(isAdmin&&!embedded&&!accountView){initLinks();await Promise.all([admin(),listLinks()]);}}
 $('refresh').onclick=orders;$('admin-refresh').onclick=admin;
 
 function initLinks(){
@@ -151,8 +159,8 @@ async function listLinks(){const gen=generation;try{
 
 try{
  const fallback=await fetch('./catalogue.json').then(r=>r.json());products=fallback;category=categoryFor(requestedCategory);render();
- try{const c=await api({action:'catalogue'});products=c.products;enabled=c.enabled;for(const [id,value] of [['terms-link',c.terms_url],['privacy-link',c.privacy_url]]){try{const u=new URL(value);if(u.protocol==='https:')$(id).href=u.href;}catch{enabled=false;}}if(enabled)$('opening').textContent='Inscriptions ouvertes · Paiement en 1, 3 ou 4 fois pour les cotisations annuelles.';render();
- if(requestedStageDate&&!linkToken){const matches=products.filter(p=>p.category==='Stages'&&!p.draft&&p.event_date===requestedStageDate&&p.event_date>=today());if(matches.length===1)choose(matches[0]);else note('Ce stage n’est pas ouvert au paiement en ligne. Choisissez un autre stage disponible ou contactez contact@km16.fr.',true);}}catch{note('Aperçu des offres. Le service d’inscription sera activé après installation.');}
+ try{const c=await api({action:'catalogue'});products=c.products;enabled=c.enabled;for(const [id,value] of [['terms-link',c.terms_url],['privacy-link',c.privacy_url]]){try{const u=new URL(value);if(u.protocol==='https:')$(id).href=u.href;}catch{enabled=false;}}$('opening').textContent=enabled?'Inscriptions ouvertes · Paiement en 1, 3 ou 4 fois pour les cotisations annuelles.':'Les paiements en ligne ne sont pas encore ouverts.';render();
+ if(requestedStageDate&&!linkToken){const matches=products.filter(p=>p.category==='Stages'&&!p.draft&&p.event_date===requestedStageDate&&p.event_date>=today());if(matches.length===1)choose(matches[0]);else note('Ce stage n’est pas ouvert au paiement en ligne. Choisissez un autre stage disponible ou contactez contact@km16.fr.',true);}}catch{$('opening').textContent='Le paiement est temporairement indisponible.';note('Vérifiez votre connexion puis rechargez la page pour réessayer.',true);}
  if(linkToken){
   try{specialOffer=await api({action:'link-preview',link_token:linkToken});$('offer-notice').hidden=false;$('offer-notice').textContent='Votre offre personnalisée : '+specialOffer.product.title+' · '+money(specialOffer.product.amount)+' · '+specialOffer.count+' fois, sans supplément. Connectez-vous avec le compte payeur indiqué à KM16.';choose(specialOffer.product);}
   catch(e){$('offer-notice').hidden=false;$('offer-notice').textContent=e.message;$('order').hidden=true;selected=null;}

@@ -1,32 +1,31 @@
 .km16-admin-menu[hidden],.km16-admin-menu [hidden]{display:none!important}
-body.km16-menu-visible{padding-left:256px}
-body.km16-menu-compact{padding-left:72px}
-.km16-admin-menu{position:fixed;z-index:90;inset:0 auto 0 0;width:256px;padding:14px 10px;background:#f3f3f4;color:#35353d;border-right:1px solid #dedee2;overflow:auto;font:500 15px/1.35 system-ui,sans-serif}
-.km16-menu-brand{display:flex;align-items:center;gap:10px;margin:0 4px 20px;color:#17171b}
-.km16-menu-brand img{width:42px;height:42px;object-fit:cover;border-radius:50%}
-.km16-menu-brand strong{font-size:21px}
+body.km16-menu-visible{padding-left:288px}
+body.km16-menu-compact{padding-left:248px}
+.km16-admin-menu{position:fixed;z-index:90;inset:0 auto 0 0;width:288px;padding:18px 12px;background:#f7f7f8;color:#34343b;border-right:1px solid #dedee2;overflow:auto;font:500 16px/1.4 system-ui,sans-serif}
+.km16-menu-brand{display:flex;align-items:center;gap:10px;margin:0 2px 22px;color:#17171b}
+.km16-menu-brand img{width:40px;height:40px;object-fit:cover;border-radius:50%;flex:none}
+.km16-menu-brand-text{min-width:0}
+.km16-menu-brand strong{display:block;font-size:21px}
+.km16-menu-brand small{display:block;color:#65656f;font-size:12px}
 .km16-admin-menu button{border:0;border-radius:8px;background:transparent;color:inherit;cursor:pointer;font:inherit}
-.km16-menu-collapse{margin-left:auto;padding:7px 9px;font-size:21px!important}
+.km16-menu-collapse{margin-left:auto;padding:8px 6px;font-size:12px!important;font-weight:650!important}
 .km16-menu-toggle{display:none}
-.km16-menu-group{margin-bottom:19px}
-.km16-menu-group p{margin:18px 10px 7px;text-transform:uppercase;letter-spacing:.04em;font-size:11px;font-weight:750;color:#61616b}
-.km16-menu-group a{display:flex;align-items:center;gap:12px;min-height:43px;padding:8px 10px;margin:2px 0;border-radius:10px;color:inherit;text-decoration:none}
-.km16-menu-group a:hover,.km16-admin-menu button:hover{background:#e6e6e9}
-.km16-menu-group a[aria-current]{background:#f7d7d7;color:#21191a;font-weight:700}
-.km16-menu-group a[aria-current] svg{color:#b51d25}
-.km16-menu-group svg{width:21px;height:21px;flex:none;fill:none;stroke:currentColor;stroke-width:1.65;stroke-linecap:round;stroke-linejoin:round}
+.km16-menu-group{margin-bottom:20px}
+.km16-menu-group p{margin:18px 12px 8px;font-size:13px;font-weight:750;color:#666670}
+.km16-menu-group a{display:flex;align-items:center;gap:12px;min-height:50px;padding:11px 12px;margin:4px 0;border-radius:10px;color:inherit;text-decoration:none;border-left:3px solid transparent}
+.km16-menu-group a span{min-width:0;overflow-wrap:anywhere}
+.km16-menu-group a:hover,.km16-admin-menu button:hover{background:#eaeaec}
+.km16-menu-group a[aria-current]{background:#fbe7e8;border-left-color:#b51d25;color:#971722;font-weight:750}
+.km16-menu-group svg{width:23px;height:23px;flex:none;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
 .km16-admin-menu :focus-visible{outline:2px solid #b51d25;outline-offset:2px}
-.km16-admin-menu.is-compact{width:72px}
-.km16-admin-menu.is-compact .km16-menu-brand{flex-direction:column;margin-bottom:12px}
-.km16-admin-menu.is-compact .km16-menu-collapse{margin-left:0}
-.km16-admin-menu.is-compact strong,.km16-admin-menu.is-compact p{display:none}
-.km16-admin-menu.is-compact a span{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
-.km16-admin-menu.is-compact a{justify-content:center}
+.km16-admin-menu.is-compact{width:248px}
+.km16-admin-menu.is-compact .km16-menu-brand{flex-wrap:wrap}
+.km16-admin-menu.is-compact .km16-menu-collapse{margin-left:auto}
 @media(max-width:800px){
  body.km16-menu-visible,body.km16-menu-compact{padding-left:0}
  .km16-admin-menu{inset:auto 12px 12px auto;width:auto;border:1px solid #dedee2;border-radius:12px;padding:5px;box-shadow:0 5px 20px #0002}
- .km16-admin-menu .km16-menu-toggle{display:block;padding:9px 12px;font-weight:750}
+ .km16-admin-menu .km16-menu-toggle{display:block;padding:11px 14px;font-weight:750}
  .km16-admin-menu .km16-menu-brand{display:none}
- .km16-admin-menu.is-open{inset:0 auto 0 0;width:min(290px,88vw);border-radius:0;padding:14px 10px}
+ .km16-admin-menu.is-open{inset:0 auto 0 0;width:min(310px,90vw);border-radius:0;padding:16px 10px}
  .km16-admin-menu.is-open .km16-menu-brand{display:flex;margin-top:12px}
 }

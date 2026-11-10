@@ -93,7 +93,7 @@ Deno.serve(async req=>{
    if(recent.length>=20)return reply({error:'Trop de photos envoyées. Contactez KM16.'},429);
    const input=String(data.photo||'');
    if(input.length>2000000||!/^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/.test(input))return reply({error:'Photo JPEG convertie requise'},400);
-   let bytes;try{bytes=Uint8Array.from(atob(input.split(',')[1]),c=>c.charCodeAt(0));const image=jpeg.decode(bytes,{useTArray:true,maxResolutionInMP:2,maxMemoryUsageInMB:64});if(image.width<100||image.height<100||image.width>1200||image.height>1200)throw Error();}catch{return reply({error:'Photo non valide : utilisez une photo de 100 à 1200 pixels après conversion.'},400);}
+   let bytes;try{bytes=Uint8Array.from(atob(input.split(',')[1]),c=>c.charCodeAt(0));const image=jpeg.decode(bytes,{useTArray:true,maxResolutionInMP:2,maxMemoryUsageInMB:64});if(image.width<100||image.height<100||image.width>1200||image.height>1200)throw Error();bytes=jpeg.encode(image,85).data;if(bytes.length>1500000)throw Error();}catch{return reply({error:'Photo non valide : utilisez une photo de 100 à 1200 pixels après conversion.'},400);}
    const path=user.id+'/'+data.request_id+'.jpg';
    const upload=await fetch(base+'/storage/v1/object/km16-member-photos/'+path,{method:'POST',headers:{apikey:key,Authorization:'Bearer '+key,'Content-Type':'image/jpeg','x-upsert':'true'},body:bytes});
    if(!upload.ok)throw Error('Stockage photo indisponible');

@@ -117,7 +117,7 @@ async function admin(){const gen=generation;try{
  const r=await api({action:'admin'});if(gen!==generation)return;
  const table=document.createElement('table'),head=document.createElement('tr');
  for(const h of ['Pratiquant','Formule','Échéances','Paiement net','Dossier','Justificatifs','E-mails'])text('th',h,head);table.append(head);
- for(const o of r.orders){
+ for(const o of r.orders.filter(order=>order.livemode===true)){
   const row=document.createElement('tr');const identity=text('td',o.first_name+' '+o.last_name,row);const photo=text('button','Voir la photo',identity);photo.type='button';photo.onclick=async()=>{try{const r=await api({action:'photo-view',order_id:o.id});const img=document.createElement('img');img.src=r.url;img.alt='Photo du pratiquant';img.style.cssText='display:block;max-width:100px;max-height:120px';identity.append(img);photo.remove();}catch(e){note(e.message,true);}};text('td',(o.livemode?'':'[TEST] ')+o.title,row);text('td',o.count+' fois',row);
   const p=r.payments.filter(p=>p.order_id===o.id);text('td',money(p.filter(x=>x.status==='paid').reduce((s,x)=>s+x.amount_cents-x.refunded_cents,0))+' / '+money(o.total_cents)+(p.some(x=>x.status==='failed')?' · IMPAYÉ':''),row);
   const td=document.createElement('td');const state=text('strong',({pending:'À vérifier',approved:'Validé',rejected:'Refusé'}[o.approval]||'À vérifier'),td);state.style.display='block';state.style.marginBottom='8px';const feedback=text('div','',td,'muted');feedback.setAttribute('role','status');feedback.setAttribute('aria-live','polite');

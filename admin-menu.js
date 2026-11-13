@@ -8,6 +8,7 @@
     ['', [['Accueil du club', './', 'M3 10l9-7 9 7v10H3z M9 20v-7h6v7']]],
     ['Gestion du club', [
       ['Vue d’ensemble', './clients.html#km16-overview', 'M3 3h8v8H3z M13 3h8v5h-8z M13 10h8v11h-8z M3 13h8v8H3z'],
+      ['Dossiers à valider', './clients.html#km16-dossiers', 'M9 11l2 2 4-4 M12 2l8 4v6c0 5-3 8-8 10-5-2-8-5-8-10V6z'],
       ['Ventes de tee-shirts', './tee-shirts.html#admin', 'M4 4l4-2 4 3 4-3 4 2v6l-3 2v12H7V8L4 6z'],
       ['Actualités du club', './news-admin.html#workspace', 'M4 3h16v18H4z M8 7h8 M8 11h8 M8 15h5'],
       ['Finances et encaissements', './clients.html#money-summary', 'M3 3h7v7H3z M14 3h7v7h-7z M3 14h7v7H3z M14 14h7v7h-7z'],

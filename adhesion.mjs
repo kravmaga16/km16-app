@@ -110,8 +110,8 @@ function editDocuments(td,d,o){
  try{const at=new Intl.DateTimeFormat('en-CA',{timeZone:'Europe/Paris',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(o.consented_at));if(ageOn(o.birth_date,at)>=15)kind.options[0].disabled=true;}catch{}
  const health=make('Réception santé',states,d.health_status);
  const school=d.school_required?make('Justificatif Saint-Jean',states,d.school_status):null;
- const b=text('button','Enregistrer les justificatifs',td);b.type='button';
- b.onclick=async()=>{b.disabled=true;try{await api({action:'documents-update',order_id:d.order_id,revision:d.revision,health_kind:kind.value,health_status:health.value,school_status:school?school.value:'not_required'});note('Justificatifs mis à jour. Les pièces reçues ou validées ne seront plus demandées automatiquement.');await admin();}catch(e){note(e.message,true);b.disabled=false;}};
+ const b=text('button','Enregistrer les justificatifs',td);b.type='button';const feedback=text('p','',td,'muted');feedback.setAttribute('role','status');feedback.setAttribute('aria-live','polite');
+ b.onclick=async()=>{b.disabled=true;b.textContent='Enregistrement…';feedback.textContent='Enregistrement des justificatifs en cours…';try{await api({action:'documents-update',order_id:d.order_id,revision:d.revision,health_kind:kind.value,health_status:health.value,school_status:school?school.value:'not_required'});feedback.textContent='Justificatifs enregistrés avec succès.';note('Justificatifs enregistrés pour '+o.first_name+' '+o.last_name+'.');await admin();}catch(e){feedback.textContent='Échec : '+e.message;note(e.message,true);}finally{b.disabled=false;b.textContent='Enregistrer les justificatifs';}};
 }
 async function admin(){const gen=generation;try{
  const r=await api({action:'admin'});if(gen!==generation)return;
@@ -122,7 +122,7 @@ async function admin(){const gen=generation;try{
   const p=r.payments.filter(p=>p.order_id===o.id);text('td',money(p.filter(x=>x.status==='paid').reduce((s,x)=>s+x.amount_cents-x.refunded_cents,0))+' / '+money(o.total_cents)+(p.some(x=>x.status==='failed')?' · IMPAYÉ':''),row);
   const td=document.createElement('td'),s=document.createElement('select');s.setAttribute('aria-label','Validation du dossier de '+o.first_name+' '+o.last_name);
   for(const [v,t] of [['pending','À vérifier'],['approved','Validé'],['rejected','Refusé']])s.add(new Option(t,v));s.value=o.approval;
-  s.onchange=async()=>{s.disabled=true;try{await api({action:'approve',order_id:o.id,approval:s.value});o.approval=s.value;}catch(e){s.value=o.approval;note(e.message,true);}finally{s.disabled=false;}};td.append(s);row.append(td);
+  s.onchange=async()=>{s.disabled=true;try{await api({action:'approve',order_id:o.id,approval:s.value});o.approval=s.value;note('Validation administrative enregistrée pour '+o.first_name+' '+o.last_name+'.');}catch(e){s.value=o.approval;note(e.message,true);}finally{s.disabled=false;}};td.append(s);row.append(td);
   const docs=document.createElement('td');editDocuments(docs,(r.documents||[]).find(x=>x.order_id===o.id),o);row.append(docs);
   const mails=document.createElement('td');for(const m of (r.mails||[]).filter(x=>x.order_id===o.id))text('div',(m.kind==='initial'?'Demande':'Relance J+7')+' : '+mailStatus[m.status]+(m.sent_at?' · '+new Date(m.sent_at).toLocaleString('fr-FR'):''),mails);row.append(mails);table.append(row);
  }

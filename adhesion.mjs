@@ -30,7 +30,7 @@ async function api(data){const {data:{session:s}}=await client.auth.getSession()
 function buttonState(){ $('pay').disabled=busy||!session||!enabled||!selected||selected.draft;$('pay').textContent=!enabled?'Paiement indisponible':!session?'Connectez-vous pour continuer':selected?.amount===0?'Envoyer ma demande gratuite':'Continuer vers le paiement';}
 function render(){
  if(linkToken){$('catalogue').replaceChildren();$('filters').replaceChildren();return;}
- const offered=products.filter(p=>p.category!=='Interne'&&(!p.event_date||p.event_date>=today())&&(!embedded||!p.draft));
+ const offered=products.filter(p=>p.category!=='Interne'&&p.category!=='Équipement'&&(!p.event_date||p.event_date>=today())&&(!embedded||!p.draft));
  $('filters').replaceChildren();for(const c of ['Tous',...new Set(offered.map(p=>p.category))]){const b=text('button',c,$('filters'));b.type='button';b.setAttribute('aria-pressed',String(c===category));b.onclick=()=>{category=c;render();};}
  $('catalogue').replaceChildren();for(const p of offered.filter(p=>category==='Tous'||p.category===category)){const a=document.createElement('article');a.className='card';text('span',p.draft?'En préparation':p.category,a,'tag');text('h3',p.title,a);text('span',p.amount?money(p.amount)+(p.kind==='monthly'?' / mois':''):'Gratuit',a,'price');text('p',p.note,a);const b=text('button',p.draft?'Bientôt disponible':'Choisir cette formule',a);b.disabled=!!p.draft;b.onclick=()=>choose(p);$('catalogue').append(a);}
 }

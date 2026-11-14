@@ -173,9 +173,9 @@ function km16RenderPlanning(){
   const bookingCell=document.createElement('td');
   const bookingLink=km16Text('a','Je m’inscris','cta mini');
   const courseKey=row.bookingKey||km16CourseKey(row);
-  bookingLink.href=KM16_DATA_URL+'?authuser=0&action=reserver&cours='+encodeURIComponent(courseKey);
-  bookingLink.target='_blank';bookingLink.rel='noopener noreferrer';
-  bookingLink.setAttribute('aria-label','S’inscrire : '+row.Jour+' '+String(row['Heure de début'])+' · '+row.Catégorie+' (nouvelle fenêtre)');
+  bookingLink.href='./course-booking.html?jour='+encodeURIComponent(String(row.Jour||''))+'&debut='+encodeURIComponent(String(row['Heure de début']||''))+'&categorie='+encodeURIComponent(String(row.Catégorie||''))+'&lieu='+encodeURIComponent(String(row.Lieu||''));
+  bookingLink.removeAttribute('target');
+  bookingLink.setAttribute('aria-label','S’inscrire : '+row.Jour+' '+String(row['Heure de début'])+' · '+row.Catégorie);
   bookingCell.appendChild(bookingLink);tr.appendChild(bookingCell);
   body.appendChild(tr);
  }

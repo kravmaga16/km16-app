@@ -34,7 +34,8 @@ function render(){
   if(view==='new'&&b.read_at)return false;
   if(view==='active'&&b.status!=='Inscrit')return false;
   if(view==='cancelled'&&b.status!=='Annulé')return false;
-  return (!$('filter-date').value||s.session_date===$('filter-date').value)&&
+  const season=$('filter-season').value;const inSeason=!season||(season==='2026/2027'?s.session_date>='2026-09-07'&&s.session_date<='2027-06-24':season==='2027/2028'?s.session_date>='2027-09-06'&&s.session_date<='2028-06-30':true);
+  return inSeason&&(!$('filter-date').value||s.session_date===$('filter-date').value)&&
    (!$('filter-course').value||s.category+' · '+s.venue===$('filter-course').value)&&
    (!$('filter-status').value||($('filter-status').value==='new'?!b.read_at:b.status===$('filter-status').value))&&
    (!search||[b.first_name,b.last_name,b.email,b.last_name+' '+b.first_name,b.first_name+' '+b.last_name].join(' ').toLocaleLowerCase('fr-FR').includes(search));
@@ -113,7 +114,7 @@ async function load(){if(busy||!session)return;busy=true;try{const data=await ca
 async function authState(s){session=s;const admin=s?.user?.email?.toLowerCase()===ADMIN;$('login').hidden=!!s;$('workspace').hidden=!admin;$('identity').textContent=admin?s.user.email:'';if(s&&!admin)$('global-status').textContent='Accès réservé à l’administrateur KM16';if(admin)await load();}
 $('login-form').onsubmit=async e=>{e.preventDefault();try{const {error}=await supa.auth.signInWithPassword({email:$('email').value.trim(),password:$('password').value});if(error)throw error;}catch(e){$('global-status').textContent=e.message}finally{$('password').value=''}};
 $('logout').onclick=()=>supa.auth.signOut();
-for(const id of ['filter-date','filter-course','filter-status'])$(id).onchange=render;
+for(const id of ['filter-season','filter-date','filter-course','filter-status'])$(id).onchange=render;
 $('filter-search').oninput=render;
 for(const [id,value] of [['show-new','new'],['show-upcoming','upcoming'],['show-active','active'],['show-cancelled','cancelled'],['show-all','all']])$(id).onclick=()=>{view=value;render();};
 $('clear-session-focus').onclick=()=>{selectedSessionId=null;view='upcoming';render();};

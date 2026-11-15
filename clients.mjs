@@ -34,7 +34,9 @@ async function refreshCourseAlerts(){
  }catch(e){put('—','—','Suivi des cours indisponible : '+e.message);}
 }
 const KM16_DEADLINES=[
- {date:'2026-12-20',end:'2027-01-03',label:'Fermeture de fin d’année',detail:'Club fermé du 20 décembre 2026 au 3 janvier 2027 inclus'},
+ {date:'2026-12-20',end:'2027-01-03',label:'Fermeture de fin d’année',detail:'Club totalement fermé du 20 décembre 2026 au 3 janvier 2027 inclus, y compris les dimanches'},
+ {date:'2027-02-06',end:'2027-02-21',label:'Vacances d’hiver · Paris (zone C)',detail:'Cours suspendus du lundi au samedi ; cours du dimanche maintenus (7, 14 et 21 février)'},
+ {date:'2027-04-03',end:'2027-04-18',label:'Vacances de printemps · Paris (zone C)',detail:'Cours suspendus du lundi au samedi ; cours du dimanche maintenus (4, 11 et 18 avril)'},
  {date:'2027-06-01',label:'Ouverture des réabonnements',detail:'Réabonnements possibles à partir du 1er juin 2027'},
  {date:'2027-06-24',label:'Dernier jour de cours',detail:'Fermeture après les cours du jeudi 24 juin 2027'},
  {date:'2027-09-06',label:'Reprise des cours',detail:'Réouverture le lundi 6 septembre 2027'}

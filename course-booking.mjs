@@ -23,7 +23,29 @@ function setSessionFilters(rows){
  $('date-filter').onchange=refreshSessionChoices;
  refreshSessionChoices();
 }
-async function load(){try{const data=await call('sessions');setSessionFilters(data.sessions);const params=new URLSearchParams(location.search);const param=params.get('session');if(param&&data.sessions.some(s=>s.id===param))$('session').value=param;else if(params.has('jour')&&params.has('debut')&&params.has('categorie')&&params.has('lieu')){const dayNames=['dimanche','lundi','mardi','mercredi','jeudi','vendredi','samedi'];const normal=v=>String(v||'').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\s+/g,' ');const time=v=>{const m=String(v||'').match(/^(\d{1,2})[:hH](\d{2})$/);return m?String(Number(m[1])).padStart(2,'0')+':'+m[2]:String(v||'').slice(0,5)};const desired=normal(params.get('jour'));const match=data.sessions.find(s=>normal(dayNames[new Date(s.session_date+'T12:00:00Z').getUTCDay()])===desired&&time(s.start_time)===time(params.get('debut'))&&normal(s.category)===normal(params.get('categorie'))&&normal(s.venue)===normal(params.get('lieu')));if(match)$('session').value=match.id;else $('status').textContent='Aucune prochaine séance disponible pour ce créneau. Vous pouvez choisir une autre séance.';}$('submit').disabled=!data.sessions.length;if(!data.sessions.length)$('status').textContent='Aucune séance ouverte actuellement. Revenez prochainement.';}catch(e){$('status').textContent='Chargement indisponible. Réessayez plus tard.';}}
+async function load(){try{const data=await call('sessions');setSessionFilters(data.sessions);const params=new URLSearchParams(location.search);
+const group=params.get('groupe');
+if(group){
+ const normalizeGroup=v=>String(v||'').toLocaleLowerCase('fr').normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+ const categoryMatches=(category)=>{
+  const v=normalizeGroup(category);
+  if(group==='Enfants')return v.includes('enfant');
+  if(group==='Adolescents')return v.includes('ado');
+  if(group==='Préparation noire et plus')return v.includes('adulte')&&(/noir|preparation/.test(v));
+  if(group==='Adultes tous niveaux')return v.includes('adulte')&&!(/noir|preparation/.test(v));
+  return false;
+ };
+ const matchingCategories=[...new Set(data.sessions.filter(x=>categoryMatches(x.category)).map(x=>x.category))];
+ if(matchingCategories.length===1){
+  $('category-filter').value=matchingCategories[0];
+  refreshSessionChoices();
+ }else if(matchingCategories.length>1){
+  availableSessions=data.sessions.filter(x=>categoryMatches(x.category));
+  $('category-filter').replaceChildren(new Option(group,''));
+  refreshSessionChoices();
+ }
+}
+const param=params.get('session');if(param&&data.sessions.some(s=>s.id===param))$('session').value=param;else if(params.has('jour')&&params.has('debut')&&params.has('categorie')&&params.has('lieu')){const dayNames=['dimanche','lundi','mardi','mercredi','jeudi','vendredi','samedi'];const normal=v=>String(v||'').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\s+/g,' ');const time=v=>{const m=String(v||'').match(/^(\d{1,2})[:hH](\d{2})$/);return m?String(Number(m[1])).padStart(2,'0')+':'+m[2]:String(v||'').slice(0,5)};const desired=normal(params.get('jour'));const match=data.sessions.find(s=>normal(dayNames[new Date(s.session_date+'T12:00:00Z').getUTCDay()])===desired&&time(s.start_time)===time(params.get('debut'))&&normal(s.category)===normal(params.get('categorie'))&&normal(s.venue)===normal(params.get('lieu')));if(match)$('session').value=match.id;else $('status').textContent='Aucune prochaine séance disponible pour ce créneau. Vous pouvez choisir une autre séance.';}$('submit').disabled=!data.sessions.length;if(!data.sessions.length)$('status').textContent='Aucune séance ouverte actuellement. Revenez prochainement.';}catch(e){$('status').textContent='Chargement indisponible. Réessayez plus tard.';}}
 
 function cancellationUrl(token){const u=new URL('./course-booking.html',location.href);u.searchParams.set('cancel',token);return u.href;}
 function showCancellation(token){$('token').value=token;$('cancel-form').hidden=false;$('cancel-status').textContent='';$('cancel-panel').scrollIntoView({behavior:'smooth',block:'center'});}

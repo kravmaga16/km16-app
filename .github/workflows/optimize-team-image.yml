@@ -1,0 +1,41 @@
+name: Optimize KM16 team image
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - .github/workflows/optimize-team-image.yml
+permissions:
+  contents: write
+jobs:
+  optimize:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install 'Pillow==11.3.0'
+      - name: Generate responsive WebP and update homepage
+        run: |
+          python - <<'PY'
+          from PIL import Image, ImageOps
+          from pathlib import Path
+          source=Image.open('equipe-km16.jpg')
+          source=ImageOps.exif_transpose(source).convert('RGB')
+          for width in (480, 800, 1200):
+              image=source.copy()
+              image.thumbnail((width, width*3), Image.Resampling.LANCZOS)
+              image.save(f'equipe-km16-{width}.webp', 'WEBP', quality=78, method=6)
+          path=Path('index.html')
+          html=path.read_text()
+          html=html.replace('<link rel="preload" as="image" href="./equipe-km16.jpg" fetchpriority="high">','<link rel="preload" as="image" href="./equipe-km16-800.webp" imagesrcset="./equipe-km16-480.webp 480w, ./equipe-km16-800.webp 800w, ./equipe-km16-1200.webp 1200w" imagesizes="(max-width:740px) 100vw, (max-width:1100px) 45vw, 500px" fetchpriority="high">')
+          html=html.replace('<img src="./equipe-km16.jpg" alt="Équipe pédagogique du club de Krav Maga KM16 à Paris 16e"', '<img src="./equipe-km16.jpg" srcset="./equipe-km16-480.webp 480w, ./equipe-km16-800.webp 800w, ./equipe-km16-1200.webp 1200w" sizes="(max-width:740px) 100vw, (max-width:1100px) 45vw, 500px" alt="Équipe pédagogique du club de Krav Maga KM16 à Paris 16e"')
+          html=html.replace('<img src="./equipe-km16.jpg" alt="Photographie de groupe des instructeurs de KM16"', '<img src="./equipe-km16.jpg" srcset="./equipe-km16-480.webp 480w, ./equipe-km16-800.webp 800w, ./equipe-km16-1200.webp 1200w" sizes="(max-width:740px) 100vw, (max-width:1100px) 90vw, 960px" alt="Photographie de groupe des instructeurs de KM16"')
+          path.write_text(html)
+          PY
+      - name: Commit optimized assets
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add index.html equipe-km16-480.webp equipe-km16-800.webp equipe-km16-1200.webp
+          if ! git diff --cached --quiet; then git commit -m "Optimize responsive KM16 team images for mobile"; git push; fi

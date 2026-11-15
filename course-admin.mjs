@@ -100,8 +100,8 @@ $('clear-session-focus').onclick=()=>{selectedSessionId=null;view='upcoming';ren
 $('print-roster').onclick=()=>{
  const selected=sessions.find(s=>s.id===selectedSessionId);if(!selected)return;
  const participants=bookings.filter(b=>b.session_id===selected.id&&b.status==='Inscrit').sort((a,b)=>(a.last_name||'').localeCompare(b.last_name||'','fr'));
- const w=window.open('','_blank','noopener,noreferrer,width=900,height=700');if(!w){status('Autorisez les fenêtres surgissantes pour imprimer la liste.',true);return;}
- const d=w.document;d.title='KM16 · Émargement '+dateFr(selected.session_date);const style=d.createElement('style');style.textContent='body{font:15px system-ui,sans-serif;margin:30px;color:#222}h1{font-size:24px}table{width:100%;border-collapse:collapse}th,td{border:1px solid #888;padding:12px;text-align:left}th:last-child,td:last-child{width:120px}p{margin:8px 0 22px}';d.head.append(style);
+ const w=window.open('','_blank','width=900,height=700');if(!w){status('Autorisez les fenêtres surgissantes pour imprimer la liste.',true);return;}
+ w.opener=null;const d=w.document;d.title='KM16 · Émargement '+dateFr(selected.session_date);const style=d.createElement('style');style.textContent='body{font:15px system-ui,sans-serif;margin:30px;color:#222}h1{font-size:24px}table{width:100%;border-collapse:collapse}th,td{border:1px solid #888;padding:12px;text-align:left}th:last-child,td:last-child{width:120px}p{margin:8px 0 22px}';d.head.append(style);
  const h=d.createElement('h1');h.textContent='KM16 · Liste d’émargement';d.body.append(h);
  const info=d.createElement('p');info.textContent=[dateFr(selected.session_date),selected.start_time?.slice(0,5)+'–'+selected.end_time?.slice(0,5),selected.category,selected.venue].join(' · ');d.body.append(info);
  const count=d.createElement('p');count.textContent=participants.length+' inscrit(s) actif(s) · Présence à cocher sur papier';d.body.append(count);

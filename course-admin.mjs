@@ -114,10 +114,11 @@ function render(){
   const linkButton=document.createElement('button');linkButton.type='button';linkButton.textContent=linked?'Dossier associé · Modifier':'Associer un dossier';
   linkButton.setAttribute('aria-label','Associer la réservation de '+b.first_name+' '+b.last_name+' à un dossier adhérent');
   linkButton.onclick=()=>openMemberDialog(b,linked);
-  ;linkCell.append(linkButton);tr.append(linkCell);
+  linkCell.append(linkButton);tr.append(linkCell);
+  const follow=document.createElement('td');const flags=[];if(b.status==='Inscrit'&&!memberLinks.has(b.id))flags.push('Dossier à associer');if(b.status==='Inscrit'&&s.session_date<today&&!attendance.has(b.id))flags.push('Présence à saisir');const label=document.createElement('span');label.className='km16-state '+(flags.length?'pending':'done');label.textContent=flags.length?flags.join(' · '):b.status==='Annulé'?'Annulée':'À jour';follow.append(label);tr.append(follow);
   $('rows').append(tr);
  }
- if(!shown.length){const tr=document.createElement('tr'),td=document.createElement('td');td.colSpan=8;td.textContent='Aucune inscription pour cette sélection';tr.append(td);$('rows').append(tr);}
+ if(!shown.length){const tr=document.createElement('tr'),td=document.createElement('td');td.colSpan=9;td.textContent='Aucune inscription pour cette sélection';tr.append(td);$('rows').append(tr);}
  $('mark-read').disabled=busy||!shown.some(b=>!b.read_at);
  $('mark-read').onclick=async()=>{if(busy)return;const ids=shown.filter(b=>!b.read_at).map(b=>b.id);if(!ids.length)return;$('mark-read').disabled=true;try{await call('admin_read',{ids});await load();}catch(e){status(e.message,true);$('mark-read').disabled=false;}};
  const counts=new Map();

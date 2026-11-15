@@ -42,7 +42,7 @@ memberConfirm.onclick=()=>{if(memberDialogSelected)saveMemberLink(memberDialogSe
 memberDialog.addEventListener('cancel',e=>{if(memberDialogSaving)e.preventDefault();});
 memberDialog.addEventListener('close',()=>{memberDialogRequest++;memberDialogBooking=null;memberDialogChoices=[];memberDialogSelected=null;memberCheck.checked=false;});
 const requestedView=new URLSearchParams(location.search).get('view');
-let view=['unlinked','attendance-pending'].includes(requestedView)?requestedView:'upcoming',selectedSessionId=null,showAllSessions=false,quickDateRange=null,sessionPendingOnly=false;
+let view=['unlinked','attendance-pending'].includes(requestedView)?requestedView:'upcoming',selectedSessionId=null,showAllSessions=false,quickDateRange=null,sessionPendingOnly=false,sessionUnlinkedOnly=false;
 if(view!=='upcoming')$('filter-season').value='';
 const todayParis=()=>new Intl.DateTimeFormat('en-CA',{timeZone:'Europe/Paris',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
 const dateFr=d=>d?d.split('-').reverse().join('/'):'';
@@ -67,6 +67,7 @@ function render(){
   const s=byId.get(b.session_id);if(!s)return false;
   if(selectedSessionId&&b.session_id!==selectedSessionId)return false;
   if(selectedSessionId&&sessionPendingOnly&&(b.status!=='Inscrit'||attendance.has(b.id)))return false;
+  if(selectedSessionId&&sessionUnlinkedOnly&&(b.status!=='Inscrit'||memberLinks.has(b.id)))return false;
   if(view==='upcoming'&&(s.session_date<today||b.status!=='Inscrit'))return false;
   if(view==='new'&&b.read_at)return false;
   if(view==='active'&&b.status!=='Inscrit')return false;
@@ -94,7 +95,8 @@ function render(){
  $('session-unrecorded').textContent=String(sessionActive.filter(b=>!attendance.has(b.id)).length);
  $('session-unlinked').textContent=String(sessionActive.filter(b=>!memberLinks.has(b.id)).length);
  $('session-only-pending').disabled=!selectedSessionId||sessionPendingOnly;
- $('session-show-all').disabled=!selectedSessionId||!sessionPendingOnly;
+ $('session-only-unlinked').disabled=!selectedSessionId||sessionUnlinkedOnly;
+ $('session-show-all').disabled=!selectedSessionId||(!sessionPendingOnly&&!sessionUnlinkedOnly);
  $('session-copy-summary').disabled=!selectedSessionId;
  $('session-mark-present').disabled=!bulkCandidates.length||busy;
  $('session-mark-absent').disabled=!bulkCandidates.length||busy;
@@ -177,7 +179,7 @@ $('logout').onclick=()=>supa.auth.signOut();
 for(const id of ['filter-season','filter-date','filter-course','filter-status'])$(id).onchange=render;
 $('filter-search').oninput=render;
 for(const [id,value] of [['show-new','new'],['show-upcoming','upcoming'],['show-active','active'],['show-cancelled','cancelled'],['show-all','all'],['show-unlinked','unlinked'],['show-attendance-pending','attendance-pending']])$(id).onclick=()=>{view=value;selectedSessionId=null;render();};
-$('clear-session-focus').onclick=()=>{selectedSessionId=null;sessionPendingOnly=false;view='upcoming';render();};
+$('clear-session-focus').onclick=()=>{selectedSessionId=null;sessionPendingOnly=false;sessionUnlinkedOnly=false;view='upcoming';render();};
 async function bulkAttendance(present){
  if(!selectedSessionId||busy)return;
  const selected=sessions.find(s=>s.id===selectedSessionId);if(!selected)return;
@@ -193,8 +195,9 @@ async function bulkAttendance(present){
   status(confirmed+' présence(s) confirmée(s) dans la base : '+label+(confirmed<pending.length?' · Certaines étaient déjà renseignées ou ont été modifiées entre-temps.':''));render();
  }catch(e){status('Pointage collectif impossible : '+e.message,true);await load();}
 }
-$('session-only-pending').onclick=()=>{sessionPendingOnly=true;view='all';$('filter-date').value='';quickDateRange=null;render();};
-$('session-show-all').onclick=()=>{sessionPendingOnly=false;view='all';$('filter-date').value='';quickDateRange=null;render();};
+$('session-only-pending').onclick=()=>{sessionUnlinkedOnly=false;sessionPendingOnly=true;view='all';$('filter-date').value='';quickDateRange=null;render();};
+$('session-only-unlinked').onclick=()=>{sessionPendingOnly=false;sessionUnlinkedOnly=true;view='all';$('filter-date').value='';quickDateRange=null;render();};
+$('session-show-all').onclick=()=>{sessionPendingOnly=false;sessionUnlinkedOnly=false;view='all';$('filter-date').value='';quickDateRange=null;render();};
 $('session-copy-summary').onclick=async()=>{const selected=sessions.find(s=>s.id===selectedSessionId);if(!selected)return;const active=bookings.filter(b=>b.session_id===selected.id&&b.status==='Inscrit');const lines=['KM16 · Bilan de séance',dateFr(selected.session_date)+' · '+selected.start_time.slice(0,5)+' · '+selected.category+' · '+selected.venue,'Inscrits : '+active.length,'Présents : '+active.filter(b=>attendance.get(b.id)===true).length,'Absents : '+active.filter(b=>attendance.get(b.id)===false).length,'Présences à renseigner : '+active.filter(b=>!attendance.has(b.id)).length,'Dossiers à associer : '+active.filter(b=>!memberLinks.has(b.id)).length];try{await navigator.clipboard.writeText(lines.join('\\n'));status('Bilan de séance copié.');}catch(e){status('Copie impossible : '+e.message,true);}};
 $('session-mark-present').onclick=()=>bulkAttendance(true);
 $('session-mark-absent').onclick=()=>bulkAttendance(false);

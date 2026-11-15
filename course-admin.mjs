@@ -177,8 +177,10 @@ async function bulkAttendance(present){
  try{const {data:{user}}=await supa.auth.getUser();if(!user)throw Error('Session expirée');
   const rows=pending.map(b=>({booking_id:b.id,present,recorded_by:user.id,recorded_at:new Date().toISOString()}));
   const {error}=await supa.from('km16_course_attendance').upsert(rows,{onConflict:'booking_id',ignoreDuplicates:true});if(error)throw error;
-  for(const b of pending)attendance.set(b.id,present);
-  status(pending.length+' présence(s) enregistrée(s) : '+label+'.');render();
+  const check=await supa.from('km16_course_attendance').select('booking_id,present').in('booking_id',pending.map(b=>b.id));if(check.error)throw check.error;
+  for(const entry of check.data||[])attendance.set(entry.booking_id,entry.present);
+  const confirmed=(check.data||[]).filter(x=>x.present===present).length;
+  status(confirmed+' présence(s) confirmée(s) dans la base : '+label+(confirmed<pending.length?' · Certaines étaient déjà renseignées ou ont été modifiées entre-temps.':''));render();
  }catch(e){status('Pointage collectif impossible : '+e.message,true);await load();}
 }
 $('session-mark-present').onclick=()=>bulkAttendance(true);

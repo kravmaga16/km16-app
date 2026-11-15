@@ -64,7 +64,7 @@ async function refreshExternalPayments(){
  if(session?.user.email?.toLowerCase()!==ADMIN)return;
  const season=$('season').value;
  try{
-  const [{data,error},{data:auditRows,error:auditError}]=await Promise.all([client.rpc('km16_admin_external_payment_summary',{p_season:season}),client.rpc('km16_admin_external_payment_audit',{p_season:season})]);if(error)throw error;if(auditError)throw auditError;
+  const [{data,error},{data:auditRows,error:auditError},{data:stripeRows,error:stripeError}]=await Promise.all([client.rpc('km16_admin_external_payment_summary',{p_season:season}),client.rpc('km16_admin_external_payment_audit',{p_season:season}),client.rpc('km16_admin_stripe_reconciliation',{p_season:season})]);if(error)throw error;if(auditError)throw auditError;if(stripeError)throw stripeError;
   if(request!==externalPaymentRequest||season!==$('season').value)return;
   const rows=Array.isArray(data)?data:[];
   for(const source of ['Fighty','Sportigo','Stripe']){
@@ -79,7 +79,7 @@ async function refreshExternalPayments(){
   const audit=(auditRows||[])[0]||{};
   const total=Number(audit.total_transactions||0),unlinked=Number(audit.unlinked_transactions||0),early=Number(audit.preseason_transactions||0),unverified=Number(audit.unverified_platform_transactions||0);
   note.textContent=season==='2026/2027'?(total?total+' opérations importées · '+unlinked+' sans dossier rapproché · '+early+' antérieures au 2 juin 2026 · '+unverified+' transactions Stripe à rapprocher. Exception 2026/2027 : encaissements pris en compte dès le 2 juin. Montants provisoires, hors total KM16/Stripe.':'Aucune transaction externe importée pour cette saison.'):'Sportigo et Fighty ne sont plus utilisés à partir de 2027/2028. Leurs historiques restent disponibles sur la saison 2026/2027.';
-  if(unverified){const stripe=host.querySelectorAll('.money-card')[2];if(stripe){const warning=document.createElement('p');warning.className='muted';warning.textContent='Export Stripe direct confirmé · rapprochement avec les encaissements KM16 requis pour éviter les doublons.';stripe.append(warning);}}
+  if(unverified){const stripe=host.querySelectorAll('.money-card')[2];if(stripe){const warning=document.createElement('p');warning.className='muted';const check=(stripeRows||[])[0]||{};warning.textContent=Number(check.total_transactions||0)+' opérations Stripe · '+Number(check.direct_matches||0)+' correspondance(s) directes avec KM16 · '+Number(check.unverified_transactions||0)+' à vérifier · '+Number(check.missing_reference||0)+' sans référence exploitable. Ne pas additionner au total KM16 avant rapprochement.';stripe.append(warning);}}
  }catch(e){if(request===externalPaymentRequest)note.textContent='Paiements externes indisponibles : '+e.message;}
 }
 const moneyFields=[['total_cents','Achats'],['gross_cents','Encaissé brut'],['refunded_cents','Remboursements'],['net_cents','Encaissé net'],['future_cents','Échéances futures'],['planned_cents','CA planifié · net + futur'],['overdue_cents','Échues impayées'],['cancelled_cents','Échéances annulées'],['disputed_cents','Montants contestés inclus dans le net']];

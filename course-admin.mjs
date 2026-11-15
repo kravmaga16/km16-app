@@ -22,7 +22,7 @@ function render(){
  $('upcoming').textContent=bookings.filter(b=>b.status==='Inscrit'&&byId.get(b.session_id)?.session_date>=today).length;
  $('today-count').textContent=bookings.filter(b=>b.status==='Inscrit'&&byId.get(b.session_id)?.session_date===today).length;
  const selectedCourse=$('filter-course').value;
- const options=[...new Set(sessions.map(s=>s.category+' · '+s.venue))].sort();
+ const options=[...new Set(sessions.map(s=>s.category+' · '+s.venue))].sort((a,b)=>a.localeCompare(b,'fr'));
  $('filter-course').replaceChildren(new Option('Tous les cours',''));
  options.forEach(x=>$('filter-course').add(new Option(x,x)));
  $('filter-course').value=selectedCourse;
@@ -30,7 +30,7 @@ function render(){
  const shown=bookings.filter(b=>{
   const s=byId.get(b.session_id);if(!s)return false;
   if(selectedSessionId&&b.session_id!==selectedSessionId)return false;
-  if(view==='upcoming'&&s.session_date<today)return false;
+  if(view==='upcoming'&&(s.session_date<today||b.status!=='Inscrit'))return false;
   if(view==='new'&&b.read_at)return false;
   if(view==='active'&&b.status!=='Inscrit')return false;
   if(view==='cancelled'&&b.status!=='Annulé')return false;
@@ -54,7 +54,7 @@ function render(){
  }
  if(!shown.length){const tr=document.createElement('tr'),td=document.createElement('td');td.colSpan=6;td.textContent='Aucune inscription pour cette sélection';tr.append(td);$('rows').append(tr);}
  $('mark-read').disabled=busy||!shown.some(b=>!b.read_at);
- $('mark-read').onclick=async()=>{try{await call('admin_read',{ids:shown.filter(b=>!b.read_at).map(b=>b.id)});await load();}catch(e){status(e.message,true)}};
+ $('mark-read').onclick=async()=>{if(busy)return;const ids=shown.filter(b=>!b.read_at).map(b=>b.id);if(!ids.length)return;$('mark-read').disabled=true;try{await call('admin_read',{ids});await load();}catch(e){status(e.message,true);$('mark-read').disabled=false;}};
  const counts=new Map();
  for(const b of bookings){if(b.status==='Inscrit')counts.set(b.session_id,(counts.get(b.session_id)||0)+1);}
  $('session-rows').replaceChildren();

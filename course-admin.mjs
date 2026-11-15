@@ -9,32 +9,38 @@ async function call(action,other={}){
  const r=await fetch(endpoint,{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+current.access_token},body:JSON.stringify({action,...other})});
  const j=await r.json();if(!r.ok)throw Error(j.error||'Service indisponible');return j;
 }
-let memberDialogBooking=null,memberDialogChoices=[],memberDialogSelected=null;
+let memberDialogBooking=null,memberDialogChoices=[],memberDialogSelected=null,memberDialogRequest=0,memberDialogSaving=false;
 const memberDialog=$('member-dialog');
+const memberConfirm=$('member-dialog-confirm'),memberCheck=$('member-identity-check');
+function updateMemberConfirm(){memberConfirm.disabled=memberDialogSaving||!memberDialogSelected||!memberCheck.checked;}
 function renderMemberChoices(){
  const query=$('member-candidate-search').value.trim().toLocaleLowerCase('fr-FR');const list=$('member-candidate-options');list.replaceChildren();
- const shown=memberDialogChoices.filter(c=>[c.first_name,c.last_name,c.email,c.season_id,c.title].join(' ').toLocaleLowerCase('fr-FR').includes(query));
+ const shown=memberDialogChoices.filter(c=>[c.first_name,c.last_name,c.email,c.season_id,c.title,c.birth_date].join(' ').toLocaleLowerCase('fr-FR').includes(query));
  $('member-candidate-count').textContent=shown.length+' dossier(s) correspondant à la recherche';
  for(const c of shown){const button=document.createElement('button');button.type='button';button.className='member-option';button.setAttribute('aria-pressed',String(memberDialogSelected?.order_id===c.order_id));
  const strong=document.createElement('strong');strong.textContent=[c.first_name,c.last_name].filter(Boolean).join(' ');const detail=document.createElement('small');detail.textContent=[c.birth_date?'Naissance : '+c.birth_date.split('-').reverse().join('/'):'Naissance non renseignée',c.email||'E-mail non renseigné','Saison '+(c.season_id||'non renseignée'),c.title||'Adhésion'].join(' · ');button.append(strong,detail);
- button.onclick=()=>{memberDialogSelected=c;renderMemberChoices();const exact=(c.first_name||'').trim().toLocaleLowerCase('fr-FR')===(memberDialogBooking.first_name||'').trim().toLocaleLowerCase('fr-FR');$('member-selection-warning').textContent=exact?'Vérifiez les informations avant de confirmer.':'Prénoms différents : confirmez personnellement l’identité avant l’association.';$('member-dialog-confirm').disabled=false;};list.append(button);}
+ button.onclick=()=>{memberDialogSelected=c;memberCheck.checked=false;$('member-identity-check-wrap').hidden=false;renderMemberChoices();const exact=(c.first_name||'').trim().toLocaleLowerCase('fr-FR')===(memberDialogBooking.first_name||'').trim().toLocaleLowerCase('fr-FR');$('member-selection-warning').textContent=exact?'Vérifiez l’identité avant de confirmer.':'Prénoms différents : vérifiez impérativement l’identité et les coordonnées avant l’association.';updateMemberConfirm();};list.append(button);}
 }
 async function openMemberDialog(b,linked){
- memberDialogBooking=b;memberDialogChoices=[];memberDialogSelected=null;$('member-booking-info').textContent='Réservation : '+b.first_name+' '+b.last_name+' · '+b.email;
- $('member-candidate-search').value='';$('member-selection-warning').textContent='';$('member-candidate-count').textContent='Recherche des dossiers…';$('member-candidate-options').replaceChildren();$('member-dialog-confirm').disabled=true;$('member-dialog-unlink').hidden=!linked;
- memberDialog.showModal();
- const {data,error}=await supa.rpc('km16_admin_member_candidates',{p_booking_id:b.id});if(!memberDialog.open||memberDialogBooking!==b)return;
- if(error){$('member-candidate-count').textContent='Recherche impossible : '+error.message;return;}
- memberDialogChoices=data||[];renderMemberChoices();if(!memberDialogChoices.length)$('member-selection-warning').textContent='Aucun dossier compatible. Aucune association automatique.';
+ const request=++memberDialogRequest;memberDialogBooking=b;memberDialogChoices=[];memberDialogSelected=null;memberDialogSaving=false;
+ $('member-booking-info').textContent='Réservation : '+b.first_name+' '+b.last_name+' · '+b.email;
+ $('member-candidate-search').value='';$('member-selection-warning').textContent='';$('member-candidate-count').textContent='Recherche des dossiers…';$('member-candidate-options').replaceChildren();memberCheck.checked=false;$('member-identity-check-wrap').hidden=true;updateMemberConfirm();$('member-dialog-unlink').hidden=!linked;
+ $('member-current-link').textContent=linked?'Dossier actuellement associé : '+linked:'Aucun dossier actuellement associé.';
+ if(!memberDialog.open)memberDialog.showModal();
+ try{const {data,error}=await supa.rpc('km16_admin_member_candidates',{p_booking_id:b.id});if(request!==memberDialogRequest||!memberDialog.open||memberDialogBooking!==b)return;
+  if(error)throw error;memberDialogChoices=data||[];renderMemberChoices();if(!memberDialogChoices.length)$('member-selection-warning').textContent='Aucun dossier compatible trouvé. Aucun rapprochement automatique.';
+ }catch(e){if(request===memberDialogRequest&&memberDialog.open)$('member-candidate-count').textContent='Recherche impossible : '+e.message;}
 }
-async function saveMemberLink(id){const b=memberDialogBooking;if(!b)return;$('member-dialog-confirm').disabled=true;$('member-dialog-unlink').disabled=true;
- try{if(!id){const {error}=await supa.from('km16_booking_member_links').delete().eq('booking_id',b.id);if(error)throw error;memberLinks.delete(b.id);}else{const {data:{user}}=await supa.auth.getUser();if(!user)throw Error('Session expirée');const {error}=await supa.from('km16_booking_member_links').upsert({booking_id:b.id,membership_order_id:id,linked_by:user.id,linked_at:new Date().toISOString()},{onConflict:'booking_id'});if(error)throw error;memberLinks.set(b.id,id);}memberDialog.close();status(id?'Dossier associé après confirmation manuelle.':'Association retirée.');render();}catch(e){$('member-selection-warning').textContent='Enregistrement impossible : '+e.message;}finally{$('member-dialog-unlink').disabled=false;$('member-dialog-confirm').disabled=!memberDialogSelected;}
+async function saveMemberLink(id){const b=memberDialogBooking;if(!b||memberDialogSaving)return;if(id&&(!memberDialogSelected||!memberCheck.checked))return;memberDialogSaving=true;updateMemberConfirm();$('member-dialog-unlink').disabled=true;
+ try{if(!id){const {error}=await supa.from('km16_booking_member_links').delete().eq('booking_id',b.id);if(error)throw error;memberLinks.delete(b.id);}else{const {data:{user}}=await supa.auth.getUser();if(!user)throw Error('Session expirée');const {error}=await supa.from('km16_booking_member_links').upsert({booking_id:b.id,membership_order_id:id,linked_by:user.id,linked_at:new Date().toISOString()},{onConflict:'booking_id'});if(error)throw error;memberLinks.set(b.id,id);}memberDialog.close();status(id?'Dossier associé après vérification manuelle.':'Association retirée.');render();}catch(e){$('member-selection-warning').textContent='Enregistrement impossible : '+e.message;}finally{memberDialogSaving=false;$('member-dialog-unlink').disabled=false;updateMemberConfirm();}
 }
 $('member-candidate-search').oninput=renderMemberChoices;
-$('member-dialog-cancel').onclick=()=>memberDialog.close();
+memberCheck.onchange=updateMemberConfirm;
+$('member-dialog-cancel').onclick=()=>{if(!memberDialogSaving)memberDialog.close();};
 $('member-dialog-unlink').onclick=()=>saveMemberLink('');
-$('member-dialog-confirm').onclick=()=>{if(memberDialogSelected)saveMemberLink(memberDialogSelected.order_id);};
-memberDialog.addEventListener('close',()=>{memberDialogBooking=null;memberDialogChoices=[];memberDialogSelected=null;});
+memberConfirm.onclick=()=>{if(memberDialogSelected)saveMemberLink(memberDialogSelected.order_id);};
+memberDialog.addEventListener('cancel',e=>{if(memberDialogSaving)e.preventDefault();});
+memberDialog.addEventListener('close',()=>{memberDialogRequest++;memberDialogBooking=null;memberDialogChoices=[];memberDialogSelected=null;memberCheck.checked=false;});
 let view='upcoming',selectedSessionId=null,showAllSessions=false;
 const todayParis=()=>new Intl.DateTimeFormat('en-CA',{timeZone:'Europe/Paris',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
 const dateFr=d=>d?d.split('-').reverse().join('/'):'';

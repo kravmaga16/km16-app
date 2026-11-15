@@ -33,22 +33,34 @@ async function refreshCourseAlerts(){
   put(String(active.filter(x=>!linked.has(x.id)).length),String(active.filter(x=>dates.has(x.session_id)&&dates.get(x.session_id)<today&&!recorded.has(x.id)).length),'Suivi des cours actualisé à '+new Date().toLocaleTimeString('fr-FR')+'.');
  }catch(e){put('—','—','Suivi des cours indisponible : '+e.message);}
 }
+const KM16_ACTIONS=[
+ {id:'review',label:'Dossiers administratifs à valider',kpi:'kpi-review',url:'./clients.html#km16-dossiers',priority:1},
+ {id:'attendance',label:'Présences des cours passés à renseigner',kpi:'kpi-course-attendance',url:'./course-admin.html?view=attendance-pending',priority:1},
+ {id:'unlinked',label:'Réservations à associer aux adhérents',kpi:'kpi-course-unlinked',url:'./course-admin.html?view=unlinked',priority:2},
+ {id:'shirts',label:'Tee-shirts à remettre',kpi:'kpi-shirts',url:'./tee-shirts.html#admin',priority:2}
+];
+const km16ActionState=new Map();
+try{const saved=JSON.parse(localStorage.getItem('km16-action-progress-v1')||'{}');for(const [k,v] of Object.entries(saved))if(v==='en-cours')km16ActionState.set(k,v);}catch{}
 function renderPriorities(){
  const host=$('km16-priorities-list');if(!host)return;host.replaceChildren();
  const value=id=>{const v=$(id)?.textContent?.trim();return v&&/^\\d+$/.test(v)?Number(v):null;};
- const tasks=[
-  {label:'Dossiers administratifs à valider',count:value('kpi-review'),url:'./clients.html#km16-dossiers',priority:1},
-  {label:'Présences des cours passés à renseigner',count:value('kpi-course-attendance'),url:'./course-admin.html?view=attendance-pending',priority:1},
-  {label:'Réservations à associer aux adhérents',count:value('kpi-course-unlinked'),url:'./course-admin.html?view=unlinked',priority:2},
-  {label:'Tee-shirts à remettre',count:value('kpi-shirts'),url:'./tee-shirts.html#admin',priority:2}
- ];
+ const tasks=KM16_ACTIONS.map(t=>({...t,count:value(t.kpi)}));
  const pending=tasks.filter(t=>t.count!==null&&t.count>0).sort((a,b)=>a.priority-b.priority||b.count-a.count);
  const unknown=tasks.filter(t=>t.count===null);
+ for(const t of tasks)if(t.count===0)km16ActionState.delete(t.id);
+ try{localStorage.setItem('km16-action-progress-v1',JSON.stringify(Object.fromEntries(km16ActionState)));}catch{}
  $('km16-priorities-total').textContent=unknown.length?'—':String(tasks.reduce((sum,t)=>sum+(t.count||0),0));
  $('km16-priorities-categories').textContent=unknown.length?'—':String(pending.length);
- $('km16-priorities-status').textContent=pending.length?pending.length+' catégorie(s) nécessitent une intervention.':unknown.length?'Certaines données sont encore indisponibles.':'Aucune alerte en attente parmi les contrôles disponibles.';
+ $('km16-priorities-status').textContent=(pending.length?pending.length+' catégorie(s) nécessitent une intervention. ':'')+(unknown.length?'Certaines données sont indisponibles. ':'')+(!pending.length&&!unknown.length?'Aucune alerte en attente. ':'')+'Le suivi « En cours » est propre à ce navigateur et ne valide aucun dossier.';
  const ul=document.createElement('ul');ul.className='km16-approval-list';
- for(const task of [...pending,...unknown]){const li=document.createElement('li'),label=document.createElement('span'),link=document.createElement('a');label.textContent=(task.count===null?'À vérifier':task.count+' à traiter')+' · '+task.label;link.href=task.url;link.textContent='Ouvrir';li.append(label,link);ul.append(li);}
+ for(const task of [...pending,...unknown]){
+  const li=document.createElement('li'),label=document.createElement('span'),link=document.createElement('a');
+  const level=task.priority===1?'Urgent':'À planifier';
+  label.textContent='['+level+'] '+(task.count===null?'À vérifier':task.count+' à traiter')+' · '+task.label;
+  link.href=task.url;link.textContent='Ouvrir les dossiers';li.append(label,link);
+  if(task.count!==null&&task.count>0){const btn=document.createElement('button');btn.type='button';btn.textContent=km16ActionState.has(task.id)?'En cours · Annuler le suivi':'Marquer en cours';btn.setAttribute('aria-pressed',String(km16ActionState.has(task.id)));btn.onclick=()=>{if(km16ActionState.has(task.id))km16ActionState.delete(task.id);else km16ActionState.set(task.id,'en-cours');try{localStorage.setItem('km16-action-progress-v1',JSON.stringify(Object.fromEntries(km16ActionState)));}catch{}renderPriorities();};li.append(btn);}
+  ul.append(li);
+ }
  if(ul.children.length)host.append(ul);
 }
 $('km16-priorities-copy').onclick=async()=>{

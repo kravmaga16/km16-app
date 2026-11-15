@@ -17,5 +17,5 @@ if(target){
    if(!target.children.length){const p=document.createElement('p');p.dataset.newsError='';p.textContent='Les actualités sont momentanément indisponibles.';target.append(p);}
   }finally{busy=false;}
  }
- refresh();setInterval(refresh,60000);document.addEventListener('visibilitychange',refresh);window.addEventListener('focus',refresh);
+ refresh();setInterval(()=>{if(!document.hidden)refresh();},60000);document.addEventListener('visibilitychange',()=>{if(!document.hidden)refresh();});
 }

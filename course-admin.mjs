@@ -42,7 +42,7 @@ memberConfirm.onclick=()=>{if(memberDialogSelected)saveMemberLink(memberDialogSe
 memberDialog.addEventListener('cancel',e=>{if(memberDialogSaving)e.preventDefault();});
 memberDialog.addEventListener('close',()=>{memberDialogRequest++;memberDialogBooking=null;memberDialogChoices=[];memberDialogSelected=null;memberCheck.checked=false;});
 const requestedView=new URLSearchParams(location.search).get('view');
-let view=['unlinked','attendance-pending'].includes(requestedView)?requestedView:'upcoming',selectedSessionId=null,showAllSessions=false;
+let view=['unlinked','attendance-pending'].includes(requestedView)?requestedView:'upcoming',selectedSessionId=null,showAllSessions=false,quickDateRange=null;
 if(view!=='upcoming')$('filter-season').value='';
 const todayParis=()=>new Intl.DateTimeFormat('en-CA',{timeZone:'Europe/Paris',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
 const dateFr=d=>d?d.split('-').reverse().join('/'):'';
@@ -73,7 +73,7 @@ function render(){
   if(view==='unlinked'&&(b.status!=='Inscrit'||memberLinks.has(b.id)))return false;
   if(view==='attendance-pending'&&(b.status!=='Inscrit'||s.session_date>=today||attendance.has(b.id)))return false;
   const season=$('filter-season').value;const inSeason=!season||(season==='2026/2027'?s.session_date>='2026-09-07'&&s.session_date<='2027-06-24':season==='2027/2028'?s.session_date>='2027-09-06'&&s.session_date<'2028-09-01':true);
-  return inSeason&&(!$('filter-date').value||s.session_date===$('filter-date').value)&&
+  return inSeason&&(!quickDateRange||(s.session_date>=quickDateRange[0]&&s.session_date<=quickDateRange[1]))&&(!$('filter-date').value||s.session_date===$('filter-date').value)&&
    (!$('filter-course').value||s.category+' · '+s.venue===$('filter-course').value)&&
    (!$('filter-status').value||($('filter-status').value==='new'?!b.read_at:b.status===$('filter-status').value))&&
    (!search||[b.first_name,b.last_name,b.email,b.last_name+' '+b.first_name,b.first_name+' '+b.last_name].join(' ').toLocaleLowerCase('fr-FR').includes(search));
@@ -121,6 +121,7 @@ function render(){
   linkButton.onclick=()=>openMemberDialog(b,linked);
   linkCell.append(linkButton);tr.append(linkCell);
   const follow=document.createElement('td');const flags=[];if(b.status==='Inscrit'&&!memberLinks.has(b.id))flags.push('Dossier à associer');if(b.status==='Inscrit'&&s.session_date<today&&!attendance.has(b.id))flags.push('Présence à saisir');const label=document.createElement('span');label.className='km16-state '+(flags.length?'pending':'done');label.textContent=flags.length?flags.join(' · '):b.status==='Annulé'?'Annulée':'À jour';follow.append(label);tr.append(follow);
+  [...tr.children].forEach((td,i)=>td.dataset.label=['État','Date / horaire','Cours / lieu','Pratiquant','E-mail','Statut','Présence','Fiche adhérent','Suivi'][i]||'');
   $('rows').append(tr);
  }
  if(!shown.length){const tr=document.createElement('tr'),td=document.createElement('td');td.colSpan=9;td.textContent='Aucune inscription pour cette sélection';tr.append(td);$('rows').append(tr);}
@@ -193,8 +194,12 @@ $('print-roster').onclick=()=>{
  const table=d.createElement('table');const head=d.createElement('tr');for(const label of ['N°','Nom','Prénom','Présent(e)']){const th=d.createElement('th');th.textContent=label;head.append(th);}table.append(head);
  participants.forEach((b,i)=>{const tr=d.createElement('tr');for(const v of [String(i+1),b.last_name||'',b.first_name||'','☐']){const td=d.createElement('td');td.textContent=v;tr.append(td);}table.append(tr);});d.body.append(table);d.close();w.focus();w.print();
 };
-$('filter-today').onclick=()=>{selectedSessionId=null;$('filter-date').value=todayParis();view='upcoming';render();};
-$('reset').onclick=()=>{selectedSessionId=null;for(const id of ['filter-date','filter-course','filter-status','filter-search'])$(id).value='';view='upcoming';render()};
+const plusDays=(n)=>{const d=new Date(todayParis()+'T12:00:00Z');d.setUTCDate(d.getUTCDate()+n);return d.toISOString().slice(0,10);};
+$('filter-today').onclick=()=>{selectedSessionId=null;quickDateRange=null;$('filter-date').value=todayParis();view='upcoming';render();};
+$('filter-tomorrow').onclick=()=>{selectedSessionId=null;quickDateRange=null;$('filter-date').value=plusDays(1);view='upcoming';render();};
+$('filter-next-seven').onclick=()=>{selectedSessionId=null;$('filter-date').value='';quickDateRange=[todayParis(),plusDays(6)];view='upcoming';render();};
+$('filter-date').addEventListener('change',()=>{quickDateRange=null;render();});
+$('reset').onclick=()=>{selectedSessionId=null;quickDateRange=null;for(const id of ['filter-date','filter-course','filter-status','filter-search'])$(id).value='';view='upcoming';render()};
 $('refresh').onclick=load;
 $('toggle-session-range').onclick=()=>{showAllSessions=!showAllSessions;render();};
 $('session-form').onsubmit=async e=>{e.preventDefault();const date=$('session-date').value,category=$('session-category').value.trim(),start=$('session-start').value,end=$('session-end').value,venue=$('session-venue').value.trim();try{await call('admin_session',{session_date:date,course_key:JSON.stringify([category,start,end,venue]),category,start_time:start,end_time:end,venue});status('Séance ajoutée.');await load();}catch(e){status(e.message,true)}};

@@ -57,6 +57,7 @@ function render(){
  $('today-count').textContent=bookings.filter(b=>b.status==='Inscrit'&&byId.get(b.session_id)?.session_date===today).length;
  $('unlinked-count').textContent=bookings.filter(b=>b.status==='Inscrit'&&!memberLinks.has(b.id)&&!externalLinks.has(b.id)).length;
  $('attendance-pending-count').textContent=bookings.filter(b=>b.status==='Inscrit'&&byId.get(b.session_id)?.session_date<today&&!attendance.has(b.id)).length;
+ $('course-priority-summary').textContent=$('unlinked-count').textContent+' inscription(s) sans dossier · '+$('attendance-pending-count').textContent+' présence(s) à compléter · '+$('new').textContent+' nouveauté(s) non lue(s).';
  const selectedCourse=$('filter-course').value;
  const options=[...new Set(sessions.map(s=>s.category+' · '+s.venue))].sort((a,b)=>a.localeCompare(b,'fr'));
  $('filter-course').replaceChildren(new Option('Tous les cours',''));
@@ -218,6 +219,10 @@ $('filter-tomorrow').onclick=()=>{selectedSessionId=null;quickDateRange=null;$('
 $('filter-next-seven').onclick=()=>{selectedSessionId=null;$('filter-date').value='';quickDateRange=[todayParis(),plusDays(6)];view='upcoming';render();};
 $('filter-date').addEventListener('change',()=>{quickDateRange=null;render();});
 $('reset').onclick=()=>{selectedSessionId=null;sessionPendingOnly=false;sessionUnlinkedOnly=false;quickDateRange=null;for(const id of ['filter-date','filter-course','filter-status','filter-search'])$(id).value='';view='upcoming';render()};
+function showCoursePriority(which){selectedSessionId=null;sessionPendingOnly=false;sessionUnlinkedOnly=false;quickDateRange=null;for(const id of ['filter-date','filter-course','filter-status','filter-search'])$(id).value='';$('filter-season').value='';view=which;render();$('results-count').scrollIntoView({behavior:'smooth',block:'start'});}
+$('course-action-unlinked').onclick=()=>showCoursePriority('unlinked');
+$('course-action-attendance').onclick=()=>showCoursePriority('attendance-pending');
+$('course-action-new').onclick=()=>showCoursePriority('new');
 $('refresh').onclick=load;
 $('toggle-session-range').onclick=()=>{showAllSessions=!showAllSessions;render();};
 $('session-form').onsubmit=async e=>{e.preventDefault();const date=$('session-date').value,category=$('session-category').value.trim(),start=$('session-start').value,end=$('session-end').value,venue=$('session-venue').value.trim();try{await call('admin_session',{session_date:date,course_key:JSON.stringify([category,start,end,venue]),category,start_time:start,end_time:end,venue});status('Séance ajoutée.');await load();}catch(e){status(e.message,true)}};

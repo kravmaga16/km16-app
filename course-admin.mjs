@@ -83,6 +83,11 @@ function render(){
  $('session-focus-label').textContent=focused?'Séance sélectionnée : '+dateFr(focused.session_date)+' · '+focused.start_time.slice(0,5)+' · '+focused.category+' · '+focused.venue:'';
  $('results-count').textContent=shown.length+' inscription(s) affichée(s) · '+(view==='upcoming'?'séances à venir':view==='active'?'inscriptions actives':view==='cancelled'?'annulations':view==='new'?'nouveautés à traiter':view==='unlinked'?'inscriptions sans dossier':view==='attendance-pending'?'présences passées à renseigner':'tout l’historique');
  $('print-roster').disabled=!selectedSessionId||!shown.some(b=>b.status==='Inscrit');
+ const bulkCandidates=selectedSessionId?bookings.filter(b=>b.session_id===selectedSessionId&&b.status==='Inscrit'&&!attendance.has(b.id)):[];
+ $('session-bulk-tools').hidden=!selectedSessionId;
+ $('session-bulk-summary').textContent=selectedSessionId?bulkCandidates.length+' présence(s) non renseignée(s) sur '+bookings.filter(b=>b.session_id===selectedSessionId&&b.status==='Inscrit').length+' inscription(s) active(s).':'';
+ $('session-mark-present').disabled=!bulkCandidates.length||busy;
+ $('session-mark-absent').disabled=!bulkCandidates.length||busy;
  $('rows').replaceChildren();
  for(const b of shown){
   const s=byId.get(b.session_id),tr=document.createElement('tr');
@@ -162,6 +167,21 @@ for(const id of ['filter-season','filter-date','filter-course','filter-status'])
 $('filter-search').oninput=render;
 for(const [id,value] of [['show-new','new'],['show-upcoming','upcoming'],['show-active','active'],['show-cancelled','cancelled'],['show-all','all'],['show-unlinked','unlinked'],['show-attendance-pending','attendance-pending']])$(id).onclick=()=>{view=value;selectedSessionId=null;render();};
 $('clear-session-focus').onclick=()=>{selectedSessionId=null;view='upcoming';render();};
+async function bulkAttendance(present){
+ if(!selectedSessionId||busy)return;
+ const selected=sessions.find(s=>s.id===selectedSessionId);if(!selected)return;
+ const pending=bookings.filter(b=>b.session_id===selectedSessionId&&b.status==='Inscrit'&&!attendance.has(b.id));if(!pending.length)return;
+ const label=present?'Présent':'Absent';if(!confirm('Confirmer « '+label+' » pour '+pending.length+' inscription(s) non renseignée(s) du '+dateFr(selected.session_date)+' ? Les présences déjà saisies seront conservées.'))return;
+ $('session-mark-present').disabled=true;$('session-mark-absent').disabled=true;
+ try{const {data:{user}}=await supa.auth.getUser();if(!user)throw Error('Session expirée');
+  const rows=pending.map(b=>({booking_id:b.id,present,recorded_by:user.id,recorded_at:new Date().toISOString()}));
+  const {error}=await supa.from('km16_course_attendance').upsert(rows,{onConflict:'booking_id',ignoreDuplicates:true});if(error)throw error;
+  for(const b of pending)attendance.set(b.id,present);
+  status(pending.length+' présence(s) enregistrée(s) : '+label+'.');render();
+ }catch(e){status('Pointage collectif impossible : '+e.message,true);await load();}
+}
+$('session-mark-present').onclick=()=>bulkAttendance(true);
+$('session-mark-absent').onclick=()=>bulkAttendance(false);
 $('print-roster').onclick=()=>{
  const selected=sessions.find(s=>s.id===selectedSessionId);if(!selected)return;
  const participants=bookings.filter(b=>b.session_id===selected.id&&b.status==='Inscrit').sort((a,b)=>(a.last_name||'').localeCompare(b.last_name||'','fr'));

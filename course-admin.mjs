@@ -42,7 +42,7 @@ memberConfirm.onclick=()=>{if(memberDialogSelected)saveMemberLink(memberDialogSe
 memberDialog.addEventListener('cancel',e=>{if(memberDialogSaving)e.preventDefault();});
 memberDialog.addEventListener('close',()=>{memberDialogRequest++;memberDialogBooking=null;memberDialogChoices=[];memberDialogSelected=null;memberCheck.checked=false;});
 const requestedView=new URLSearchParams(location.search).get('view');
-let view=['unlinked','attendance-pending'].includes(requestedView)?requestedView:'upcoming',selectedSessionId=null,showAllSessions=false,quickDateRange=null,sessionPendingOnly=false,sessionUnlinkedOnly=false;
+let view=['unlinked','attendance-pending'].includes(requestedView)?requestedView:'upcoming',selectedSessionId=null,showAllSessions=false,quickDateRange=null,sessionPendingOnly=false,sessionUnlinkedOnly=false,sessionAbsentOnly=false;
 if(view!=='upcoming')$('filter-season').value='';
 const todayParis=()=>new Intl.DateTimeFormat('en-CA',{timeZone:'Europe/Paris',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
 const dateFr=d=>d?d.split('-').reverse().join('/'):'';
@@ -68,6 +68,7 @@ function render(){
   const s=byId.get(b.session_id);if(!s)return false;
   if(selectedSessionId&&b.session_id!==selectedSessionId)return false;
   if(selectedSessionId&&sessionPendingOnly&&(b.status!=='Inscrit'||attendance.has(b.id)))return false;
+  if(selectedSessionId&&sessionAbsentOnly&&(b.status!=='Inscrit'||attendance.get(b.id)!==false))return false;
   if(selectedSessionId&&sessionUnlinkedOnly&&(b.status!=='Inscrit'||memberLinks.has(b.id)||externalLinks.has(b.id)))return false;
   if(view==='upcoming'&&(s.session_date<today||b.status!=='Inscrit'))return false;
   if(view==='new'&&b.read_at)return false;
@@ -95,6 +96,9 @@ function render(){
  $('session-absent').textContent=String(sessionActive.filter(b=>attendance.get(b.id)===false).length);
  $('session-unrecorded').textContent=String(sessionActive.filter(b=>!attendance.has(b.id)).length);
  $('session-unlinked').textContent=String(sessionActive.filter(b=>!memberLinks.has(b.id)).length);
+ const recorded=sessionActive.filter(b=>attendance.has(b.id)).length;
+ $('session-attendance-progress').textContent=selectedSessionId?'Émargement : '+recorded+' / '+sessionActive.length+' renseigné(s) ('+(sessionActive.length?Math.round(100*recorded/sessionActive.length):100)+' %).':'Sélectionnez une séance.';
+ $('session-only-absent').disabled=!selectedSessionId||sessionAbsentOnly;
  $('session-only-pending').disabled=!selectedSessionId||sessionPendingOnly;
  $('session-only-unlinked').disabled=!selectedSessionId||sessionUnlinkedOnly;
  $('session-show-all').disabled=!selectedSessionId||(!sessionPendingOnly&&!sessionUnlinkedOnly);
@@ -184,6 +188,7 @@ $('clear-session-focus').onclick=()=>{selectedSessionId=null;sessionPendingOnly=
 async function bulkAttendance(present){
  if(!selectedSessionId||busy)return;
  const selected=sessions.find(s=>s.id===selectedSessionId);if(!selected)return;
+ if(selected.session_date>todayParis()){status('Le pointage collectif est réservé aux séances du jour ou passées.',true);return;}
  const pending=bookings.filter(b=>b.session_id===selectedSessionId&&b.status==='Inscrit'&&!attendance.has(b.id));if(!pending.length)return;
  const label=present?'Présent':'Absent';if(!confirm('Confirmer « '+label+' » pour '+pending.length+' inscription(s) non renseignée(s) du '+dateFr(selected.session_date)+' ? Les présences déjà saisies seront conservées.'))return;
  $('session-mark-present').disabled=true;$('session-mark-absent').disabled=true;
@@ -196,9 +201,10 @@ async function bulkAttendance(present){
   status(confirmed+' présence(s) confirmée(s) dans la base : '+label+(confirmed<pending.length?' · Certaines étaient déjà renseignées ou ont été modifiées entre-temps.':''));render();
  }catch(e){status('Pointage collectif impossible : '+e.message,true);await load();}
 }
-$('session-only-pending').onclick=()=>{sessionUnlinkedOnly=false;sessionPendingOnly=true;view='all';$('filter-date').value='';quickDateRange=null;render();};
-$('session-only-unlinked').onclick=()=>{sessionPendingOnly=false;sessionUnlinkedOnly=true;view='all';$('filter-date').value='';quickDateRange=null;render();};
-$('session-show-all').onclick=()=>{sessionPendingOnly=false;sessionUnlinkedOnly=false;view='all';$('filter-date').value='';quickDateRange=null;render();};
+$('session-only-absent').onclick=()=>{sessionAbsentOnly=true;sessionPendingOnly=false;sessionUnlinkedOnly=false;view='all';$('filter-date').value='';quickDateRange=null;render();};
+$('session-only-pending').onclick=()=>{sessionAbsentOnly=false;sessionUnlinkedOnly=false;sessionPendingOnly=true;view='all';$('filter-date').value='';quickDateRange=null;render();};
+$('session-only-unlinked').onclick=()=>{sessionAbsentOnly=false;sessionPendingOnly=false;sessionUnlinkedOnly=true;view='all';$('filter-date').value='';quickDateRange=null;render();};
+$('session-show-all').onclick=()=>{sessionPendingOnly=false;sessionUnlinkedOnly=false;sessionAbsentOnly=false;view='all';$('filter-date').value='';quickDateRange=null;render();};
 $('session-copy-summary').onclick=async()=>{const selected=sessions.find(s=>s.id===selectedSessionId);if(!selected)return;const active=bookings.filter(b=>b.session_id===selected.id&&b.status==='Inscrit');const lines=['KM16 · Bilan de séance',dateFr(selected.session_date)+' · '+selected.start_time.slice(0,5)+' · '+selected.category+' · '+selected.venue,'Inscrits : '+active.length,'Présents : '+active.filter(b=>attendance.get(b.id)===true).length,'Absents : '+active.filter(b=>attendance.get(b.id)===false).length,'Présences à renseigner : '+active.filter(b=>!attendance.has(b.id)).length,'Dossiers à associer : '+active.filter(b=>!memberLinks.has(b.id)).length];try{await navigator.clipboard.writeText(lines.join('\n'));status('Bilan de séance copié.');}catch(e){status('Copie impossible : '+e.message,true);}};
 $('session-mark-present').onclick=()=>bulkAttendance(true);
 $('session-mark-absent').onclick=()=>bulkAttendance(false);
@@ -218,7 +224,7 @@ $('filter-today').onclick=()=>{selectedSessionId=null;quickDateRange=null;$('fil
 $('filter-tomorrow').onclick=()=>{selectedSessionId=null;quickDateRange=null;$('filter-date').value=plusDays(1);view='upcoming';render();};
 $('filter-next-seven').onclick=()=>{selectedSessionId=null;$('filter-date').value='';quickDateRange=[todayParis(),plusDays(6)];view='upcoming';render();};
 $('filter-date').addEventListener('change',()=>{quickDateRange=null;render();});
-$('reset').onclick=()=>{selectedSessionId=null;sessionPendingOnly=false;sessionUnlinkedOnly=false;quickDateRange=null;for(const id of ['filter-date','filter-course','filter-status','filter-search'])$(id).value='';view='upcoming';render()};
+$('reset').onclick=()=>{selectedSessionId=null;sessionPendingOnly=false;sessionUnlinkedOnly=false;sessionAbsentOnly=false;quickDateRange=null;for(const id of ['filter-date','filter-course','filter-status','filter-search'])$(id).value='';view='upcoming';render()};
 function showCoursePriority(which){selectedSessionId=null;sessionPendingOnly=false;sessionUnlinkedOnly=false;quickDateRange=null;for(const id of ['filter-date','filter-course','filter-status','filter-search'])$(id).value='';$('filter-season').value='';view=which;render();$('results-count').scrollIntoView({behavior:'smooth',block:'start'});}
 $('course-action-unlinked').onclick=()=>showCoursePriority('unlinked');
 $('course-action-attendance').onclick=()=>showCoursePriority('attendance-pending');

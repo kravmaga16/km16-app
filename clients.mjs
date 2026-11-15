@@ -78,7 +78,7 @@ async function refreshExternalPayments(){
   }
   const audit=(auditRows||[])[0]||{};
   const total=Number(audit.total_transactions||0),unlinked=Number(audit.unlinked_transactions||0),early=Number(audit.preseason_transactions||0),unverified=Number(audit.unverified_platform_transactions||0);
-  note.textContent=total?total+' opérations importées · '+unlinked+' sans dossier rapproché · '+early+' antérieures au 7 septembre 2026 · '+unverified+' avec plateforme à confirmer. Montants provisoires, hors total KM16/Stripe.':'Aucune transaction externe importée pour cette saison.';
+  note.textContent=season==='2026/2027'?(total?total+' opérations importées · '+unlinked+' sans dossier rapproché · '+early+' antérieures au 2 juin 2026 · '+unverified+' avec plateforme à confirmer. Exception 2026/2027 : encaissements pris en compte dès le 2 juin. Montants provisoires, hors total KM16/Stripe.':'Aucune transaction externe importée pour cette saison.'):'Sportigo et Fighty ne sont plus utilisés à partir de 2027/2028. Leurs historiques restent disponibles sur la saison 2026/2027.';
   if(unverified){const sportigo=host.querySelectorAll('.money-card')[1];if(sportigo){const warning=document.createElement('p');warning.className='muted';warning.textContent='Source à confirmer : cet export est intitulé Stripe unified payments, et non Sportigo.';sportigo.append(warning);}}
  }catch(e){if(request===externalPaymentRequest)note.textContent='Paiements externes indisponibles : '+e.message;}
 }

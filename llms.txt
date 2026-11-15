@@ -1,0 +1,19 @@
+# KM16 — Krav Maga Paris 16e
+
+> KM16 est une association de Krav Maga à Paris 16e proposant des cours de self-défense pour enfants, adolescents et adultes, ainsi que des stages.
+
+## Pages officielles
+
+- [Site officiel de KM16](https://km16.fr/): présentation de l'association.
+- [Application KM16](https://app.km16.fr/): informations sur les cours, le planning, les stages, l'équipe, les tarifs et les contacts.
+- [Plan du site](https://app.km16.fr/sitemap.xml): pages publiques référencées.
+- [Réservation des cours](https://app.km16.fr/course-booking.html): consultation des séances et réservations.
+
+## Informations pratiques
+
+- Association : KM16 — Krav Maga 16.
+- Localisation : Paris 16e, France.
+- Lieux de pratique : Saint-Jean-de-Passy et dojo Suchet.
+- Contact : contact@km16.fr.
+
+Les informations de planning, tarifs, stages et disponibilités peuvent évoluer. Se référer aux pages officielles pour les données à jour.

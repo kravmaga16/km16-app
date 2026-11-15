@@ -41,7 +41,9 @@ $('member-dialog-unlink').onclick=()=>saveMemberLink('');
 memberConfirm.onclick=()=>{if(memberDialogSelected)saveMemberLink(memberDialogSelected.order_id);};
 memberDialog.addEventListener('cancel',e=>{if(memberDialogSaving)e.preventDefault();});
 memberDialog.addEventListener('close',()=>{memberDialogRequest++;memberDialogBooking=null;memberDialogChoices=[];memberDialogSelected=null;memberCheck.checked=false;});
-let view='upcoming',selectedSessionId=null,showAllSessions=false;
+const requestedView=new URLSearchParams(location.search).get('view');
+let view=['unlinked','attendance-pending'].includes(requestedView)?requestedView:'upcoming',selectedSessionId=null,showAllSessions=false;
+if(view!=='upcoming')$('filter-season').value='';
 const todayParis=()=>new Intl.DateTimeFormat('en-CA',{timeZone:'Europe/Paris',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
 const dateFr=d=>d?d.split('-').reverse().join('/'):'';
 function render(){
@@ -157,7 +159,7 @@ $('login-form').onsubmit=async e=>{e.preventDefault();try{const {error}=await su
 $('logout').onclick=()=>supa.auth.signOut();
 for(const id of ['filter-season','filter-date','filter-course','filter-status'])$(id).onchange=render;
 $('filter-search').oninput=render;
-for(const [id,value] of [['show-new','new'],['show-upcoming','upcoming'],['show-active','active'],['show-cancelled','cancelled'],['show-all','all']])$(id).onclick=()=>{view=value;render();};
+for(const [id,value] of [['show-new','new'],['show-upcoming','upcoming'],['show-active','active'],['show-cancelled','cancelled'],['show-all','all'],['show-unlinked','unlinked'],['show-attendance-pending','attendance-pending']])$(id).onclick=()=>{view=value;selectedSessionId=null;render();};
 $('clear-session-focus').onclick=()=>{selectedSessionId=null;view='upcoming';render();};
 $('print-roster').onclick=()=>{
  const selected=sessions.find(s=>s.id===selectedSessionId);if(!selected)return;

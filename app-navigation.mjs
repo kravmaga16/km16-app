@@ -14,7 +14,7 @@ if(bottom){
  const links=document.createElement('nav');links.setAttribute('aria-label','Autres rubriques');
  for(const button of original.filter(b=>!primary.includes(b.dataset.go))){button.className='app-more-link';if(button.dataset.go==='parametres')button.lastChild.textContent='Paramètres et notifications';links.append(button);}
  dialog.append(head,account,links);document.body.append(dialog);
- function mark(){const current=document.querySelector('.panel.active')?.id;const secondary=!primary.includes(current);more.setAttribute('aria-selected',String(secondary));for(const button of bottom.querySelectorAll('[data-go]'))button.setAttribute('aria-current',button.dataset.go===current?'page':'false');}
+ function mark(){const current=document.querySelector('.panel.active')?.id;const secondary=!primary.includes(current);if(secondary)more.setAttribute('aria-current','page');else more.removeAttribute('aria-current');for(const button of bottom.querySelectorAll('[data-go]')){if(button.dataset.go===current)button.setAttribute('aria-current','page');else button.removeAttribute('aria-current');}}
  function dismiss(){if(dialog.open)dialog.close();}
  more.onclick=()=>{dialog.showModal();more.setAttribute('aria-expanded','true');};close.onclick=dismiss;
  dialog.addEventListener('close',()=>{more.setAttribute('aria-expanded','false');more.focus({preventScroll:true});});

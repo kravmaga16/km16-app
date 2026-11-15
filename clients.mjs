@@ -13,6 +13,7 @@ function showSeason(){
  $('season-dates').textContent=selected===SEASON?'Du 7 septembre 2026 au 25 juin 2027 inclus.':'Dates de cette saison à paramétrer.';
  $('season-status').textContent=selected===SEASON?(state.archived?'Archives · historique conservé':state.renewalOpen?'Saison en cours · réabonnements ouverts pour 2027/2028':'Saison en cours · réabonnements à partir du 1er juin 2027'):'Achats rattachés à cette saison';
  $('renewal').hidden=!(selected===SEASON&&state.renewalOpen);
+ $('km16-season-transition-status').textContent=selected===SEASON?(state.archived?'Saison archivée : historique conservé. Consultez la saison suivante pour les nouvelles inscriptions.':state.renewalOpen?'Réabonnements ouverts depuis le 1er juin 2027. Contrôlez les dossiers avant renouvellement.':'Réabonnements prévus à partir du 1er juin 2027. Préparez les dossiers et les communications.'):'Saison sélectionnée : '+selected+' · vérifiez les dates et offres avant toute nouvelle inscription.';
 }
 let courseAlertRequest=0;
 async function refreshCourseAlerts(){

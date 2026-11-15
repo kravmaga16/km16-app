@@ -82,11 +82,12 @@ function render(){
     const {data:candidates,error}=await supa.rpc('km16_admin_member_candidates',{p_booking_id:b.id});if(error)throw error;
     const choices=candidates||[];
     const options=choices.map((c,i)=>[String(i+1),c.first_name+' '+c.last_name,c.birth_date?'né(e) le '+c.birth_date.split('-').reverse().join('/'):'naissance non renseignée',c.email||'sans e-mail','saison '+(c.season_id||'non renseignée'),c.title||'adhésion'].join(' · '));
-    if(!choices.length){status('Aucun dossier portant exactement ce prénom et ce nom. Aucun rapprochement automatique.',true);return;}
+    if(!choices.length){status('Aucun dossier compatible trouvé (nom et prénom identiques, ou même nom, initiale du prénom et e-mail). Aucune association automatique.',true);return;}
     const selection=prompt('Confirmez l’identité avant toute association. Réservation : '+b.first_name+' '+b.last_name+' / '+b.email+'\n\n'+options.join('\n')+'\n\nSaisissez le numéro du dossier (1 à '+choices.length+').'+(linked?'\nSaisissez 0 pour retirer l’association.':''),'');
     if(selection===null)return;
     const number=Number(selection.trim());if(!/^\d+$/.test(selection.trim())||number<0||number>choices.length||(number===0&&!linked)){status('Choix de dossier invalide.',true);return;}
     id=number===0?'':choices[number-1].order_id;
+    if(id){const candidate=choices[number-1];const exact=(candidate.first_name||'').trim().toLocaleLowerCase('fr-FR')===(b.first_name||'').trim().toLocaleLowerCase('fr-FR')&&(candidate.last_name||'').trim().toLocaleLowerCase('fr-FR')===(b.last_name||'').trim().toLocaleLowerCase('fr-FR');if(!confirm((exact?'Confirmer cette association ?':'Attention : le prénom est différent. Vérifiez personnellement l’identité avant toute association.')+'\n\nRéservation : '+b.first_name+' '+b.last_name+' · '+b.email+'\nDossier : '+candidate.first_name+' '+candidate.last_name+' · '+candidate.email+' · '+(candidate.birth_date||'date de naissance absente')))return;}
    }catch(e){status('Recherche des dossiers impossible : '+e.message,true);return;}finally{linkButton.disabled=false;}
    linkButton.disabled=true;
    try{

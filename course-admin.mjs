@@ -9,7 +9,7 @@ async function call(action,other={}){
  const r=await fetch(endpoint,{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+current.access_token},body:JSON.stringify({action,...other})});
  const j=await r.json();if(!r.ok)throw Error(j.error||'Service indisponible');return j;
 }
-let view='upcoming',selectedSessionId=null;
+let view='upcoming',selectedSessionId=null,showAllSessions=false;
 const todayParis=()=>new Intl.DateTimeFormat('en-CA',{timeZone:'Europe/Paris',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
 const dateFr=d=>d?d.split('-').reverse().join('/'):'';
 function render(){
@@ -58,7 +58,12 @@ function render(){
  const counts=new Map();
  for(const b of bookings){if(b.status==='Inscrit')counts.set(b.session_id,(counts.get(b.session_id)||0)+1);}
  $('session-rows').replaceChildren();
- const upcoming=sessions.filter(s=>s.enabled&&s.session_date>=today).sort((a,b)=>a.session_date.localeCompare(b.session_date)||a.start_time.localeCompare(b.start_time));
+ const allUpcoming=sessions.filter(s=>s.enabled&&s.session_date>=today).sort((a,b)=>a.session_date.localeCompare(b.session_date)||a.start_time.localeCompare(b.start_time));
+ const endDate=new Date(today+'T12:00:00Z');endDate.setUTCDate(endDate.getUTCDate()+13);
+ const endIso=endDate.toISOString().slice(0,10);
+ const upcoming=showAllSessions?allUpcoming:allUpcoming.filter(s=>s.session_date<=endIso);
+ $('session-range-info').textContent=showAllSessions?'Toutes les séances à venir · '+upcoming.length:'14 prochains jours · '+upcoming.length+' séance(s)';
+ $('toggle-session-range').textContent=showAllSessions?'Afficher les 14 prochains jours':'Afficher toutes les séances à venir';
  for(const s of upcoming){
   const tr=document.createElement('tr');
   for(const v of [dateFr(s.session_date)+' · '+s.start_time.slice(0,5),s.category,s.venue,String(counts.get(s.id)||0)]){
@@ -93,6 +98,7 @@ for(const [id,value] of [['show-new','new'],['show-upcoming','upcoming'],['show-
 $('clear-session-focus').onclick=()=>{selectedSessionId=null;view='upcoming';render();};
 $('reset').onclick=()=>{selectedSessionId=null;for(const id of ['filter-date','filter-course','filter-status','filter-search'])$(id).value='';view='upcoming';render()};
 $('refresh').onclick=load;
+$('toggle-session-range').onclick=()=>{showAllSessions=!showAllSessions;render();};
 $('session-form').onsubmit=async e=>{e.preventDefault();const date=$('session-date').value,category=$('session-category').value.trim(),start=$('session-start').value,end=$('session-end').value,venue=$('session-venue').value.trim();try{await call('admin_session',{session_date:date,course_key:JSON.stringify([category,start,end,venue]),category,start_time:start,end_time:end,venue});status('Séance ajoutée.');await load();}catch(e){status(e.message,true)}};
 supa.auth.onAuthStateChange((_event,s)=>{setTimeout(()=>authState(s),0)});
 const {data}=await supa.auth.getSession();await authState(data.session);

@@ -92,7 +92,7 @@ function renderKm16Deadlines(){const host=$('km16-deadlines-list');if(!host)retu
  const ul=document.createElement('ul');ul.className='km16-approval-list';for(const item of items){const li=document.createElement('li'),span=document.createElement('span');const active=item.date<=today&&(item.end||item.date)>=today;span.textContent=(active?'En cours · ':'À venir · ')+km16DateFr(item.date)+(item.end?' au '+km16DateFr(item.end):'')+' · '+item.label+' — '+item.detail;li.append(span);ul.append(li);}host.append(ul);
 }
 $('km16-deadlines-copy').onclick=async()=>{const lines=['KM16 · Échéances et fermetures','Établi le '+new Date().toLocaleString('fr-FR'),...km16UpcomingDeadlines().map(x=>km16DateFr(x.date)+(x.end?' au '+km16DateFr(x.end):'')+' · '+x.detail)];try{await navigator.clipboard.writeText(lines.join('\\n'));$('km16-deadlines-status').textContent='Échéances copiées.';}catch(e){$('km16-deadlines-status').textContent='Copie impossible : '+e.message;}};
-renderKm16Deadlines();renderKm16MailSchedule();renderKm16Daily();
+renderKm16Deadlines();renderKm16MailSchedule();
 const KM16_DAILY_ACTIONS=[
  {id:'kpi-review',label:'Dossiers à valider',href:'#km16-dossiers'},
  {id:'kpi-course-attendance',label:'Présences à renseigner',href:'./course-admin.html?view=attendance-pending'},

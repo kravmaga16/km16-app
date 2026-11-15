@@ -1,7 +1,20 @@
 const $=id=>document.getElementById(id);
 const endpoint='https://tlfewpbgbwesdriklxzb.supabase.co/functions/v1/km16-course-bookings';
-async function call(action,params={}){const r=await fetch(endpoint,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action,...params})});const j=await r.json();if(!r.ok)throw Error(j.error||'Service indisponible');return j}
+async function call(action,params={}){
+ const controller=action==='sessions'?new AbortController():null;
+ const timeout=controller?setTimeout(()=>controller.abort(),15000):null;
+ try{
+  const r=await fetch(endpoint,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action,...params}),signal:controller?.signal});
+  const j=await r.json();
+  if(!r.ok)throw Error(j.error||'Service indisponible');
+  return j;
+ }catch(e){
+  if(e?.name==='AbortError')throw Error('Le chargement prend trop de temps. Réessayez.');
+  throw e;
+ }finally{if(timeout!==null)clearTimeout(timeout);}
+}
 const todayParis=()=>new Intl.DateTimeFormat('en-CA',{timeZone:'Europe/Paris',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
+const scrollBehavior=()=>window.matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth';
 const iso=d=>new Date(d+'T12:00:00').toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
 let availableSessions=[];
 function refreshSessionChoices(){
@@ -61,7 +74,7 @@ const param=params.get('session');if(param&&availableSessions.some(s=>s.id===par
 }
 
 function cancellationUrl(token){const u=new URL('./course-booking.html',location.href);u.searchParams.set('cancel',token);return u.href;}
-function showCancellation(token){$('token').value=token;$('cancel-form').hidden=false;$('cancel-status').textContent='';$('cancel-panel').scrollIntoView({behavior:'smooth',block:'center'});}
+function showCancellation(token){$('token').value=token;$('cancel-form').hidden=false;$('cancel-status').textContent='';$('cancel-panel').scrollIntoView({behavior:scrollBehavior(),block:'center'});}
 $('book-form').onsubmit=async e=>{
  e.preventDefault();$('submit').disabled=true;$('confirmation').hidden=true;$('status').className='';$('status').textContent='Enregistrement de votre inscription…';
  try{
@@ -74,7 +87,7 @@ $('book-form').onsubmit=async e=>{
   $('cancel-link').href=url;$('token').value=j.cancellation_token;$('confirmation').hidden=false;
   sessionStorage.setItem('km16-last-cancel-link',url);
   $('book-form').hidden=true;
-  $('confirmation').scrollIntoView({behavior:'smooth',block:'start'});
+  $('confirmation').scrollIntoView({behavior:scrollBehavior(),block:'start'});
  }catch(err){$('status').textContent=err.message;$('status').className='error';}
  finally{$('submit').disabled=!$('session').value||$('book-form').hidden;}
 };
@@ -93,7 +106,7 @@ $('cancel-form').onsubmit=async e=>{
   await call('cancel',{token});
   $('cancel-status').textContent='Votre inscription est annulée. Vous pouvez réserver une autre séance si vous le souhaitez.';
   $('cancel-form').hidden=true;$('confirmation').hidden=true;$('book-form').hidden=false;$('status').textContent='';
-  $('cancel-status').scrollIntoView({behavior:'smooth',block:'center'});
+  $('cancel-status').scrollIntoView({behavior:scrollBehavior(),block:'center'});
   sessionStorage.removeItem('km16-last-cancel-link');
   if(new URLSearchParams(location.search).has('cancel'))history.replaceState(null,'',location.pathname);
  }catch(err){$('cancel-status').textContent=err.message;$('cancel-status').className='error';}

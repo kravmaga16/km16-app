@@ -2,7 +2,28 @@ const $=id=>document.getElementById(id);
 const endpoint='https://tlfewpbgbwesdriklxzb.supabase.co/functions/v1/km16-course-bookings';
 async function call(action,params={}){const r=await fetch(endpoint,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action,...params})});const j=await r.json();if(!r.ok)throw Error(j.error||'Service indisponible');return j}
 const iso=d=>new Date(d+'T12:00:00').toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
-async function load(){try{const data=await call('sessions');$('session').replaceChildren(new Option('Choisir une séance',''));for(const s of data.sessions){$('session').add(new Option(iso(s.session_date)+' · '+s.start_time.slice(0,5)+' · '+s.category+' · '+s.venue,s.id))}const params=new URLSearchParams(location.search);const param=params.get('session');if(param&&data.sessions.some(s=>s.id===param))$('session').value=param;else if(params.has('jour')&&params.has('debut')&&params.has('categorie')&&params.has('lieu')){const dayNames=['dimanche','lundi','mardi','mercredi','jeudi','vendredi','samedi'];const normal=v=>String(v||'').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\s+/g,' ');const time=v=>{const m=String(v||'').match(/^(\d{1,2})[:hH](\d{2})$/);return m?String(Number(m[1])).padStart(2,'0')+':'+m[2]:String(v||'').slice(0,5)};const desired=normal(params.get('jour'));const match=data.sessions.find(s=>normal(dayNames[new Date(s.session_date+'T12:00:00Z').getUTCDay()])===desired&&time(s.start_time)===time(params.get('debut'))&&normal(s.category)===normal(params.get('categorie'))&&normal(s.venue)===normal(params.get('lieu')));if(match)$('session').value=match.id;else $('status').textContent='Aucune prochaine séance disponible pour ce créneau. Vous pouvez choisir une autre séance.';}$('submit').disabled=!data.sessions.length;if(!data.sessions.length)$('status').textContent='Aucune séance ouverte actuellement. Revenez prochainement.';}catch(e){$('status').textContent='Chargement indisponible. Réessayez plus tard.';}}
+let availableSessions=[];
+function refreshSessionChoices(){
+ const category=$('category-filter').value,date=$('date-filter').value,previous=$('session').value;
+ const filtered=availableSessions.filter(s=>(!category||s.category===category)&&(!date||s.session_date===date));
+ $('session').replaceChildren(new Option('Choisir une séance',''));
+ for(const s of filtered)$('session').add(new Option(iso(s.session_date)+' · '+s.start_time.slice(0,5)+' · '+s.category+' · '+s.venue,s.id));
+ if(filtered.some(s=>s.id===previous))$('session').value=previous;
+ $('submit').disabled=!filtered.length;
+ if(!filtered.length)$('status').textContent='Aucune séance disponible pour ces filtres.';
+ else if($('status').textContent==='Aucune séance disponible pour ces filtres.')$('status').textContent='';
+}
+function setSessionFilters(rows){
+ availableSessions=rows;
+ const categories=[...new Set(rows.map(s=>s.category))].sort((a,b)=>a.localeCompare(b,'fr'));
+ for(const category of categories)$('category-filter').add(new Option(category,category));
+ const dates=[...new Set(rows.map(s=>s.session_date))].sort();
+ for(const date of dates)$('date-filter').add(new Option(iso(date),date));
+ $('category-filter').onchange=()=>{$('date-filter').value='';refreshSessionChoices();};
+ $('date-filter').onchange=refreshSessionChoices;
+ refreshSessionChoices();
+}
+async function load(){try{const data=await call('sessions');setSessionFilters(data.sessions);const params=new URLSearchParams(location.search);const param=params.get('session');if(param&&data.sessions.some(s=>s.id===param))$('session').value=param;else if(params.has('jour')&&params.has('debut')&&params.has('categorie')&&params.has('lieu')){const dayNames=['dimanche','lundi','mardi','mercredi','jeudi','vendredi','samedi'];const normal=v=>String(v||'').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\s+/g,' ');const time=v=>{const m=String(v||'').match(/^(\d{1,2})[:hH](\d{2})$/);return m?String(Number(m[1])).padStart(2,'0')+':'+m[2]:String(v||'').slice(0,5)};const desired=normal(params.get('jour'));const match=data.sessions.find(s=>normal(dayNames[new Date(s.session_date+'T12:00:00Z').getUTCDay()])===desired&&time(s.start_time)===time(params.get('debut'))&&normal(s.category)===normal(params.get('categorie'))&&normal(s.venue)===normal(params.get('lieu')));if(match)$('session').value=match.id;else $('status').textContent='Aucune prochaine séance disponible pour ce créneau. Vous pouvez choisir une autre séance.';}$('submit').disabled=!data.sessions.length;if(!data.sessions.length)$('status').textContent='Aucune séance ouverte actuellement. Revenez prochainement.';}catch(e){$('status').textContent='Chargement indisponible. Réessayez plus tard.';}}
 
 function cancellationUrl(token){const u=new URL('./course-booking.html',location.href);u.searchParams.set('cancel',token);return u.href;}
 function showCancellation(token){$('token').value=token;$('cancel-form').hidden=false;$('cancel-status').textContent='';$('cancel-panel').scrollIntoView({behavior:'smooth',block:'center'});}

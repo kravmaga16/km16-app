@@ -64,7 +64,7 @@ async function refreshExternalPayments(){
  if(session?.user.email?.toLowerCase()!==ADMIN)return;
  const season=$('season').value;
  try{
-  const [{data,error},{data:auditRows,error:auditError},{data:stripeRows,error:stripeError}]=await Promise.all([client.rpc('km16_admin_external_payment_summary',{p_season:season}),client.rpc('km16_admin_external_payment_audit',{p_season:season}),client.rpc('km16_admin_stripe_reconciliation',{p_season:season})]);if(error)throw error;if(auditError)throw auditError;if(stripeError)throw stripeError;
+  const [{data,error},{data:auditRows,error:auditError},{data:stripeRows,error:stripeError},{data:statusRows,error:statusError}]=await Promise.all([client.rpc('km16_admin_external_payment_summary',{p_season:season}),client.rpc('km16_admin_external_payment_audit',{p_season:season}),client.rpc('km16_admin_stripe_reconciliation',{p_season:season}),client.rpc('km16_admin_external_payment_statuses',{p_season:season})]);if(error)throw error;if(auditError)throw auditError;if(stripeError)throw stripeError;if(statusError)throw statusError;
   if(request!==externalPaymentRequest||season!==$('season').value)return;
   const rows=Array.isArray(data)?data:[];
   for(const source of ['Fighty','Sportigo','Stripe']){
@@ -74,7 +74,7 @@ async function refreshExternalPayments(){
    const title=document.createElement('div');title.className='money-label';title.textContent=source==='Fighty'?'Fighty (ancienne plateforme)':source==='Sportigo'?'Sportigo (ancienne plateforme)':'Stripe (export direct)';
    const value=document.createElement('strong');value.className='money-value';value.textContent=count?euro(paid-refund):'Aucune transaction importée';
    const detail=document.createElement('p');detail.className='muted';detail.textContent=count?count+' transaction(s) · Encaissé '+euro(paid)+' · Remboursé '+euro(refund)+' · Sans dossier '+Number(entry.unmatched_count||0)+(source==='Stripe'?' · Montant non additionné aux paiements KM16':''):'Aucun export de cette plateforme importé · total non établi';
-   card.append(title,value,detail);host.append(card);
+   const stats=(statusRows||[]).find(x=>x.source===source)||{};const breakdown=document.createElement('p');breakdown.className='muted';breakdown.textContent=count?Number(stats.paid_count||0)+' payés · '+Number(stats.refunded_count||0)+' remboursés · '+Number(stats.failed_count||0)+' échoués · '+Number(stats.cancelled_count||0)+' annulés':'Aucun statut de transaction à afficher';card.append(title,value,detail,breakdown);host.append(card);
   }
   const audit=(auditRows||[])[0]||{};
   const total=Number(audit.total_transactions||0),unlinked=Number(audit.unlinked_transactions||0),early=Number(audit.preseason_transactions||0),unverified=Number(audit.unverified_platform_transactions||0);

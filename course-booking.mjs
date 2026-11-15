@@ -56,9 +56,11 @@ $('book-form').onsubmit=async e=>{
   $('status').textContent='Inscription confirmée. Conservez votre lien personnel pour pouvoir annuler.';
   $('cancel-link').href=url;$('token').value=j.cancellation_token;$('confirmation').hidden=false;
   sessionStorage.setItem('km16-last-cancel-link',url);
+  $('book-form').hidden=true;
  }catch(err){$('status').textContent=err.message;$('status').className='error';}
  finally{$('submit').disabled=false;}
 };
+$('new-booking').onclick=()=>{$('confirmation').hidden=true;$('book-form').hidden=false;$('book-form').reset();refreshSessionChoices();$('status').textContent='';$('copy-status').textContent='';$('first').focus();};
 $('copy-link').onclick=async()=>{
  const url=$('cancel-link').href;
  try{await navigator.clipboard.writeText(url);$('copy-status').textContent='Lien copié. Conservez-le dans un endroit privé.';}
@@ -72,7 +74,7 @@ $('cancel-form').onsubmit=async e=>{
  try{
   await call('cancel',{token});
   $('cancel-status').textContent='Inscription annulée. Votre demande a bien été enregistrée.';
-  $('cancel-form').hidden=true;$('confirmation').hidden=true;$('status').textContent='';
+  $('cancel-form').hidden=true;$('confirmation').hidden=true;$('book-form').hidden=false;$('status').textContent='';
   sessionStorage.removeItem('km16-last-cancel-link');
   if(new URLSearchParams(location.search).has('cancel'))history.replaceState(null,'',location.pathname);
  }catch(err){$('cancel-status').textContent=err.message;$('cancel-status').className='error';}

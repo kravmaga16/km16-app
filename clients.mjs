@@ -136,9 +136,24 @@ function renderMoneySummary(){
   $('money-breakdown').append(term,value);
  }
 }
+function renderMemberQuality(){
+ const summary=$('km16-member-quality-summary'),host=$('km16-member-quality-results');if(!summary||!host)return;
+ host.replaceChildren();if(!overviewLoaded){summary.textContent='Analyse en attente du fichier adhérents…';return;}
+ const norm=v=>String(v||'').normalize('NFD').replace(/[\\u0300-\\u036f]/g,'').toLocaleLowerCase('fr-FR').replace(/[^a-z0-9]/g,'');
+ const emailGroups=new Map(),nameGroups=new Map();let missingEmail=0,missingName=0;
+ for(const c of all){const email=String(c.email||c.email_address||'').trim().toLocaleLowerCase('fr-FR'),name=norm(c.first_name)+'|'+norm(c.last_name);
+  if(email){if(!emailGroups.has(email))emailGroups.set(email,[]);emailGroups.get(email).push(c);}else missingEmail++;
+  if(norm(c.first_name)&&norm(c.last_name)){if(!nameGroups.has(name))nameGroups.set(name,[]);nameGroups.get(name).push(c);}else missingName++;
+ }
+ const duplicateEmails=[...emailGroups.values()].filter(g=>g.length>1),duplicateNames=[...nameGroups.values()].filter(g=>g.length>1);
+ summary.textContent=all.length+' fiches · '+duplicateEmails.length+' groupe(s) avec même e-mail · '+duplicateNames.length+' groupe(s) avec même nom et prénom · '+missingEmail+' sans e-mail · '+missingName+' avec identité incomplète.';
+ const groups=[['E-mail identique (à vérifier, peut être familial)',duplicateEmails],['Nom et prénom identiques (homonymes possibles)',duplicateNames]];
+ for(const [label,items] of groups){const details=document.createElement('details'),head=document.createElement('summary');head.textContent=label+' : '+items.length+' groupe(s)';details.append(head);
+  if(!items.length){const p=document.createElement('p');p.className='muted';p.textContent='Aucune correspondance détectée.';details.append(p);}else{const ul=document.createElement('ul');ul.className='km16-approval-list';for(const group of items.slice(0,40)){const li=document.createElement('li');li.textContent=group.map(c=>(c.first_name||'')+' '+(c.last_name||'')+' ('+(c.email||c.email_address||'e-mail non renseigné')+')').join(' · ');ul.append(li);}details.append(ul);if(items.length>40){const p=document.createElement('p');p.className='muted';p.textContent='Seuls les 40 premiers groupes sont affichés.';details.append(p);}}host.append(details);}
+}
 function render(){
  if(selectedMember&&!all.includes(selectedMember))closeMemberProfile();renderOverview();communications.update();
- renderMoneySummary();
+ renderMoneySummary();renderMemberQuality();
  $('stage-rows').replaceChildren();for(const m of stagesMonthly(all)){const tr=document.createElement('tr');for(const v of [m.month,m.sold,m.refunded,m.retained,euro(m.amount_cents),euro(m.net_cents)])cell(tr,String(v));$('stage-rows').append(tr);}
  $('rows').replaceChildren();const shown=all.filter(c=>(!group||c.group===group)&&matches(c));$('client-results-count').textContent=shown.length+' fiche(s) affichée(s) sur '+all.length+' pour cette saison et cet environnement.';$('search-clear').hidden=!$('search').value;
  for(const c of shown){const row=document.createElement('tr');cell(row,c.group);

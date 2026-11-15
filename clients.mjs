@@ -44,11 +44,18 @@ function renderPriorities(){
  ];
  const pending=tasks.filter(t=>t.count!==null&&t.count>0).sort((a,b)=>a.priority-b.priority||b.count-a.count);
  const unknown=tasks.filter(t=>t.count===null);
+ $('km16-priorities-total').textContent=unknown.length?'—':String(tasks.reduce((sum,t)=>sum+(t.count||0),0));
+ $('km16-priorities-categories').textContent=unknown.length?'—':String(pending.length);
  $('km16-priorities-status').textContent=pending.length?pending.length+' catégorie(s) nécessitent une intervention.':unknown.length?'Certaines données sont encore indisponibles.':'Aucune alerte en attente parmi les contrôles disponibles.';
  const ul=document.createElement('ul');ul.className='km16-approval-list';
  for(const task of [...pending,...unknown]){const li=document.createElement('li'),label=document.createElement('span'),link=document.createElement('a');label.textContent=(task.count===null?'À vérifier':task.count+' à traiter')+' · '+task.label;link.href=task.url;link.textContent='Ouvrir';li.append(label,link);ul.append(li);}
  if(ul.children.length)host.append(ul);
 }
+$('km16-priorities-copy').onclick=async()=>{
+ const names=[['kpi-review','Dossiers administratifs à valider'],['kpi-course-attendance','Présences à renseigner'],['kpi-course-unlinked','Réservations sans dossier'],['kpi-shirts','Tee-shirts à remettre']];
+ const lines=['KM16 · Point de pilotage','Saison : '+$('season').value,'Établi le '+new Date().toLocaleString('fr-FR'),'',...names.map(([id,label])=>label+' : '+($(id).textContent.trim()||'Indisponible')),'','Données issues des modules administratifs ; vérifier les indicateurs indisponibles.'];
+ try{await navigator.clipboard.writeText(lines.join('\\n'));$('km16-priorities-status').textContent='Point de pilotage copié. Les compteurs restent consultables ci-dessous.';}catch(e){$('km16-priorities-status').textContent='Copie impossible : '+e.message;}
+};
 $('km16-priorities-refresh').onclick=()=>{refreshCourseAlerts();refreshShirtKpi();load();};
 let overviewLoaded=false,shirtRefresh=0;
 function renderApprovalDossiers(){const host=$('km16-dossiers-list'),count=$('km16-dossiers-count');host.replaceChildren();if(!overviewLoaded){count.textContent='Chargement des dossiers…';return;}const dossiers=[];const seen=new Set();for(const c of all){for(const p of c.products||[]){if(p.external||p.approval!=='pending'||!p.order_id||seen.has(p.order_id))continue;seen.add(p.order_id);dossiers.push({client:c,product:p});}}count.textContent=dossiers.length+' dossier(s) avec validation administrative en attente · Saison '+$('season').value+($('test').checked?' · Mode test':'');if(!dossiers.length){const p=document.createElement('p');p.className='muted';p.textContent='Aucune validation administrative en attente parmi les achats présents dans ce fichier.';host.append(p);return;}const ul=document.createElement('ul');ul.className='km16-approval-list';for(const d of dossiers){const li=document.createElement('li');const label=document.createElement('span');label.textContent=[d.client.first_name,d.client.last_name].filter(Boolean).join(' ')+' · '+d.product.title+' · '+euro(d.product.net_cents||0)+' encaissé(s)';const a=document.createElement('a');a.href='./adhesion.html?admin_order='+encodeURIComponent(d.product.order_id)+'#admin';a.textContent='Vérifier / valider le dossier';a.setAttribute('aria-label','Ouvrir la validation administrative de '+d.client.first_name+' '+d.client.last_name);li.append(label,a);ul.append(li);}host.append(ul);}

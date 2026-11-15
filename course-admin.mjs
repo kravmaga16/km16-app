@@ -43,6 +43,7 @@ function render(){
  $('session-focus').hidden=!focused;
  $('session-focus-label').textContent=focused?'Séance sélectionnée : '+dateFr(focused.session_date)+' · '+focused.start_time.slice(0,5)+' · '+focused.category+' · '+focused.venue:'';
  $('results-count').textContent=shown.length+' inscription(s) affichée(s) · '+(view==='upcoming'?'séances à venir':view==='active'?'inscriptions actives':view==='cancelled'?'annulations':view==='new'?'nouveautés à traiter':'tout l’historique');
+ $('print-roster').disabled=!selectedSessionId||!shown.some(b=>b.status==='Inscrit');
  $('rows').replaceChildren();
  for(const b of shown){
   const s=byId.get(b.session_id),tr=document.createElement('tr');
@@ -96,6 +97,17 @@ for(const id of ['filter-date','filter-course','filter-status'])$(id).onchange=r
 $('filter-search').oninput=render;
 for(const [id,value] of [['show-new','new'],['show-upcoming','upcoming'],['show-active','active'],['show-cancelled','cancelled'],['show-all','all']])$(id).onclick=()=>{view=value;render();};
 $('clear-session-focus').onclick=()=>{selectedSessionId=null;view='upcoming';render();};
+$('print-roster').onclick=()=>{
+ const selected=sessions.find(s=>s.id===selectedSessionId);if(!selected)return;
+ const participants=bookings.filter(b=>b.session_id===selected.id&&b.status==='Inscrit').sort((a,b)=>(a.last_name||'').localeCompare(b.last_name||'','fr'));
+ const w=window.open('','_blank','noopener,noreferrer,width=900,height=700');if(!w){status('Autorisez les fenêtres surgissantes pour imprimer la liste.',true);return;}
+ const d=w.document;d.title='KM16 · Émargement '+dateFr(selected.session_date);const style=d.createElement('style');style.textContent='body{font:15px system-ui,sans-serif;margin:30px;color:#222}h1{font-size:24px}table{width:100%;border-collapse:collapse}th,td{border:1px solid #888;padding:12px;text-align:left}th:last-child,td:last-child{width:120px}p{margin:8px 0 22px}';d.head.append(style);
+ const h=d.createElement('h1');h.textContent='KM16 · Liste d’émargement';d.body.append(h);
+ const info=d.createElement('p');info.textContent=[dateFr(selected.session_date),selected.start_time?.slice(0,5)+'–'+selected.end_time?.slice(0,5),selected.category,selected.venue].join(' · ');d.body.append(info);
+ const count=d.createElement('p');count.textContent=participants.length+' inscrit(s) actif(s) · Présence à cocher sur papier';d.body.append(count);
+ const table=d.createElement('table');const head=d.createElement('tr');for(const label of ['N°','Nom','Prénom','Présent(e)']){const th=d.createElement('th');th.textContent=label;head.append(th);}table.append(head);
+ participants.forEach((b,i)=>{const tr=d.createElement('tr');for(const v of [String(i+1),b.last_name||'',b.first_name||'','☐']){const td=d.createElement('td');td.textContent=v;tr.append(td);}table.append(tr);});d.body.append(table);d.close();w.focus();w.print();
+};
 $('filter-today').onclick=()=>{selectedSessionId=null;$('filter-date').value=todayParis();view='upcoming';render();};
 $('reset').onclick=()=>{selectedSessionId=null;for(const id of ['filter-date','filter-course','filter-status','filter-search'])$(id).value='';view='upcoming';render()};
 $('refresh').onclick=load;

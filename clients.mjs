@@ -25,9 +25,9 @@ async function refreshCourseAlerts(){
   const response=await fetch('https://tlfewpbgbwesdriklxzb.supabase.co/functions/v1/km16-course-bookings',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+current.access_token},body:JSON.stringify({action:'admin_list'})});
   const result=await response.json();if(!response.ok)throw Error(result.error||'Réservations indisponibles');
   if(!Array.isArray(result.bookings)||!Array.isArray(result.sessions))throw Error('Réponse des cours inattendue');
-  const [links,attendance]=await Promise.all([client.from('km16_booking_member_links').select('booking_id'),client.from('km16_course_attendance').select('booking_id')]);
-  if(links.error)throw links.error;if(attendance.error)throw attendance.error;
-  const linked=new Set((links.data||[]).map(x=>x.booking_id)),recorded=new Set((attendance.data||[]).map(x=>x.booking_id));
+  const [links,attendance,externalLinks]=await Promise.all([client.from('km16_booking_member_links').select('booking_id'),client.from('km16_course_attendance').select('booking_id'),client.from('km16_booking_external_links').select('booking_id')]);
+  if(links.error)throw links.error;if(attendance.error)throw attendance.error;if(externalLinks.error)throw externalLinks.error;
+  const linked=new Set([...(links.data||[]),...(externalLinks.data||[])].map(x=>x.booking_id)),recorded=new Set((attendance.data||[]).map(x=>x.booking_id));
   const dates=new Map(result.sessions.map(x=>[x.id,x.session_date]));const today=new Intl.DateTimeFormat('en-CA',{timeZone:'Europe/Paris',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
   const active=result.bookings.filter(x=>x.status==='Inscrit');
   put(String(active.filter(x=>!linked.has(x.id)).length),String(active.filter(x=>dates.has(x.session_id)&&dates.get(x.session_id)<today&&!recorded.has(x.id)).length),'Suivi des cours actualisé à '+new Date().toLocaleTimeString('fr-FR')+'.');

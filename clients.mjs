@@ -17,7 +17,7 @@ function showSeason(){
 let courseAlertRequest=0;
 async function refreshCourseAlerts(){
  const request=++courseAlertRequest;
- const put=(a,b,msg)=>{if(request!==courseAlertRequest)return;$('kpi-course-unlinked').textContent=a;$('kpi-course-attendance').textContent=b;$('kpi-course-status').textContent=msg;};
+ const put=(a,b,msg)=>{if(request!==courseAlertRequest)return;$('kpi-course-unlinked').textContent=a;$('kpi-course-attendance').textContent=b;$('kpi-course-status').textContent=msg;renderPriorities();};
  if(session?.user?.email?.toLowerCase()!==ADMIN){put('—','—','Accès administrateur requis.');return;}
  put('…','…','Actualisation des réservations et des présences…');
  try{
@@ -33,9 +33,26 @@ async function refreshCourseAlerts(){
   put(String(active.filter(x=>!linked.has(x.id)).length),String(active.filter(x=>dates.has(x.session_id)&&dates.get(x.session_id)<today&&!recorded.has(x.id)).length),'Suivi des cours actualisé à '+new Date().toLocaleTimeString('fr-FR')+'.');
  }catch(e){put('—','—','Suivi des cours indisponible : '+e.message);}
 }
+function renderPriorities(){
+ const host=$('km16-priorities-list');if(!host)return;host.replaceChildren();
+ const value=id=>{const v=$ (id)?.textContent?.trim();return v&&/^\\d+$/.test(v)?Number(v):null;};
+ const tasks=[
+  {label:'Dossiers administratifs à valider',count:value('kpi-review'),url:'./clients.html#km16-dossiers',priority:1},
+  {label:'Présences des cours passés à renseigner',count:value('kpi-course-attendance'),url:'./course-admin.html?view=attendance-pending',priority:1},
+  {label:'Réservations à associer aux adhérents',count:value('kpi-course-unlinked'),url:'./course-admin.html?view=unlinked',priority:2},
+  {label:'Tee-shirts à remettre',count:value('kpi-shirts'),url:'./tee-shirts.html#admin',priority:2}
+ ];
+ const pending=tasks.filter(t=>t.count!==null&&t.count>0).sort((a,b)=>a.priority-b.priority||b.count-a.count);
+ const unknown=tasks.filter(t=>t.count===null);
+ $('km16-priorities-status').textContent=pending.length?pending.length+' catégorie(s) nécessitent une intervention.':unknown.length?'Certaines données sont encore indisponibles.':'Aucune alerte en attente parmi les contrôles disponibles.';
+ const ul=document.createElement('ul');ul.className='km16-approval-list';
+ for(const task of [...pending,...unknown]){const li=document.createElement('li'),label=document.createElement('span'),link=document.createElement('a');label.textContent=(task.count===null?'À vérifier':task.count+' à traiter')+' · '+task.label;link.href=task.url;link.textContent='Ouvrir';li.append(label,link);ul.append(li);}
+ if(ul.children.length)host.append(ul);
+}
+$('km16-priorities-refresh').onclick=()=>{refreshCourseAlerts();refreshShirtKpi();load();};
 let overviewLoaded=false,shirtRefresh=0;
 function renderApprovalDossiers(){const host=$('km16-dossiers-list'),count=$('km16-dossiers-count');host.replaceChildren();if(!overviewLoaded){count.textContent='Chargement des dossiers…';return;}const dossiers=[];const seen=new Set();for(const c of all){for(const p of c.products||[]){if(p.external||p.approval!=='pending'||!p.order_id||seen.has(p.order_id))continue;seen.add(p.order_id);dossiers.push({client:c,product:p});}}count.textContent=dossiers.length+' dossier(s) avec validation administrative en attente · Saison '+$('season').value+($('test').checked?' · Mode test':'');if(!dossiers.length){const p=document.createElement('p');p.className='muted';p.textContent='Aucune validation administrative en attente parmi les achats présents dans ce fichier.';host.append(p);return;}const ul=document.createElement('ul');ul.className='km16-approval-list';for(const d of dossiers){const li=document.createElement('li');const label=document.createElement('span');label.textContent=[d.client.first_name,d.client.last_name].filter(Boolean).join(' ')+' · '+d.product.title+' · '+euro(d.product.net_cents||0)+' encaissé(s)';const a=document.createElement('a');a.href='./adhesion.html?admin_order='+encodeURIComponent(d.product.order_id)+'#admin';a.textContent='Vérifier / valider le dossier';a.setAttribute('aria-label','Ouvrir la validation administrative de '+d.client.first_name+' '+d.client.last_name);li.append(label,a);ul.append(li);}host.append(ul);}
-function renderOverview(){renderApprovalDossiers();const put=(id,v)=>{$(id).textContent=v;};if(!overviewLoaded){for(const id of ['kpi-members','kpi-net','kpi-review'])put(id,'—');return;}const pendingOrders=new Set();for(const c of all){for(const p of c.products||[]){if(!p.external&&p.approval==='pending'&&p.order_id)pendingOrders.add(p.order_id);}}const review=pendingOrders.size;put('kpi-members',String(all.length));put('kpi-net',euro(all.reduce((sum,c)=>sum+(c.amounts?.net_cents||0),0)));put('kpi-review',String(review));$('kpi-members-note').textContent='Fiches du fichier · saison '+$('season').value;$('kpi-net-note').textContent=($('test').checked?'Mode TEST · ':'')+'Hors imports Sportigo/Fighty et boutique';$('kpi-review-note').textContent='Validations administratives en attente · '+($('test').checked?'mode test':'achats réels');$('kpi-updated').textContent='Données du fichier actualisées à '+new Date().toLocaleTimeString('fr-FR');}
+function renderOverview(){renderApprovalDossiers();const put=(id,v)=>{$(id).textContent=v;};if(!overviewLoaded){for(const id of ['kpi-members','kpi-net','kpi-review'])put(id,'—');return;}const pendingOrders=new Set();for(const c of all){for(const p of c.products||[]){if(!p.external&&p.approval==='pending'&&p.order_id)pendingOrders.add(p.order_id);}}const review=pendingOrders.size;put('kpi-members',String(all.length));put('kpi-net',euro(all.reduce((sum,c)=>sum+(c.amounts?.net_cents||0),0)));put('kpi-review',String(review));$('kpi-members-note').textContent='Fiches du fichier · saison '+$('season').value;$('kpi-net-note').textContent=($('test').checked?'Mode TEST · ':'')+'Hors imports Sportigo/Fighty et boutique';$('kpi-review-note').textContent='Validations administratives en attente · '+($('test').checked?'mode test':'achats réels');$('kpi-updated').textContent='Données du fichier actualisées à '+new Date().toLocaleTimeString('fr-FR');renderPriorities();}
 async function refreshShirtKpi(){if(session?.user.email?.toLowerCase()!==ADMIN)return;const ticket=++shirtRefresh;putShirts('…','Consultation des commandes réelles…');try{const {data:{session:current}}=await client.auth.getSession();if(!current)throw Error('Session expirée');const r=await fetch('https://tlfewpbgbwesdriklxzb.supabase.co/functions/v1/km16-shirts',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+current.access_token},body:JSON.stringify({action:'list'})});const data=await r.json();if(!r.ok||!Array.isArray(data.orders))throw Error(data.error||'Commandes indisponibles');if(ticket!==shirtRefresh)return;const pending=data.orders.filter(o=>o.livemode===true&&o.status==='paid'&&!o.collected_at).length;putShirts(String(pending),'Commandes réelles payées · non retirées');}catch(e){if(ticket===shirtRefresh)putShirts('—','Données indisponibles · ouvrir la boutique');}}
 function putShirts(value,note){$('kpi-shirts').textContent=value;$('kpi-shirts-note').textContent=note;}
 const euro=n=>new Intl.NumberFormat('fr-FR',{style:'currency',currency:'EUR'}).format(n/100);

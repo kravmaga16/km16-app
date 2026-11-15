@@ -73,7 +73,7 @@ $('login-form').onsubmit=async e=>{e.preventDefault();try{const {error}=await su
 $('logout').onclick=()=>supa.auth.signOut();
 for(const id of ['filter-date','filter-course','filter-status'])$(id).onchange=render;
 $('filter-search').oninput=render;
-for(const [id,value] of [['show-upcoming','upcoming'],['show-active','active'],['show-cancelled','cancelled'],['show-all','all']])$(id).onclick=()=>{view=value;render();};
+for(const [id,value] of [['show-new','new'],['show-upcoming','upcoming'],['show-active','active'],['show-cancelled','cancelled'],['show-all','all']])$(id).onclick=()=>{view=value;render();};
 $('reset').onclick=()=>{for(const id of ['filter-date','filter-course','filter-status','filter-search'])$(id).value='';view='upcoming';render()};
 $('refresh').onclick=load;
 $('session-form').onsubmit=async e=>{e.preventDefault();const date=$('session-date').value,category=$('session-category').value.trim(),start=$('session-start').value,end=$('session-end').value,venue=$('session-venue').value.trim();try{await call('admin_session',{session_date:date,course_key:JSON.stringify([category,start,end,venue]),category,start_time:start,end_time:end,venue});status('Séance ajoutée.');await load();}catch(e){status(e.message,true)}};

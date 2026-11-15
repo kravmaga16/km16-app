@@ -53,6 +53,8 @@ function render(){
  $('sessions').textContent=sessions.filter(s=>s.enabled&&s.session_date>=today).length;
  $('upcoming').textContent=bookings.filter(b=>b.status==='Inscrit'&&byId.get(b.session_id)?.session_date>=today).length;
  $('today-count').textContent=bookings.filter(b=>b.status==='Inscrit'&&byId.get(b.session_id)?.session_date===today).length;
+ $('unlinked-count').textContent=bookings.filter(b=>b.status==='Inscrit'&&!memberLinks.has(b.id)).length;
+ $('attendance-pending-count').textContent=bookings.filter(b=>b.status==='Inscrit'&&byId.get(b.session_id)?.session_date<today&&!attendance.has(b.id)).length;
  const selectedCourse=$('filter-course').value;
  const options=[...new Set(sessions.map(s=>s.category+' · '+s.venue))].sort((a,b)=>a.localeCompare(b,'fr'));
  $('filter-course').replaceChildren(new Option('Tous les cours',''));
@@ -66,6 +68,8 @@ function render(){
   if(view==='new'&&b.read_at)return false;
   if(view==='active'&&b.status!=='Inscrit')return false;
   if(view==='cancelled'&&b.status!=='Annulé')return false;
+  if(view==='unlinked'&&(b.status!=='Inscrit'||memberLinks.has(b.id)))return false;
+  if(view==='attendance-pending'&&(b.status!=='Inscrit'||s.session_date>=today||attendance.has(b.id)))return false;
   const season=$('filter-season').value;const inSeason=!season||(season==='2026/2027'?s.session_date>='2026-09-07'&&s.session_date<='2027-06-24':season==='2027/2028'?s.session_date>='2027-09-06'&&s.session_date<'2028-09-01':true);
   return inSeason&&(!$('filter-date').value||s.session_date===$('filter-date').value)&&
    (!$('filter-course').value||s.category+' · '+s.venue===$('filter-course').value)&&
@@ -75,7 +79,7 @@ function render(){
  const focused=sessions.find(s=>s.id===selectedSessionId);
  $('session-focus').hidden=!focused;
  $('session-focus-label').textContent=focused?'Séance sélectionnée : '+dateFr(focused.session_date)+' · '+focused.start_time.slice(0,5)+' · '+focused.category+' · '+focused.venue:'';
- $('results-count').textContent=shown.length+' inscription(s) affichée(s) · '+(view==='upcoming'?'séances à venir':view==='active'?'inscriptions actives':view==='cancelled'?'annulations':view==='new'?'nouveautés à traiter':'tout l’historique');
+ $('results-count').textContent=shown.length+' inscription(s) affichée(s) · '+(view==='upcoming'?'séances à venir':view==='active'?'inscriptions actives':view==='cancelled'?'annulations':view==='new'?'nouveautés à traiter':view==='unlinked'?'inscriptions sans dossier':view==='attendance-pending'?'présences passées à renseigner':'tout l’historique');
  $('print-roster').disabled=!selectedSessionId||!shown.some(b=>b.status==='Inscrit');
  $('rows').replaceChildren();
  for(const b of shown){
@@ -98,7 +102,7 @@ function render(){
       const {data:{user}}=await supa.auth.getUser();if(!user)throw Error('Session expirée');
       const value=select.value==='true';const {error}=await supa.from('km16_course_attendance').upsert({booking_id:b.id,present:value,recorded_by:user.id,recorded_at:new Date().toISOString()},{onConflict:'booking_id'});if(error)throw error;attendance.set(b.id,value);
      }
-     status('Présence enregistrée pour '+b.first_name+' '+b.last_name+'.');
+     status('Présence enregistrée pour '+b.first_name+' '+b.last_name+'.');render();
     }catch(e){select.value=previous;status('Enregistrement de présence impossible : '+e.message,true);}finally{select.disabled=false;}
    };
    presence.append(select);
@@ -143,7 +147,7 @@ function render(){
   $('session-rows').append(tr);
  }
  if(!upcoming.length){const tr=document.createElement('tr'),td=document.createElement('td');td.colSpan=5;td.textContent='Aucune séance future';tr.append(td);$('session-rows').append(tr);}
- for(const [id,value] of [['show-new','new'],['show-upcoming','upcoming'],['show-active','active'],['show-cancelled','cancelled'],['show-all','all']]){
+ for(const [id,value] of [['show-new','new'],['show-upcoming','upcoming'],['show-active','active'],['show-cancelled','cancelled'],['show-all','all'],['show-unlinked','unlinked'],['show-attendance-pending','attendance-pending']]){
   $(id).classList.toggle('primary',view===value);$(id).setAttribute('aria-pressed',String(view===value));
  }
 }

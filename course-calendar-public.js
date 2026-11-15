@@ -13,6 +13,11 @@
   button.className='cta';
   button.href='./course-booking.html';
   button.textContent='Réserver un cours';
+  button.addEventListener('click',()=>{
+    const selected=document.querySelector('#planning-filters button[aria-pressed="true"]')?.textContent?.trim();
+    if(selected&&selected!=='Tous')button.href='./course-booking.html?groupe='+encodeURIComponent(selected);
+    else button.href='./course-booking.html';
+  });
   section.append(title,description,button);
   document.getElementById('planning-lead')?.insertAdjacentElement('afterend',section);
 })();

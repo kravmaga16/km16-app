@@ -76,13 +76,23 @@ function render(){
   const linkButton=document.createElement('button');linkButton.type='button';linkButton.textContent=linked?'Dossier associé · Modifier':'Associer un dossier';
   linkButton.setAttribute('aria-label','Associer la réservation de '+b.first_name+' '+b.last_name+' à un dossier adhérent');
   linkButton.onclick=async()=>{
-   const entered=prompt('Identifiant UUID du dossier d’adhésion KM16 pour '+b.first_name+' '+b.last_name+' (laisser vide pour retirer le lien)',linked||'');if(entered===null)return;
-   const id=entered.trim();if(id&&!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id)){status('Identifiant de dossier invalide.',true);return;}
+   linkButton.disabled=true;
+   let id;
+   try{
+    const {data:candidates,error}=await supa.rpc('km16_admin_member_candidates',{p_booking_id:b.id});if(error)throw error;
+    const choices=candidates||[];
+    const options=choices.map((c,i)=>[String(i+1),c.first_name+' '+c.last_name,c.birth_date?'né(e) le '+c.birth_date.split('-').reverse().join('/'):'naissance non renseignée',c.email||'sans e-mail','saison '+(c.season_id||'non renseignée'),c.title||'adhésion'].join(' · '));
+    if(!choices.length){status('Aucun dossier portant exactement ce prénom et ce nom. Aucun rapprochement automatique.',true);return;}
+    const selection=prompt('Confirmez l’identité avant toute association. Réservation : '+b.first_name+' '+b.last_name+' / '+b.email+'\\n\\n'+options.join('\\n')+'\\n\\nSaisissez le numéro du dossier (1 à '+choices.length+').'+(linked?'\\nSaisissez 0 pour retirer l’association.':''),'');
+    if(selection===null)return;
+    const number=Number(selection.trim());if(!/^\\d+$/.test(selection.trim())||number<0||number>choices.length||(number===0&&!linked)){status('Choix de dossier invalide.',true);return;}
+    id=number===0?'':choices[number-1].order_id;
+   }catch(e){status('Recherche des dossiers impossible : '+e.message,true);return;}finally{linkButton.disabled=false;}
    linkButton.disabled=true;
    try{
     if(!id){const {error}=await supa.from('km16_booking_member_links').delete().eq('booking_id',b.id);if(error)throw error;memberLinks.delete(b.id);}
     else{const {data:{user}}=await supa.auth.getUser();if(!user)throw Error('Session expirée');const {error}=await supa.from('km16_booking_member_links').upsert({booking_id:b.id,membership_order_id:id,linked_by:user.id,linked_at:new Date().toISOString()},{onConflict:'booking_id'});if(error)throw error;memberLinks.set(b.id,id);}
-    status(id?'Dossier associé après contrôle du nom et du prénom.':'Association supprimée.');render();
+    status(id?'Dossier associé après sélection et vérification manuelle.':'Association supprimée.');render();
    }catch(e){status('Association impossible : '+e.message,true);}finally{linkButton.disabled=false;}
   };linkCell.append(linkButton);tr.append(linkCell);
   $('rows').append(tr);

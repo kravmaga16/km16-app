@@ -67,19 +67,19 @@ async function refreshExternalPayments(){
   const [{data,error},{data:auditRows,error:auditError}]=await Promise.all([client.rpc('km16_admin_external_payment_summary',{p_season:season}),client.rpc('km16_admin_external_payment_audit',{p_season:season})]);if(error)throw error;if(auditError)throw auditError;
   if(request!==externalPaymentRequest||season!==$('season').value)return;
   const rows=Array.isArray(data)?data:[];
-  for(const source of ['Fighty','Sportigo']){
+  for(const source of ['Fighty','Sportigo','Stripe']){
    const entry=rows.find(x=>x.source===source)||{};
    const count=Number(entry.transaction_count||0),paid=Number(entry.paid_cents||0),refund=Number(entry.refunded_cents||0);
    const card=document.createElement('div');card.className='money-card';
    const title=document.createElement('div');title.className='money-label';title.textContent=source;
    const value=document.createElement('strong');value.className='money-value';value.textContent=count?euro(paid-refund):'Non renseigné';
-   const detail=document.createElement('p');detail.className='muted';detail.textContent=count?count+' transaction(s) · Encaissé '+euro(paid)+' · Remboursé '+euro(refund)+' · À vérifier '+Number(entry.unmatched_count||0):'Aucun export de transactions importé · Montant inconnu';
+   const detail=document.createElement('p');detail.className='muted';detail.textContent=count?count+' transaction(s) · Encaissé '+euro(paid)+' · Remboursé '+euro(refund)+' · Sans dossier '+Number(entry.unmatched_count||0)+(source==='Stripe'?' · À rapprocher des paiements KM16 avant consolidation':''):'Aucun export de transactions importé · Montant inconnu';
    card.append(title,value,detail);host.append(card);
   }
   const audit=(auditRows||[])[0]||{};
   const total=Number(audit.total_transactions||0),unlinked=Number(audit.unlinked_transactions||0),early=Number(audit.preseason_transactions||0),unverified=Number(audit.unverified_platform_transactions||0);
-  note.textContent=season==='2026/2027'?(total?total+' opérations importées · '+unlinked+' sans dossier rapproché · '+early+' antérieures au 2 juin 2026 · '+unverified+' avec plateforme à confirmer. Exception 2026/2027 : encaissements pris en compte dès le 2 juin. Montants provisoires, hors total KM16/Stripe.':'Aucune transaction externe importée pour cette saison.'):'Sportigo et Fighty ne sont plus utilisés à partir de 2027/2028. Leurs historiques restent disponibles sur la saison 2026/2027.';
-  if(unverified){const sportigo=host.querySelectorAll('.money-card')[1];if(sportigo){const warning=document.createElement('p');warning.className='muted';warning.textContent='Source à confirmer : cet export est intitulé Stripe unified payments, et non Sportigo.';sportigo.append(warning);}}
+  note.textContent=season==='2026/2027'?(total?total+' opérations importées · '+unlinked+' sans dossier rapproché · '+early+' antérieures au 2 juin 2026 · '+unverified+' transactions Stripe à rapprocher. Exception 2026/2027 : encaissements pris en compte dès le 2 juin. Montants provisoires, hors total KM16/Stripe.':'Aucune transaction externe importée pour cette saison.'):'Sportigo et Fighty ne sont plus utilisés à partir de 2027/2028. Leurs historiques restent disponibles sur la saison 2026/2027.';
+  if(unverified){const stripe=host.querySelectorAll('.money-card')[2];if(stripe){const warning=document.createElement('p');warning.className='muted';warning.textContent='Export Stripe direct confirmé · rapprochement avec les encaissements KM16 requis pour éviter les doublons.';stripe.append(warning);}}
  }catch(e){if(request===externalPaymentRequest)note.textContent='Paiements externes indisponibles : '+e.message;}
 }
 const moneyFields=[['total_cents','Achats'],['gross_cents','Encaissé brut'],['refunded_cents','Remboursements'],['net_cents','Encaissé net'],['future_cents','Échéances futures'],['planned_cents','CA planifié · net + futur'],['overdue_cents','Échues impayées'],['cancelled_cents','Échéances annulées'],['disputed_cents','Montants contestés inclus dans le net']];

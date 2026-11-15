@@ -20,6 +20,7 @@ function render(){
  $('new').textContent=bookings.filter(b=>!b.read_at).length;
  $('sessions').textContent=sessions.filter(s=>s.enabled&&s.session_date>=today).length;
  $('upcoming').textContent=bookings.filter(b=>b.status==='Inscrit'&&byId.get(b.session_id)?.session_date>=today).length;
+ $('today-count').textContent=bookings.filter(b=>b.status==='Inscrit'&&byId.get(b.session_id)?.session_date===today).length;
  const selectedCourse=$('filter-course').value;
  const options=[...new Set(sessions.map(s=>s.category+' · '+s.venue))].sort();
  $('filter-course').replaceChildren(new Option('Tous les cours',''));
@@ -29,6 +30,7 @@ function render(){
  const shown=bookings.filter(b=>{
   const s=byId.get(b.session_id);if(!s)return false;
   if(view==='upcoming'&&s.session_date<today)return false;
+  if(view==='new'&&b.read_at)return false;
   if(view==='active'&&b.status!=='Inscrit')return false;
   if(view==='cancelled'&&b.status!=='Annulé')return false;
   return (!$('filter-date').value||s.session_date===$('filter-date').value)&&
@@ -36,7 +38,7 @@ function render(){
    (!$('filter-status').value||($('filter-status').value==='new'?!b.read_at:b.status===$('filter-status').value))&&
    (!search||[b.first_name,b.last_name,b.email,b.last_name+' '+b.first_name,b.first_name+' '+b.last_name].join(' ').toLocaleLowerCase('fr-FR').includes(search));
  }).sort((a,b)=>{const x=byId.get(a.session_id),y=byId.get(b.session_id);return x.session_date.localeCompare(y.session_date)||x.start_time.localeCompare(y.start_time)||a.last_name.localeCompare(b.last_name,'fr')});
- $('results-count').textContent=shown.length+' inscription(s) affichée(s) · '+(view==='upcoming'?'séances à venir':view==='active'?'inscriptions actives':view==='cancelled'?'annulations':'tout l’historique');
+ $('results-count').textContent=shown.length+' inscription(s) affichée(s) · '+(view==='upcoming'?'séances à venir':view==='active'?'inscriptions actives':view==='cancelled'?'annulations':view==='new'?'nouveautés à traiter':'tout l’historique');
  $('rows').replaceChildren();
  for(const b of shown){
   const s=byId.get(b.session_id),tr=document.createElement('tr');
@@ -61,7 +63,7 @@ function render(){
   $('session-rows').append(tr);
  }
  if(!upcoming.length){const tr=document.createElement('tr'),td=document.createElement('td');td.colSpan=4;td.textContent='Aucune séance future';tr.append(td);$('session-rows').append(tr);}
- for(const [id,value] of [['show-upcoming','upcoming'],['show-active','active'],['show-cancelled','cancelled'],['show-all','all']]){
+ for(const [id,value] of [['show-new','new'],['show-upcoming','upcoming'],['show-active','active'],['show-cancelled','cancelled'],['show-all','all']]){
   $(id).classList.toggle('primary',view===value);$(id).setAttribute('aria-pressed',String(view===value));
  }
 }

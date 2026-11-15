@@ -33,6 +33,21 @@ async function refreshCourseAlerts(){
   put(String(active.filter(x=>!linked.has(x.id)).length),String(active.filter(x=>dates.has(x.session_id)&&dates.get(x.session_id)<today&&!recorded.has(x.id)).length),'Suivi des cours actualisé à '+new Date().toLocaleTimeString('fr-FR')+'.');
  }catch(e){put('—','—','Suivi des cours indisponible : '+e.message);}
 }
+const KM16_DEADLINES=[
+ {date:'2026-12-20',end:'2027-01-03',label:'Fermeture de fin d’année',detail:'Club fermé du 20 décembre 2026 au 3 janvier 2027 inclus'},
+ {date:'2027-06-01',label:'Ouverture des réabonnements',detail:'Réabonnements possibles à partir du 1er juin 2027'},
+ {date:'2027-06-24',label:'Dernier jour de cours',detail:'Fermeture après les cours du jeudi 24 juin 2027'},
+ {date:'2027-09-06',label:'Reprise des cours',detail:'Réouverture le lundi 6 septembre 2027'}
+];
+const km16ParisToday=()=>new Intl.DateTimeFormat('en-CA',{timeZone:'Europe/Paris',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
+const km16DateFr=d=>d.split('-').reverse().join('/');
+function km16UpcomingDeadlines(){const today=km16ParisToday();return KM16_DEADLINES.filter(d=>(d.end||d.date)>=today);}
+function renderKm16Deadlines(){const host=$('km16-deadlines-list');if(!host)return;host.replaceChildren();const today=km16ParisToday(),items=km16UpcomingDeadlines();
+ $('km16-deadlines-status').textContent=items.length?items.length+' échéance(s) à venir ou en cours · '+items.filter(d=>d.date<=today&&(d.end||d.date)>=today).length+' en cours.':'Aucune échéance future enregistrée dans ce calendrier.';
+ const ul=document.createElement('ul');ul.className='km16-approval-list';for(const item of items){const li=document.createElement('li'),span=document.createElement('span');const active=item.date<=today&&(item.end||item.date)>=today;span.textContent=(active?'En cours · ':'À venir · ')+km16DateFr(item.date)+(item.end?' au '+km16DateFr(item.end):'')+' · '+item.label+' — '+item.detail;li.append(span);ul.append(li);}host.append(ul);
+}
+$('km16-deadlines-copy').onclick=async()=>{const lines=['KM16 · Échéances et fermetures','Établi le '+new Date().toLocaleString('fr-FR'),...km16UpcomingDeadlines().map(x=>km16DateFr(x.date)+(x.end?' au '+km16DateFr(x.end):'')+' · '+x.detail)];try{await navigator.clipboard.writeText(lines.join('\\n'));$('km16-deadlines-status').textContent='Échéances copiées.';}catch(e){$('km16-deadlines-status').textContent='Copie impossible : '+e.message;}};
+renderKm16Deadlines();
 const KM16_ACTIONS=[
  {id:'review',label:'Dossiers administratifs à valider',kpi:'kpi-review',url:'./clients.html#km16-dossiers',priority:1},
  {id:'attendance',label:'Présences des cours passés à renseigner',kpi:'kpi-course-attendance',url:'./course-admin.html?view=attendance-pending',priority:1},

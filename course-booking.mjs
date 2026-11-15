@@ -85,5 +85,5 @@ $('cancel-form').onsubmit=async e=>{
  finally{$('cancel-submit').disabled=false;}
 };
 const token=new URLSearchParams(location.search).get('cancel');
-if(token){showCancellation(token);}
+if(token){history.replaceState(null,'',location.pathname);showCancellation(token);}
 load();

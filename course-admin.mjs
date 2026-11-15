@@ -2,7 +2,7 @@ const $=id=>document.getElementById(id);
 const ADMIN='alexandre.marchat@gmail.com';
 const supa=window.supabase.createClient('https://tlfewpbgbwesdriklxzb.supabase.co','sb_publishable_OGRSgobOGf54jlfmXGmS8g_04Ftvfsn',{auth:{storageKey:'km16-video-auth',detectSessionInUrl:false,flowType:'implicit'}});
 const endpoint='https://tlfewpbgbwesdriklxzb.supabase.co/functions/v1/km16-course-bookings';
-let session=null,bookings=[],sessions=[],busy=false,attendance=new Map();
+let session=null,bookings=[],sessions=[],busy=false,attendance=new Map(),memberLinks=new Map();
 const status=(msg,error=false)=>{$('status').textContent=msg;$('status').className=error?'status error':'status';};
 async function call(action,other={}){
  const {data:{session:current}}=await supa.auth.getSession();if(!current)throw Error('Session expirée');
@@ -72,9 +72,22 @@ function render(){
    presence.append(select);
   }else presence.textContent='—';
   tr.append(presence);
+  const linkCell=document.createElement('td');const linked=memberLinks.get(b.id);
+  const linkButton=document.createElement('button');linkButton.type='button';linkButton.textContent=linked?'Dossier associé · Modifier':'Associer un dossier';
+  linkButton.setAttribute('aria-label','Associer la réservation de '+b.first_name+' '+b.last_name+' à un dossier adhérent');
+  linkButton.onclick=async()=>{
+   const entered=prompt('Identifiant UUID du dossier d’adhésion KM16 pour '+b.first_name+' '+b.last_name+' (laisser vide pour retirer le lien)',linked||'');if(entered===null)return;
+   const id=entered.trim();if(id&&!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id)){status('Identifiant de dossier invalide.',true);return;}
+   linkButton.disabled=true;
+   try{
+    if(!id){const {error}=await supa.from('km16_booking_member_links').delete().eq('booking_id',b.id);if(error)throw error;memberLinks.delete(b.id);}
+    else{const {data:{user}}=await supa.auth.getUser();if(!user)throw Error('Session expirée');const {error}=await supa.from('km16_booking_member_links').upsert({booking_id:b.id,membership_order_id:id,linked_by:user.id,linked_at:new Date().toISOString()},{onConflict:'booking_id'});if(error)throw error;memberLinks.set(b.id,id);}
+    status(id?'Dossier associé après contrôle du nom et du prénom.':'Association supprimée.');render();
+   }catch(e){status('Association impossible : '+e.message,true);}finally{linkButton.disabled=false;}
+  };linkCell.append(linkButton);tr.append(linkCell);
   $('rows').append(tr);
  }
- if(!shown.length){const tr=document.createElement('tr'),td=document.createElement('td');td.colSpan=7;td.textContent='Aucune inscription pour cette sélection';tr.append(td);$('rows').append(tr);}
+ if(!shown.length){const tr=document.createElement('tr'),td=document.createElement('td');td.colSpan=8;td.textContent='Aucune inscription pour cette sélection';tr.append(td);$('rows').append(tr);}
  $('mark-read').disabled=busy||!shown.some(b=>!b.read_at);
  $('mark-read').onclick=async()=>{if(busy)return;const ids=shown.filter(b=>!b.read_at).map(b=>b.id);if(!ids.length)return;$('mark-read').disabled=true;try{await call('admin_read',{ids});await load();}catch(e){status(e.message,true);$('mark-read').disabled=false;}};
  const counts=new Map();
@@ -110,7 +123,7 @@ function render(){
   $(id).classList.toggle('primary',view===value);$(id).setAttribute('aria-pressed',String(view===value));
  }
 }
-async function load(){if(busy||!session)return;busy=true;try{const data=await call('admin_list');bookings=data.bookings;sessions=data.sessions;const attendanceResult=await supa.from('km16_course_attendance').select('booking_id,present');if(attendanceResult.error)throw attendanceResult.error;attendance=new Map((attendanceResult.data||[]).map(row=>[row.booking_id,row.present]));$('updated').textContent='Mis à jour à '+new Date().toLocaleTimeString('fr-FR')+' · Actualisation toutes les 30 secondes';status('');}catch(e){status(e.message,true)}finally{busy=false;render();}}
+async function load(){if(busy||!session)return;busy=true;try{const data=await call('admin_list');bookings=data.bookings;sessions=data.sessions;const attendanceResult=await supa.from('km16_course_attendance').select('booking_id,present');if(attendanceResult.error)throw attendanceResult.error;attendance=new Map((attendanceResult.data||[]).map(row=>[row.booking_id,row.present]));const linksResult=await supa.from('km16_booking_member_links').select('booking_id,membership_order_id');if(linksResult.error)throw linksResult.error;memberLinks=new Map((linksResult.data||[]).map(row=>[row.booking_id,row.membership_order_id]));$('updated').textContent='Mis à jour à '+new Date().toLocaleTimeString('fr-FR')+' · Actualisation toutes les 30 secondes';status('');}catch(e){status(e.message,true)}finally{busy=false;render();}}
 async function authState(s){session=s;const admin=s?.user?.email?.toLowerCase()===ADMIN;$('login').hidden=!!s;$('workspace').hidden=!admin;$('identity').textContent=admin?s.user.email:'';if(s&&!admin)$('global-status').textContent='Accès réservé à l’administrateur KM16';if(admin)await load();}
 $('login-form').onsubmit=async e=>{e.preventDefault();try{const {error}=await supa.auth.signInWithPassword({email:$('email').value.trim(),password:$('password').value});if(error)throw error;}catch(e){$('global-status').textContent=e.message}finally{$('password').value=''}};
 $('logout').onclick=()=>supa.auth.signOut();

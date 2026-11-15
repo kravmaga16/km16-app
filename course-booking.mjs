@@ -43,22 +43,23 @@ if(group){
   refreshSessionChoices();
  }
 }
-const param=params.get('session');if(param&&data.sessions.some(s=>s.id===param))$('session').value=param;else if(params.has('jour')&&params.has('debut')&&params.has('categorie')&&params.has('lieu')){const dayNames=['dimanche','lundi','mardi','mercredi','jeudi','vendredi','samedi'];const normal=v=>String(v||'').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\s+/g,' ');const time=v=>{const m=String(v||'').match(/^(\d{1,2})[:hH](\d{2})$/);return m?String(Number(m[1])).padStart(2,'0')+':'+m[2]:String(v||'').slice(0,5)};const desired=normal(params.get('jour'));const match=data.sessions.find(s=>normal(dayNames[new Date(s.session_date+'T12:00:00Z').getUTCDay()])===desired&&time(s.start_time)===time(params.get('debut'))&&normal(s.category)===normal(params.get('categorie'))&&normal(s.venue)===normal(params.get('lieu')));if(match)$('session').value=match.id;else $('status').textContent='Aucune prochaine séance disponible pour ce créneau. Vous pouvez choisir une autre séance.';}$('submit').disabled=!$('session').value;if(!data.sessions.length)$('status').textContent='Aucune séance ouverte actuellement. Revenez prochainement.';}catch(e){$('status').textContent='Chargement indisponible. Réessayez plus tard.';}}
+const param=params.get('session');if(param&&data.sessions.some(s=>s.id===param))$('session').value=param;else if(params.has('jour')&&params.has('debut')&&params.has('categorie')&&params.has('lieu')){const dayNames=['dimanche','lundi','mardi','mercredi','jeudi','vendredi','samedi'];const normal=v=>String(v||'').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\s+/g,' ');const time=v=>{const m=String(v||'').match(/^(\d{1,2})[:hH](\d{2})$/);return m?String(Number(m[1])).padStart(2,'0')+':'+m[2]:String(v||'').slice(0,5)};const desired=normal(params.get('jour'));const match=data.sessions.find(s=>normal(dayNames[new Date(s.session_date+'T12:00:00Z').getUTCDay()])===desired&&time(s.start_time)===time(params.get('debut'))&&normal(s.category)===normal(params.get('categorie'))&&normal(s.venue)===normal(params.get('lieu')));if(match)$('session').value=match.id;else $('status').textContent='Aucune prochaine séance disponible pour ce créneau. Vous pouvez choisir une autre séance.';}$('submit').disabled=!$('session').value;if(!data.sessions.length)$('status').textContent='Aucune séance ouverte actuellement. Revenez prochainement.';}catch(e){$('status').textContent='Impossible de charger les séances. Vérifiez votre connexion et réessayez.';}}
 
 function cancellationUrl(token){const u=new URL('./course-booking.html',location.href);u.searchParams.set('cancel',token);return u.href;}
 function showCancellation(token){$('token').value=token;$('cancel-form').hidden=false;$('cancel-status').textContent='';$('cancel-panel').scrollIntoView({behavior:'smooth',block:'center'});}
 $('book-form').onsubmit=async e=>{
- e.preventDefault();$('submit').disabled=true;$('confirmation').hidden=true;$('status').className='';$('status').textContent='Enregistrement…';
+ e.preventDefault();$('submit').disabled=true;$('confirmation').hidden=true;$('status').className='';$('status').textContent='Enregistrement de votre inscription…';
  try{
   const selected=availableSessions.find(s=>s.id===$('session').value);
   if(!selected)throw Error('Veuillez choisir une séance avant de confirmer.');
   const j=await call('book',{session_id:$('session').value,first_name:$('first').value,last_name:$('last').value,email:$('email').value,website:$('website').value});
   const url=cancellationUrl(j.cancellation_token);
   $('booking-summary').textContent=selected?iso(selected.session_date)+' · '+selected.start_time.slice(0,5)+'–'+selected.end_time.slice(0,5)+' · '+selected.category+' · '+selected.venue:'';
-  $('status').textContent='Inscription confirmée. Conservez votre lien personnel pour pouvoir annuler.';
+  $('status').textContent='Votre place est réservée ! Conservez votre lien d’annulation ci-dessous.';
   $('cancel-link').href=url;$('token').value=j.cancellation_token;$('confirmation').hidden=false;
   sessionStorage.setItem('km16-last-cancel-link',url);
   $('book-form').hidden=true;
+  $('confirmation').scrollIntoView({behavior:'smooth',block:'start'});
  }catch(err){$('status').textContent=err.message;$('status').className='error';}
  finally{$('submit').disabled=!$('session').value||$('book-form').hidden;}
 };
@@ -75,8 +76,9 @@ $('cancel-form').onsubmit=async e=>{
  $('cancel-submit').disabled=true;$('cancel-status').className='';$('cancel-status').textContent='Annulation en cours…';
  try{
   await call('cancel',{token});
-  $('cancel-status').textContent='Inscription annulée. Votre demande a bien été enregistrée.';
+  $('cancel-status').textContent='Votre inscription est annulée. Vous pouvez réserver une autre séance si vous le souhaitez.';
   $('cancel-form').hidden=true;$('confirmation').hidden=true;$('book-form').hidden=false;$('status').textContent='';
+  $('cancel-status').scrollIntoView({behavior:'smooth',block:'center'});
   sessionStorage.removeItem('km16-last-cancel-link');
   if(new URLSearchParams(location.search).has('cancel'))history.replaceState(null,'',location.pathname);
  }catch(err){$('cancel-status').textContent=err.message;$('cancel-status').className='error';}

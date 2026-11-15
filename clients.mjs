@@ -141,15 +141,15 @@ function renderMemberQuality(){
  host.replaceChildren();if(!overviewLoaded){summary.textContent='Analyse en attente du fichier adhérents…';return;}
  const norm=v=>String(v||'').normalize('NFD').replace(/[\\u0300-\\u036f]/g,'').toLocaleLowerCase('fr-FR').replace(/[^a-z0-9]/g,'');
  const emailGroups=new Map(),nameGroups=new Map();let missingEmail=0,missingName=0;
- for(const c of all){const email=String(c.email||c.email_address||'').trim().toLocaleLowerCase('fr-FR'),name=norm(c.first_name)+'|'+norm(c.last_name);
+ for(const c of all){const email=String(c.email||'').trim().toLocaleLowerCase('fr-FR'),first=norm(c.first_name),last=norm(c.last_name);
   if(email){if(!emailGroups.has(email))emailGroups.set(email,[]);emailGroups.get(email).push(c);}else missingEmail++;
-  if(norm(c.first_name)&&norm(c.last_name)){if(!nameGroups.has(name))nameGroups.set(name,[]);nameGroups.get(name).push(c);}else missingName++;
+  if(first&&last){const key=first+'|'+last;if(!nameGroups.has(key))nameGroups.set(key,[]);nameGroups.get(key).push(c);}else missingName++;
  }
  const duplicateEmails=[...emailGroups.values()].filter(g=>g.length>1),duplicateNames=[...nameGroups.values()].filter(g=>g.length>1);
  summary.textContent=all.length+' fiches · '+duplicateEmails.length+' groupe(s) avec même e-mail · '+duplicateNames.length+' groupe(s) avec même nom et prénom · '+missingEmail+' sans e-mail · '+missingName+' avec identité incomplète.';
- const groups=[['E-mail identique (à vérifier, peut être familial)',duplicateEmails],['Nom et prénom identiques (homonymes possibles)',duplicateNames]];
+ const groups=[['E-mail identique (partage familial possible)',duplicateEmails],['Nom et prénom identiques (homonymes possibles)',duplicateNames]];
  for(const [label,items] of groups){const details=document.createElement('details'),head=document.createElement('summary');head.textContent=label+' : '+items.length+' groupe(s)';details.append(head);
-  if(!items.length){const p=document.createElement('p');p.className='muted';p.textContent='Aucune correspondance détectée.';details.append(p);}else{const ul=document.createElement('ul');ul.className='km16-approval-list';for(const group of items.slice(0,40)){const li=document.createElement('li');li.textContent=group.map(c=>(c.first_name||'')+' '+(c.last_name||'')+' ('+(c.email||c.email_address||'e-mail non renseigné')+')').join(' · ');ul.append(li);}details.append(ul);if(items.length>40){const p=document.createElement('p');p.className='muted';p.textContent='Seuls les 40 premiers groupes sont affichés.';details.append(p);}}host.append(details);}
+  if(!items.length){const p=document.createElement('p');p.className='muted';p.textContent='Aucune correspondance détectée.';details.append(p);}else{const ul=document.createElement('ul');ul.className='km16-approval-list';for(const people of items.slice(0,40)){const li=document.createElement('li');for(const c of people){const line=document.createElement('div'),name=document.createElement('span'),btn=document.createElement('button');name.textContent=[c.first_name,c.last_name].filter(Boolean).join(' ')+' · '+(c.email||'e-mail non renseigné')+' · '+(c.source||'KM16');btn.type='button';btn.textContent='Voir la fiche';btn.setAttribute('aria-label','Voir la fiche de '+c.first_name+' '+c.last_name);btn.onclick=()=>{openMemberProfile(c);$('member-profile').scrollIntoView({behavior:'smooth',block:'start'});};line.append(name,document.createTextNode(' '),btn);li.append(line);}ul.append(li);}details.append(ul);if(items.length>40){const p=document.createElement('p');p.className='muted';p.textContent='40 premiers groupes affichés.';details.append(p);}}host.append(details);}
 }
 function render(){
  if(selectedMember&&!all.includes(selectedMember))closeMemberProfile();renderOverview();communications.update();

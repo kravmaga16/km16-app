@@ -22,7 +22,16 @@ function setSessionFilters(rows){
  $('session').onchange=()=>{$('submit').disabled=!$('session').value;};
  refreshSessionChoices();
 }
-async function load(){try{const data=await call('sessions');setSessionFilters(data.sessions);const params=new URLSearchParams(location.search);
+let loadingSessions=false;
+async function load(){
+ if(loadingSessions)return;
+ loadingSessions=true;
+ $('retry-load').hidden=true;
+ $('session').disabled=true;
+ $('submit').disabled=true;
+ $('status').className='';
+ $('status').textContent='Chargement des séances disponibles…';
+ try{const data=await call('sessions');if(!Array.isArray(data.sessions))throw Error('Réponse invalide');setSessionFilters(data.sessions);const params=new URLSearchParams(location.search);
 const group=params.get('groupe');
 if(group){
  const normalizeGroup=v=>String(v||'').toLocaleLowerCase('fr').normalize('NFD').replace(/[\u0300-\u036f]/g,'');
@@ -44,7 +53,10 @@ if(group){
   refreshSessionChoices();
  }
 }
-const param=params.get('session');if(param&&availableSessions.some(s=>s.id===param))$('session').value=param;else if(params.has('jour')&&params.has('debut')&&params.has('categorie')&&params.has('lieu')){const dayNames=['dimanche','lundi','mardi','mercredi','jeudi','vendredi','samedi'];const normal=v=>String(v||'').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\s+/g,' ');const time=v=>{const m=String(v||'').match(/^(\d{1,2})[:hH](\d{2})$/);return m?String(Number(m[1])).padStart(2,'0')+':'+m[2]:String(v||'').slice(0,5)};const desired=normal(params.get('jour'));const match=availableSessions.find(s=>normal(dayNames[new Date(s.session_date+'T12:00:00Z').getUTCDay()])===desired&&time(s.start_time)===time(params.get('debut'))&&normal(s.category)===normal(params.get('categorie'))&&normal(s.venue)===normal(params.get('lieu')));if(match)$('session').value=match.id;else $('status').textContent='Aucune prochaine séance disponible pour ce créneau. Vous pouvez choisir une autre séance.';}$('submit').disabled=!$('session').value;if(!data.sessions.length)$('status').textContent='Aucune séance ouverte actuellement. Revenez prochainement.';}catch(e){$('status').textContent='Impossible de charger les séances. Vérifiez votre connexion et réessayez.';}}
+const param=params.get('session');if(param&&availableSessions.some(s=>s.id===param))$('session').value=param;else if(params.has('jour')&&params.has('debut')&&params.has('categorie')&&params.has('lieu')){const dayNames=['dimanche','lundi','mardi','mercredi','jeudi','vendredi','samedi'];const normal=v=>String(v||'').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\s+/g,' ');const time=v=>{const m=String(v||'').match(/^(\d{1,2})[:hH](\d{2})$/);return m?String(Number(m[1])).padStart(2,'0')+':'+m[2]:String(v||'').slice(0,5)};const desired=normal(params.get('jour'));const match=availableSessions.find(s=>normal(dayNames[new Date(s.session_date+'T12:00:00Z').getUTCDay()])===desired&&time(s.start_time)===time(params.get('debut'))&&normal(s.category)===normal(params.get('categorie'))&&normal(s.venue)===normal(params.get('lieu')));if(match)$('session').value=match.id;else $('status').textContent='Aucune prochaine séance disponible pour ce créneau. Vous pouvez choisir une autre séance.';}$('submit').disabled=!$('session').value;if(!data.sessions.length)$('status').textContent='Aucune séance ouverte actuellement. Revenez prochainement.'; $('status').textContent=data.sessions.length?'':'Aucune séance ouverte actuellement. Revenez prochainement.';
+ }catch(e){$('status').className='error';$('status').textContent='Impossible de charger les séances. Vérifiez votre connexion et réessayez.';$('retry-load').hidden=false;}
+ finally{loadingSessions=false;$('session').disabled=false;}
+}
 
 function cancellationUrl(token){const u=new URL('./course-booking.html',location.href);u.searchParams.set('cancel',token);return u.href;}
 function showCancellation(token){$('token').value=token;$('cancel-form').hidden=false;$('cancel-status').textContent='';$('cancel-panel').scrollIntoView({behavior:'smooth',block:'center'});}
@@ -85,6 +97,7 @@ $('cancel-form').onsubmit=async e=>{
  }catch(err){$('cancel-status').textContent=err.message;$('cancel-status').className='error';}
  finally{$('cancel-submit').disabled=false;}
 };
+$('retry-load').onclick=load;
 const token=new URLSearchParams(location.search).get('cancel');
 if(token){history.replaceState(null,'',location.pathname);showCancellation(token);}
 load();

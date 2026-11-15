@@ -14,6 +14,25 @@ function showSeason(){
  $('season-status').textContent=selected===SEASON?(state.archived?'Archives · historique conservé':state.renewalOpen?'Saison en cours · réabonnements ouverts pour 2027/2028':'Saison en cours · réabonnements à partir du 1er juin 2027'):'Achats rattachés à cette saison';
  $('renewal').hidden=!(selected===SEASON&&state.renewalOpen);
 }
+let courseAlertRequest=0;
+async function refreshCourseAlerts(){
+ const request=++courseAlertRequest;
+ const put=(a,b,msg)=>{if(request!==courseAlertRequest)return;$('kpi-course-unlinked').textContent=a;$('kpi-course-attendance').textContent=b;$('kpi-course-status').textContent=msg;};
+ if(session?.user?.email?.toLowerCase()!==ADMIN){put('—','—','Accès administrateur requis.');return;}
+ put('…','…','Actualisation des réservations et des présences…');
+ try{
+  const {data:{session:current}}=await client.auth.getSession();if(!current)throw Error('Session expirée');
+  const response=await fetch('https://tlfewpbgbwesdriklxzb.supabase.co/functions/v1/km16-course-bookings',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+current.access_token},body:JSON.stringify({action:'admin_list'})});
+  const result=await response.json();if(!response.ok)throw Error(result.error||'Réservations indisponibles');
+  if(!Array.isArray(result.bookings)||!Array.isArray(result.sessions))throw Error('Réponse des cours inattendue');
+  const [links,attendance]=await Promise.all([client.from('km16_booking_member_links').select('booking_id'),client.from('km16_course_attendance').select('booking_id')]);
+  if(links.error)throw links.error;if(attendance.error)throw attendance.error;
+  const linked=new Set((links.data||[]).map(x=>x.booking_id)),recorded=new Set((attendance.data||[]).map(x=>x.booking_id));
+  const dates=new Map(result.sessions.map(x=>[x.id,x.session_date]));const today=new Intl.DateTimeFormat('en-CA',{timeZone:'Europe/Paris',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
+  const active=result.bookings.filter(x=>x.status==='Inscrit');
+  put(String(active.filter(x=>!linked.has(x.id)).length),String(active.filter(x=>dates.has(x.session_id)&&dates.get(x.session_id)<today&&!recorded.has(x.id)).length),'Suivi des cours actualisé à '+new Date().toLocaleTimeString('fr-FR')+'.');
+ }catch(e){put('—','—','Suivi des cours indisponible : '+e.message);}
+}
 let overviewLoaded=false,shirtRefresh=0;
 function renderApprovalDossiers(){const host=$('km16-dossiers-list'),count=$('km16-dossiers-count');host.replaceChildren();if(!overviewLoaded){count.textContent='Chargement des dossiers…';return;}const dossiers=[];const seen=new Set();for(const c of all){for(const p of c.products||[]){if(p.external||p.approval!=='pending'||!p.order_id||seen.has(p.order_id))continue;seen.add(p.order_id);dossiers.push({client:c,product:p});}}count.textContent=dossiers.length+' dossier(s) avec validation administrative en attente · Saison '+$('season').value+($('test').checked?' · Mode test':'');if(!dossiers.length){const p=document.createElement('p');p.className='muted';p.textContent='Aucune validation administrative en attente parmi les achats présents dans ce fichier.';host.append(p);return;}const ul=document.createElement('ul');ul.className='km16-approval-list';for(const d of dossiers){const li=document.createElement('li');const label=document.createElement('span');label.textContent=[d.client.first_name,d.client.last_name].filter(Boolean).join(' ')+' · '+d.product.title+' · '+euro(d.product.net_cents||0)+' encaissé(s)';const a=document.createElement('a');a.href='./adhesion.html?admin_order='+encodeURIComponent(d.product.order_id)+'#admin';a.textContent='Vérifier / valider le dossier';a.setAttribute('aria-label','Ouvrir la validation administrative de '+d.client.first_name+' '+d.client.last_name);li.append(label,a);ul.append(li);}host.append(ul);}
 function renderOverview(){renderApprovalDossiers();const put=(id,v)=>{$(id).textContent=v;};if(!overviewLoaded){for(const id of ['kpi-members','kpi-net','kpi-review'])put(id,'—');return;}const pendingOrders=new Set();for(const c of all){for(const p of c.products||[]){if(!p.external&&p.approval==='pending'&&p.order_id)pendingOrders.add(p.order_id);}}const review=pendingOrders.size;put('kpi-members',String(all.length));put('kpi-net',euro(all.reduce((sum,c)=>sum+(c.amounts?.net_cents||0),0)));put('kpi-review',String(review));$('kpi-members-note').textContent='Fiches du fichier · saison '+$('season').value;$('kpi-net-note').textContent=($('test').checked?'Mode TEST · ':'')+'Hors imports Sportigo/Fighty et boutique';$('kpi-review-note').textContent='Validations administratives en attente · '+($('test').checked?'mode test':'achats réels');$('kpi-updated').textContent='Données du fichier actualisées à '+new Date().toLocaleTimeString('fr-FR');}
@@ -22,7 +41,7 @@ function putShirts(value,note){$('kpi-shirts').textContent=value;$('kpi-shirts-n
 const euro=n=>new Intl.NumberFormat('fr-FR',{style:'currency',currency:'EUR'}).format(n/100);
 const moneyFields=[['total_cents','Achats'],['gross_cents','Encaissé brut'],['refunded_cents','Remboursements'],['net_cents','Encaissé net'],['future_cents','Échéances futures'],['planned_cents','CA planifié · net + futur'],['overdue_cents','Échues impayées'],['cancelled_cents','Échéances annulées'],['disputed_cents','Montants contestés inclus dans le net']];
 const status=(text,error=false)=>{$('status').textContent=text;$('status').className=error?'status error':'status';};
-function clear(){closeMemberProfile();overviewLoaded=false;renderOverview();shirtRefresh++;putShirts('—','En attente de connexion');all=[];$('stage-rows').replaceChildren();$('money-summary').replaceChildren();$('money-breakdown').replaceChildren();$('money-alerts').replaceChildren();$('money-alerts').hidden=true;$('rows').replaceChildren();$('data-status').textContent='';$('imports-note').textContent='';$('export').disabled=true;for(const g of ['enfants','ados','adultes'])$('split-'+g).textContent='';for(const id of ['count-enfants','count-ados','count-adultes'])$(id).textContent='0';}
+function clear(){closeMemberProfile();overviewLoaded=false;renderOverview();shirtRefresh++;courseAlertRequest++;$('kpi-course-unlinked').textContent='—';$('kpi-course-attendance').textContent='—';$('kpi-course-status').textContent='Suivi des cours en attente de connexion.';putShirts('—','En attente de connexion');all=[];$('stage-rows').replaceChildren();$('money-summary').replaceChildren();$('money-breakdown').replaceChildren();$('money-alerts').replaceChildren();$('money-alerts').hidden=true;$('rows').replaceChildren();$('data-status').textContent='';$('imports-note').textContent='';$('export').disabled=true;for(const g of ['enfants','ados','adultes'])$('split-'+g).textContent='';for(const id of ['count-enfants','count-ados','count-adultes'])$(id).textContent='0';}
 let selectedMember=null;
 function closeMemberProfile(){selectedMember=null;$('member-profile').hidden=true;$('member-profile-content').replaceChildren();}
 function profileLine(parent,label,value){const p=document.createElement('p');const strong=document.createElement('strong');strong.textContent=label+' : ';p.append(strong,document.createTextNode(value===null||value===undefined||value===''?'Non renseigné':String(value)));parent.append(p);}
@@ -115,13 +134,13 @@ async function authState(s){
  const admin=s?.user.email?.toLowerCase()===ADMIN;
  $('login').hidden=!!s;$('forbidden').hidden=!s||admin;$('workspace').hidden=!admin;$('stages-panel').hidden=!admin;
  $('password').value='';$('test').checked=false;$('test-notice').hidden=true;group='';$('search').value='';
- if(admin){$('identity').textContent=s.user.email;refreshShirtKpi();await load();communications.load();}
+ if(admin){$('identity').textContent=s.user.email;refreshShirtKpi();refreshCourseAlerts();await load();communications.load();}
 }
 $('login-form').onsubmit=async event=>{event.preventDefault();if(!client)return;const button=$('login-button');button.disabled=true;status('');try{const {error}=await client.auth.signInWithPassword({email:$('email').value.trim(),password:$('password').value});if(error)throw error;}catch(e){status(e.message,true);}finally{button.disabled=false;$('password').value='';}};
 const logout=async()=>{generation++;controller?.abort();clear();await client.auth.signOut();await authState(null);};
 $('logout').onclick=logout;$('other-account').onclick=logout;
 $('season').onchange=()=>{generation++;controller?.abort();busy=false;clear();showSeason();load();};
-$('refresh').onclick=load;$('search').oninput=render;$('search-clear').onclick=()=>{$('search').value='';render();$('search').focus();};
+$('refresh').onclick=()=>{load();refreshCourseAlerts();};$('search').oninput=render;$('search-clear').onclick=()=>{$('search').value='';render();$('search').focus();};
 $('all').onclick=()=>{group='';render();};
 for(const b of document.querySelectorAll('[data-group]'))b.onclick=()=>{group=b.dataset.group;render();};
 $('test').onchange=()=>{generation++;controller?.abort();busy=false;clear();load();};

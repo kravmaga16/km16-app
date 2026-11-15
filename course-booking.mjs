@@ -4,8 +4,8 @@ async function call(action,params={}){const r=await fetch(endpoint,{method:'POST
 const iso=d=>new Date(d+'T12:00:00').toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
 let availableSessions=[];
 function refreshSessionChoices(){
- const category=$('category-filter').value,date=$('date-filter').value,previous=$('session').value;
- const filtered=availableSessions.filter(s=>(!category||s.category===category)&&(!date||s.session_date===date));
+ const category=$('category-filter').value,previous=$('session').value;
+ const filtered=availableSessions.filter(s=>(!category||s.category===category));
  $('session').replaceChildren(new Option('Choisir une séance',''));
  for(const s of filtered)$('session').add(new Option(iso(s.session_date)+' · '+s.start_time.slice(0,5)+' · '+s.category+' · '+s.venue,s.id));
  if(filtered.some(s=>s.id===previous))$('session').value=previous;
@@ -17,10 +17,7 @@ function setSessionFilters(rows){
  availableSessions=rows;
  const categories=[...new Set(rows.map(s=>s.category))].sort((a,b)=>a.localeCompare(b,'fr'));
  for(const category of categories)$('category-filter').add(new Option(category,category));
- const dates=[...new Set(rows.map(s=>s.session_date))].sort();
- for(const date of dates)$('date-filter').add(new Option(iso(date),date));
- $('category-filter').onchange=()=>{$('date-filter').value='';refreshSessionChoices();};
- $('date-filter').onchange=refreshSessionChoices;
+ $('category-filter').onchange=refreshSessionChoices;
  refreshSessionChoices();
 }
 async function load(){try{const data=await call('sessions');setSessionFilters(data.sessions);const params=new URLSearchParams(location.search);

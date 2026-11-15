@@ -34,7 +34,7 @@ function render(){
   if(view==='new'&&b.read_at)return false;
   if(view==='active'&&b.status!=='Inscrit')return false;
   if(view==='cancelled'&&b.status!=='Annulé')return false;
-  const season=$('filter-season').value;const inSeason=!season||(season==='2026/2027'?s.session_date>='2026-09-07'&&s.session_date<='2027-06-24':season==='2027/2028'?s.session_date>='2027-09-06'&&s.session_date<='2028-06-30':true);
+  const season=$('filter-season').value;const inSeason=!season||(season==='2026/2027'?s.session_date>='2026-09-07'&&s.session_date<='2027-06-24':season==='2027/2028'?s.session_date>='2027-09-06'&&s.session_date<'2028-09-01':true);
   return inSeason&&(!$('filter-date').value||s.session_date===$('filter-date').value)&&
    (!$('filter-course').value||s.category+' · '+s.venue===$('filter-course').value)&&
    (!$('filter-status').value||($('filter-status').value==='new'?!b.read_at:b.status===$('filter-status').value))&&

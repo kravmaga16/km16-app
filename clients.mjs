@@ -40,25 +40,38 @@ const KM16_ACTIONS=[
  {id:'shirts',label:'Tee-shirts à remettre',kpi:'kpi-shirts',url:'./tee-shirts.html#admin',priority:2}
 ];
 const km16ActionState=new Map();
-try{const saved=JSON.parse(localStorage.getItem('km16-action-progress-v1')||'{}');for(const [k,v] of Object.entries(saved))if(v==='en-cours')km16ActionState.set(k,v);}catch{}
+let km16ActionLoaded=false,km16ActionError='',km16ActionBusy=false,km16ActionRequest=0;
+async function refreshAdminActionProgress(){
+ const request=++km16ActionRequest;km16ActionLoaded=false;km16ActionError='';renderPriorities();
+ if(session?.user?.email?.toLowerCase()!==ADMIN)return;
+ try{const {data,error}=await client.rpc('km16_admin_action_progress_list');if(error)throw error;if(request!==km16ActionRequest)return;
+  km16ActionState.clear();for(const row of data||[])if(row.state==='en-cours')km16ActionState.set(row.action_id,'en-cours');km16ActionLoaded=true;
+ }catch(e){if(request===km16ActionRequest)km16ActionError=e.message;}if(request===km16ActionRequest)renderPriorities();
+}
+async function setAdminActionProgress(actionId,inProgress){
+ if(!km16ActionLoaded||km16ActionBusy)return;km16ActionBusy=true;renderPriorities();
+ try{const {error}=await client.rpc('km16_admin_action_progress_set',{p_action_id:actionId,p_in_progress:inProgress});if(error)throw error;
+  if(inProgress)km16ActionState.set(actionId,'en-cours');else km16ActionState.delete(actionId);
+  km16ActionError='';
+ }catch(e){km16ActionError='Enregistrement impossible : '+e.message;}
+ finally{km16ActionBusy=false;renderPriorities();}
+}
 function renderPriorities(){
  const host=$('km16-priorities-list');if(!host)return;host.replaceChildren();
  const value=id=>{const v=$(id)?.textContent?.trim();return v&&/^\\d+$/.test(v)?Number(v):null;};
  const tasks=KM16_ACTIONS.map(t=>({...t,count:value(t.kpi)}));
  const pending=tasks.filter(t=>t.count!==null&&t.count>0).sort((a,b)=>a.priority-b.priority||b.count-a.count);
  const unknown=tasks.filter(t=>t.count===null);
- for(const t of tasks)if(t.count===0)km16ActionState.delete(t.id);
- try{localStorage.setItem('km16-action-progress-v1',JSON.stringify(Object.fromEntries(km16ActionState)));}catch{}
  $('km16-priorities-total').textContent=unknown.length?'—':String(tasks.reduce((sum,t)=>sum+(t.count||0),0));
  $('km16-priorities-categories').textContent=unknown.length?'—':String(pending.length);
- $('km16-priorities-status').textContent=(pending.length?pending.length+' catégorie(s) nécessitent une intervention. ':'')+(unknown.length?'Certaines données sont indisponibles. ':'')+(!pending.length&&!unknown.length?'Aucune alerte en attente. ':'')+'Le suivi « En cours » est propre à ce navigateur et ne valide aucun dossier.';
+ $('km16-priorities-status').textContent=(pending.length?pending.length+' catégorie(s) nécessitent une intervention. ':'')+(unknown.length?'Certaines données sont indisponibles. ':'')+(!pending.length&&!unknown.length?'Aucune alerte en attente. ':'')+(km16ActionError?'Erreur de synchronisation : '+km16ActionError:km16ActionLoaded?'Suivi « En cours » synchronisé entre appareils. Il ne valide aucun dossier.':'Chargement du suivi partagé…');
  const ul=document.createElement('ul');ul.className='km16-approval-list';
  for(const task of [...pending,...unknown]){
   const li=document.createElement('li'),label=document.createElement('span'),link=document.createElement('a');
   const level=task.priority===1?'Urgent':'À planifier';
   label.textContent='['+level+'] '+(task.count===null?'À vérifier':task.count+' à traiter')+' · '+task.label;
   link.href=task.url;link.textContent='Ouvrir les dossiers';li.append(label,link);
-  if(task.count!==null&&task.count>0){const btn=document.createElement('button');btn.type='button';btn.textContent=km16ActionState.has(task.id)?'En cours · Annuler le suivi':'Marquer en cours';btn.setAttribute('aria-pressed',String(km16ActionState.has(task.id)));btn.onclick=()=>{if(km16ActionState.has(task.id))km16ActionState.delete(task.id);else km16ActionState.set(task.id,'en-cours');try{localStorage.setItem('km16-action-progress-v1',JSON.stringify(Object.fromEntries(km16ActionState)));}catch{}renderPriorities();};li.append(btn);}
+  if(task.count!==null&&task.count>0){const btn=document.createElement('button');btn.type='button';btn.textContent=km16ActionState.has(task.id)?'En cours · Annuler le suivi':'Marquer en cours';btn.setAttribute('aria-pressed',String(km16ActionState.has(task.id)));btn.disabled=!km16ActionLoaded||km16ActionBusy;btn.onclick=()=>setAdminActionProgress(task.id,!km16ActionState.has(task.id));li.append(btn);}
   ul.append(li);
  }
  if(ul.children.length)host.append(ul);
@@ -68,7 +81,7 @@ $('km16-priorities-copy').onclick=async()=>{
  const lines=['KM16 · Point de pilotage','Saison : '+$('season').value,'Établi le '+new Date().toLocaleString('fr-FR'),'',...names.map(([id,label])=>label+' : '+($(id).textContent.trim()||'Indisponible')),'','Données issues des modules administratifs ; vérifier les indicateurs indisponibles.'];
  try{await navigator.clipboard.writeText(lines.join('\\n'));$('km16-priorities-status').textContent='Point de pilotage copié. Les compteurs restent consultables ci-dessous.';}catch(e){$('km16-priorities-status').textContent='Copie impossible : '+e.message;}
 };
-$('km16-priorities-refresh').onclick=()=>{refreshCourseAlerts();refreshShirtKpi();load();};
+$('km16-priorities-refresh').onclick=()=>{refreshCourseAlerts();refreshShirtKpi();refreshAdminActionProgress();load();};
 let overviewLoaded=false,shirtRefresh=0;
 function renderApprovalDossiers(){const host=$('km16-dossiers-list'),count=$('km16-dossiers-count');host.replaceChildren();if(!overviewLoaded){count.textContent='Chargement des dossiers…';return;}const dossiers=[];const seen=new Set();for(const c of all){for(const p of c.products||[]){if(p.external||p.approval!=='pending'||!p.order_id||seen.has(p.order_id))continue;seen.add(p.order_id);dossiers.push({client:c,product:p});}}count.textContent=dossiers.length+' dossier(s) avec validation administrative en attente · Saison '+$('season').value+($('test').checked?' · Mode test':'');if(!dossiers.length){const p=document.createElement('p');p.className='muted';p.textContent='Aucune validation administrative en attente parmi les achats présents dans ce fichier.';host.append(p);return;}const ul=document.createElement('ul');ul.className='km16-approval-list';for(const d of dossiers){const li=document.createElement('li');const label=document.createElement('span');label.textContent=[d.client.first_name,d.client.last_name].filter(Boolean).join(' ')+' · '+d.product.title+' · '+euro(d.product.net_cents||0)+' encaissé(s)';const a=document.createElement('a');a.href='./adhesion.html?admin_order='+encodeURIComponent(d.product.order_id)+'#admin';a.textContent='Vérifier / valider le dossier';a.setAttribute('aria-label','Ouvrir la validation administrative de '+d.client.first_name+' '+d.client.last_name);li.append(label,a);ul.append(li);}host.append(ul);}
 function renderOverview(){renderApprovalDossiers();const put=(id,v)=>{$(id).textContent=v;};if(!overviewLoaded){for(const id of ['kpi-members','kpi-net','kpi-review'])put(id,'—');renderPriorities();return;}const pendingOrders=new Set();for(const c of all){for(const p of c.products||[]){if(!p.external&&p.approval==='pending'&&p.order_id)pendingOrders.add(p.order_id);}}const review=pendingOrders.size;put('kpi-members',String(all.length));put('kpi-net',euro(all.reduce((sum,c)=>sum+(c.amounts?.net_cents||0),0)));put('kpi-review',String(review));$('kpi-members-note').textContent='Fiches du fichier · saison '+$('season').value;$('kpi-net-note').textContent=($('test').checked?'Mode TEST · ':'')+'Hors imports Sportigo/Fighty et boutique';$('kpi-review-note').textContent='Validations administratives en attente · '+($('test').checked?'mode test':'achats réels');$('kpi-updated').textContent='Données du fichier actualisées à '+new Date().toLocaleTimeString('fr-FR');renderPriorities();}
@@ -235,7 +248,7 @@ async function authState(s){
  const admin=s?.user.email?.toLowerCase()===ADMIN;
  $('login').hidden=!!s;$('forbidden').hidden=!s||admin;$('workspace').hidden=!admin;$('stages-panel').hidden=!admin;
  $('password').value='';$('test').checked=false;$('test-notice').hidden=true;group='';$('search').value='';
- if(admin){$('identity').textContent=s.user.email;refreshShirtKpi();refreshCourseAlerts();await load();communications.load();}
+ if(admin){$('identity').textContent=s.user.email;refreshShirtKpi();refreshCourseAlerts();refreshAdminActionProgress();await load();communications.load();}else{km16ActionRequest++;km16ActionState.clear();km16ActionLoaded=false;km16ActionError='';}
 }
 $('login-form').onsubmit=async event=>{event.preventDefault();if(!client)return;const button=$('login-button');button.disabled=true;status('');try{const {error}=await client.auth.signInWithPassword({email:$('email').value.trim(),password:$('password').value});if(error)throw error;}catch(e){status(e.message,true);}finally{button.disabled=false;$('password').value='';}};
 const logout=async()=>{generation++;controller?.abort();clear();await client.auth.signOut();await authState(null);};

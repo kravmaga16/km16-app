@@ -92,7 +92,25 @@ function renderKm16Deadlines(){const host=$('km16-deadlines-list');if(!host)retu
  const ul=document.createElement('ul');ul.className='km16-approval-list';for(const item of items){const li=document.createElement('li'),span=document.createElement('span');const active=item.date<=today&&(item.end||item.date)>=today;span.textContent=(active?'En cours · ':'À venir · ')+km16DateFr(item.date)+(item.end?' au '+km16DateFr(item.end):'')+' · '+item.label+' — '+item.detail;li.append(span);ul.append(li);}host.append(ul);
 }
 $('km16-deadlines-copy').onclick=async()=>{const lines=['KM16 · Échéances et fermetures','Établi le '+new Date().toLocaleString('fr-FR'),...km16UpcomingDeadlines().map(x=>km16DateFr(x.date)+(x.end?' au '+km16DateFr(x.end):'')+' · '+x.detail)];try{await navigator.clipboard.writeText(lines.join('\\n'));$('km16-deadlines-status').textContent='Échéances copiées.';}catch(e){$('km16-deadlines-status').textContent='Copie impossible : '+e.message;}};
-renderKm16Deadlines();renderKm16MailSchedule();
+renderKm16Deadlines();renderKm16MailSchedule();renderKm16Daily();
+const KM16_DAILY_ACTIONS=[
+ {id:'kpi-review',label:'Dossiers à valider',href:'#km16-dossiers'},
+ {id:'kpi-course-attendance',label:'Présences à renseigner',href:'./course-admin.html?view=attendance-pending'},
+ {id:'kpi-course-unlinked',label:'Réservations sans dossier',href:'./course-admin.html?view=unlinked'},
+ {id:'kpi-shirts',label:'Tee-shirts à remettre',href:'./tee-shirts.html#admin'}
+];
+function renderKm16Daily(){const cards=$('km16-daily-cards'),next=$('km16-daily-next');if(!cards||!next)return;
+ const today=km16ParisToday();$('km16-daily-date').textContent='Aujourd’hui : '+km16DateFr(today)+' · Saison '+$('season').value;
+ cards.replaceChildren();let pending=0,unknown=0;
+ for(const item of KM16_DAILY_ACTIONS){const raw=$(item.id)?.textContent?.trim()||'',valid=/^\\d+$/.test(raw),count=valid?Number(raw):null;
+  if(count===null)unknown++;else pending+=count;
+  const card=document.createElement('div');card.className='km16-kpi';const label=document.createElement('span');label.textContent=item.label;const strong=document.createElement('strong');strong.textContent=count===null?'—':String(count);const detail=document.createElement('small');detail.textContent=count===null?'Indicateur à vérifier':count===0?'Aucune action en attente':'À traiter';const link=document.createElement('a');link.href=item.href;link.textContent='Ouvrir';card.append(label,strong,detail,link);cards.append(card);
+ }
+ $('km16-daily-status').textContent=unknown?'Données partielles : '+unknown+' indicateur(s) indisponible(s).':pending===0?'Aucune action en attente dans les quatre catégories suivies.':pending+' action(s) en attente dans les quatre catégories suivies.';
+ next.replaceChildren();const upcoming=km16UpcomingDeadlines().slice(0,3);if(!upcoming.length){const p=document.createElement('p');p.className='muted';p.textContent='Aucune échéance future renseignée.';next.append(p);return;}
+ const ul=document.createElement('ul');ul.className='km16-approval-list';for(const d of upcoming){const li=document.createElement('li');li.textContent=km16DateFr(d.date)+(d.end?' au '+km16DateFr(d.end):'')+' · '+d.label;ul.append(li);}next.append(ul);
+}
+$('km16-daily-refresh').onclick=()=>{refreshCourseAlerts();refreshShirtKpi();refreshAdminActionProgress();refreshKm16AutoMail();load();renderKm16Daily();};
 const KM16_ACTIONS=[
  {id:'review',label:'Dossiers administratifs à valider',kpi:'kpi-review',url:'./clients.html#km16-dossiers',priority:1},
  {id:'attendance',label:'Présences des cours passés à renseigner',kpi:'kpi-course-attendance',url:'./course-admin.html?view=attendance-pending',priority:1},
@@ -135,6 +153,7 @@ function renderPriorities(){
   ul.append(li);
  }
  if(ul.children.length)host.append(ul);
+ renderKm16Daily();
 }
 $('km16-priorities-copy').onclick=async()=>{
  const names=[['kpi-review','Dossiers administratifs à valider'],['kpi-course-attendance','Présences à renseigner'],['kpi-course-unlinked','Réservations sans dossier'],['kpi-shirts','Tee-shirts à remettre']];

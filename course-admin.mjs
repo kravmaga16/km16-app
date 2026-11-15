@@ -96,6 +96,7 @@ for(const id of ['filter-date','filter-course','filter-status'])$(id).onchange=r
 $('filter-search').oninput=render;
 for(const [id,value] of [['show-new','new'],['show-upcoming','upcoming'],['show-active','active'],['show-cancelled','cancelled'],['show-all','all']])$(id).onclick=()=>{view=value;render();};
 $('clear-session-focus').onclick=()=>{selectedSessionId=null;view='upcoming';render();};
+$('filter-today').onclick=()=>{selectedSessionId=null;$('filter-date').value=todayParis();view='upcoming';render();};
 $('reset').onclick=()=>{selectedSessionId=null;for(const id of ['filter-date','filter-course','filter-status','filter-search'])$(id).value='';view='upcoming';render()};
 $('refresh').onclick=load;
 $('toggle-session-range').onclick=()=>{showAllSessions=!showAllSessions;render();};

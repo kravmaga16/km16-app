@@ -28,7 +28,7 @@ async function openMemberDialog(b,linked){
  $('member-current-link').textContent=linked?'Dossier actuellement associé : '+linked:'Aucun dossier actuellement associé.';
  if(!memberDialog.open)memberDialog.showModal();
  try{const {data,error}=await supa.rpc('km16_admin_member_candidates',{p_booking_id:b.id});if(request!==memberDialogRequest||!memberDialog.open||memberDialogBooking!==b)return;
-  if(error)throw error;memberDialogChoices=data||[];renderMemberChoices();if(!memberDialogChoices.length)$('member-selection-warning').textContent='Aucun dossier compatible trouvé. Aucun rapprochement automatique.';
+  if(error)throw error;memberDialogChoices=data||[];renderMemberChoices();if(!memberDialogChoices.length)$('member-selection-warning').textContent='Aucun dossier d’adhésion KM16 compatible avec ce pratiquant. Les fiches importées Sportigo/Fighty ne peuvent pas encore être associées ici. Vérifiez l’identité dans le fichier adhérents ; ne choisissez pas un autre dossier par défaut.';
  }catch(e){if(request===memberDialogRequest&&memberDialog.open)$('member-candidate-count').textContent='Recherche impossible : '+e.message;}
 }
 async function saveMemberLink(id){const b=memberDialogBooking;if(!b||memberDialogSaving)return;if(id&&(!memberDialogSelected||!memberCheck.checked))return;memberDialogSaving=true;updateMemberConfirm();$('member-dialog-unlink').disabled=true;
@@ -116,10 +116,10 @@ function render(){
     const previous=attendance.has(b.id)?String(attendance.get(b.id)):'';select.disabled=true;
     try{
      if(select.value===''){
-      const {error}=await supa.from('km16_course_attendance').delete().eq('booking_id',b.id);if(error)throw error;attendance.delete(b.id);
+      const {error}=await supa.from('km16_course_attendance').delete().eq('booking_id',b.id);if(error)throw error;const {data:remaining,error:checkError}=await supa.from('km16_course_attendance').select('booking_id').eq('booking_id',b.id);if(checkError)throw checkError;if(remaining?.length)throw Error('La présence existe toujours dans la base');attendance.delete(b.id);
      }else{
       const {data:{user}}=await supa.auth.getUser();if(!user)throw Error('Session expirée');
-      const value=select.value==='true';const {error}=await supa.from('km16_course_attendance').upsert({booking_id:b.id,present:value,recorded_by:user.id,recorded_at:new Date().toISOString()},{onConflict:'booking_id'});if(error)throw error;attendance.set(b.id,value);
+      const value=select.value==='true';const {error}=await supa.from('km16_course_attendance').upsert({booking_id:b.id,present:value,recorded_by:user.id,recorded_at:new Date().toISOString()},{onConflict:'booking_id'});if(error)throw error;const {data:verified,error:checkError}=await supa.from('km16_course_attendance').select('present').eq('booking_id',b.id).maybeSingle();if(checkError)throw checkError;if(!verified||verified.present!==value)throw Error('La présence n’a pas été confirmée dans la base');attendance.set(b.id,value);
      }
      status('Présence enregistrée pour '+b.first_name+' '+b.last_name+'.');render();
     }catch(e){select.value=previous;status('Enregistrement de présence impossible : '+e.message,true);}finally{select.disabled=false;}
@@ -217,7 +217,7 @@ $('filter-today').onclick=()=>{selectedSessionId=null;quickDateRange=null;$('fil
 $('filter-tomorrow').onclick=()=>{selectedSessionId=null;quickDateRange=null;$('filter-date').value=plusDays(1);view='upcoming';render();};
 $('filter-next-seven').onclick=()=>{selectedSessionId=null;$('filter-date').value='';quickDateRange=[todayParis(),plusDays(6)];view='upcoming';render();};
 $('filter-date').addEventListener('change',()=>{quickDateRange=null;render();});
-$('reset').onclick=()=>{selectedSessionId=null;quickDateRange=null;for(const id of ['filter-date','filter-course','filter-status','filter-search'])$(id).value='';view='upcoming';render()};
+$('reset').onclick=()=>{selectedSessionId=null;sessionPendingOnly=false;sessionUnlinkedOnly=false;quickDateRange=null;for(const id of ['filter-date','filter-course','filter-status','filter-search'])$(id).value='';view='upcoming';render()};
 $('refresh').onclick=load;
 $('toggle-session-range').onclick=()=>{showAllSessions=!showAllSessions;render();};
 $('session-form').onsubmit=async e=>{e.preventDefault();const date=$('session-date').value,category=$('session-category').value.trim(),start=$('session-start').value,end=$('session-end').value,venue=$('session-venue').value.trim();try{await call('admin_session',{session_date:date,course_key:JSON.stringify([category,start,end,venue]),category,start_time:start,end_time:end,venue});status('Séance ajoutée.');await load();}catch(e){status(e.message,true)}};

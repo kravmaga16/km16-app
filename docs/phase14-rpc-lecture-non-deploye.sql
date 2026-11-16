@@ -70,8 +70,13 @@ begin
 end;
 $body$;
 
--- IMPORTANT: revoke default public execute privileges explicitly after
--- deployment, then grant EXECUTE only to the authenticated role.
--- These functions still require server-side admin authorization.
--- The write RPC is intentionally not included until concurrency tests and
--- permission review are completed.
+-- Restrict function execution before exposing RPCs.
+revoke all on function public.km16_member_review_list(text,text)
+  from public, anon, authenticated;
+revoke all on function public.km16_member_review_history_list(text,text,text,integer,bigint)
+  from public, anon, authenticated;
+grant execute on function public.km16_member_review_list(text,text)
+  to authenticated;
+grant execute on function public.km16_member_review_history_list(text,text,text,integer,bigint)
+  to authenticated;
+-- The function body independently checks the admin identity.

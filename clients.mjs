@@ -254,7 +254,13 @@ function openMemberProfile(c){if(!all.includes(c))return;selectedMember=c;const 
  }).catch(e=>{if(selectedMember===c)historyText.textContent='Historique indisponible : '+e.message;});
  panel.hidden=false;panel.scrollIntoView({behavior:'smooth',block:'start'});}
 $('member-profile-close').onclick=closeMemberProfile;
-const matches=c=>{const q=$('search').value.normalize('NFKC').toLocaleLowerCase('fr-FR').trim();return !q||[c.last_name,c.first_name,c.email,c.phone,c.guardian_name,...c.address,c.import_email,c.import_phone,c.additional_addresses,...c.products.map(p=>p.title)].join(' ').normalize('NFKC').toLocaleLowerCase('fr-FR').includes(q);};
+const km16SearchNormalize=value=>String(value||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').normalize('NFKC').toLocaleLowerCase('fr-FR').replace(/\s+/g,' ').trim();
+const matches=c=>{
+ const terms=km16SearchNormalize($('search').value).split(' ').filter(Boolean);
+ if(!terms.length)return true;
+ const searchable=km16SearchNormalize([c.last_name,c.first_name,c.email,c.phone,c.guardian_name,...(c.address||[]),c.import_email,c.import_phone,...(c.additional_addresses||[]),...(c.products||[]).map(p=>p.title)].join(' '));
+ return terms.every(term=>searchable.includes(term));
+};
 function cell(row,text){const td=document.createElement('td');td.textContent=text;row.appendChild(td);return td;}
 function renderMoneySummary(){
  const totals=Object.fromEntries(moneyFields.map(([key])=>[key,all.reduce((n,c)=>n+(c.amounts?.[key]||0),0)]));
@@ -348,7 +354,7 @@ $('login-form').onsubmit=async event=>{event.preventDefault();if(!client)return;
 const logout=async()=>{generation++;controller?.abort();clear();await client.auth.signOut();await authState(null);};
 $('logout').onclick=logout;$('other-account').onclick=logout;
 $('season').onchange=()=>{generation++;controller?.abort();busy=false;clear();showSeason();load();};
-$('refresh').onclick=()=>{load();refreshCourseAlerts();};$('search').oninput=render;$('search-clear').onclick=()=>{$('search').value='';render();$('search').focus();};
+$('refresh').onclick=()=>{load();refreshCourseAlerts();};let km16SearchTimer;\n$('search').oninput=()=>{clearTimeout(km16SearchTimer);km16SearchTimer=setTimeout(render,120);};$('search-clear').onclick=()=>{clearTimeout(km16SearchTimer);$('search').value='';render();$('search').focus();};
 $('all').onclick=()=>{group='';render();};
 for(const b of document.querySelectorAll('[data-group]'))b.onclick=()=>{group=b.dataset.group;render();};
 $('test').onchange=()=>{generation++;controller?.abort();busy=false;clear();load();};

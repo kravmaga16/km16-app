@@ -41,6 +41,8 @@ jobs:
         run: node scripts/check-member-quality.mjs
       - name: Verifier les listes des fiches incompletes
         run: node scripts/check-member-quality-missing.mjs
+      - name: Verifier le suivi temporaire des dossiers
+        run: node scripts/check-member-review.mjs
       - name: Installer navigateurs de test
         run: |
           npm install --no-save playwright@1.56.1

@@ -44,8 +44,8 @@ def main():
         return 2
     baseline = args.baseline.read_text(encoding="utf-8")
     # Ignore ordinary SQL comments so a commented-out CREATE cannot satisfy checks.
-    baseline = re.sub(r"/\\*.*?\\*/", "", baseline, flags=re.S)
-    baseline = re.sub(r"(?m)^\\s*--[^\\n]*$", "", baseline)
+    baseline = re.sub(r"/\*.*?\*/", "", baseline, flags=re.S)
+    baseline = re.sub(r"(?m)^\s*--[^\n]*$", "", baseline)
     first = files[0].read_text(encoding="utf-8")
     second = files[1].read_text(encoding="utf-8")
     errors = []

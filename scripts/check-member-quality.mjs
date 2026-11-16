@@ -1,0 +1,13 @@
+import {readFileSync} from 'node:fs';
+import assert from 'node:assert/strict';
+const js=readFileSync('clients.mjs','utf8');
+const start=js.indexOf('function renderMemberQuality(){');
+const end=js.indexOf('function render(){',start);
+assert.ok(start>=0&&end>start,'Member quality function missing');
+const section=js.slice(start,end);
+assert.match(section,/const expandedGroups=\[\.\.\.host\.querySelectorAll\('details'\)\]\.map\(details=>details\.open\)/);
+assert.match(section,/for\(const \[index,\[label,items\]\] of groups\.entries\(\)\)/);
+assert.match(section,/details\.open=expandedGroups\[index\]\|\|false/);
+assert.match(section,/host\.replaceChildren\(\)/);
+assert.match(js,/\$\('login-form'\)\.onsubmit/);
+console.log('KM16 member quality expansion preservation checks passed');

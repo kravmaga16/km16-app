@@ -318,7 +318,7 @@ function render(){
  for(const b of document.querySelectorAll('[data-group]'))b.setAttribute('aria-pressed',String(b.dataset.group===group));
  $('export').disabled=busy||!all.some(matches);
 }
-async function load(){
+let lastClientsLoadedAt=0;\nasync function load(){
  if(busy||session?.user.email?.toLowerCase()!==ADMIN)return;
  refreshExternalPayments();
  busy=true;render();const gen=generation,test=$('test').checked,season=$('season').value;showSeason();controller=new AbortController();
@@ -329,7 +329,7 @@ async function load(){
   const data=await r.json();if(!r.ok)throw Error(data.error||'Chargement impossible');
   if(gen!==generation||test!==$('test').checked)return;
   if(!Array.isArray(data.clients)||data.test!==test||data.season!==season)throw Error('Réponse inattendue');
-  all=data.clients;overviewLoaded=true;refreshShirtKpi();$('imports-note').textContent=(data.imported_count||0)+' fiches du fichier actif rattachées à cette saison. Les encaissements Sportigo/Fighty ne sont pas intégrés aux totaux ci-dessous ; les identités concordantes sont rapprochées sans ajouter de paiement.';
+  all=data.clients;lastClientsLoadedAt=Date.now();overviewLoaded=true;refreshShirtKpi();$('imports-note').textContent=(data.imported_count||0)+' fiches du fichier actif rattachées à cette saison. Les montants des plateformes externes restent séparés des achats KM16, sans rapprochement des transactions avec les adhérents.';
   for(const value of data.seasons||[]){if(![...$('season').options].some(o=>o.value===value)){const o=document.createElement('option');o.value=value;o.textContent=value;$('season').append(o);}}
   $('test-notice').hidden=!test;
   const missing=all.filter(c=>!c.address.length).length,unchecked=all.filter(c=>c.group==='À vérifier').length;
@@ -355,4 +355,4 @@ $('test').onchange=()=>{generation++;controller?.abort();busy=false;clear();load
 $('export').onclick=()=>{try{const rows=all.filter(matches);if(!rows.length)return;const bytes=clientsWorkbook(rows,all);const url=URL.createObjectURL(new Blob([bytes],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}));const a=document.createElement('a');a.href=url;a.download=($('test').checked?'TEST-':'')+'KM16-Clients-'+$('season').value.replace('/','-')+'-'+new Date().toISOString().slice(0,10)+'.xlsx';document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),30000);status('Export créé : Enfants, Ados, Adultes, Synthèse et Stages par mois.');}catch(e){status(e.message,true);}};
 if(!client)status('Connexion indisponible : rechargez la page',true);
 else{client.auth.onAuthStateChange((_event,s)=>{setTimeout(()=>authState(s),0);});const {data}=await client.auth.getSession();await authState(data.session);}
-setInterval(()=>{if(!document.hidden)load();},60000);
+setInterval(()=>{if(!document.hidden&&!busy&&session?.user?.email?.toLowerCase()===ADMIN&&Date.now()-lastClientsLoadedAt>=60000)load();},60000);

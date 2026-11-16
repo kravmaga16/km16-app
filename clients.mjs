@@ -174,27 +174,34 @@ let externalPaymentRequest=0;
 async function refreshExternalPayments(){
  const request=++externalPaymentRequest;
  const host=$('external-payment-summary'),note=$('external-payment-status');if(!host||!note)return;
- host.replaceChildren();note.textContent='Consultation des transactions Fighty, Sportigo et Stripe…';
+ host.replaceChildren();note.textContent='Consultation des montants importés…';
  if(session?.user.email?.toLowerCase()!==ADMIN)return;
  const season=$('season').value;
  try{
-  const [{data,error},{data:auditRows,error:auditError},{data:stripeRows,error:stripeError},{data:statusRows,error:statusError}]=await Promise.all([client.rpc('km16_admin_external_payment_summary',{p_season:season}),client.rpc('km16_admin_external_payment_audit',{p_season:season}),client.rpc('km16_admin_stripe_reconciliation',{p_season:season}),client.rpc('km16_admin_external_payment_statuses',{p_season:season})]);if(error)throw error;if(auditError)throw auditError;if(stripeError)throw stripeError;if(statusError)throw statusError;
+  const [{data,error},{data:statusRows,error:statusError}]=await Promise.all([
+   client.rpc('km16_admin_external_payment_summary',{p_season:season}),
+   client.rpc('km16_admin_external_payment_statuses',{p_season:season})
+  ]);
+  if(error)throw error;if(statusError)throw statusError;
   if(request!==externalPaymentRequest||season!==$('season').value)return;
   const rows=Array.isArray(data)?data:[];
+  let totalPaid=0,totalRefund=0,totalCount=0;
   for(const source of ['Fighty','Sportigo','Stripe']){
    const entry=rows.find(x=>x.source===source)||{};
    const count=Number(entry.transaction_count||0),paid=Number(entry.paid_cents||0),refund=Number(entry.refunded_cents||0);
+   totalPaid+=paid;totalRefund+=refund;totalCount+=count;
    const card=document.createElement('div');card.className='money-card';
-   const title=document.createElement('div');title.className='money-label';title.textContent=source==='Fighty'?'Fighty (ancienne plateforme)':source==='Sportigo'?'Sportigo (ancienne plateforme)':'Stripe (export direct)';
+   const title=document.createElement('div');title.className='money-label';title.textContent=source;
    const value=document.createElement('strong');value.className='money-value';value.textContent=count?euro(paid-refund):'Aucune transaction importée';
-   const detail=document.createElement('p');detail.className='muted';detail.textContent=count?count+' transaction(s) · Encaissé '+euro(paid)+' · Remboursé '+euro(refund)+' · Sans dossier '+Number(entry.unmatched_count||0)+(source==='Stripe'?' · Montant non additionné aux paiements KM16':''):'Aucun export de cette plateforme importé · total non établi';
-   const stats=(statusRows||[]).find(x=>x.source===source)||{};const breakdown=document.createElement('p');breakdown.className='muted';breakdown.textContent=count?Number(stats.paid_count||0)+' payés · '+Number(stats.refunded_count||0)+' remboursés · '+Number(stats.failed_count||0)+' échoués · '+Number(stats.cancelled_count||0)+' annulés':'Aucun statut de transaction à afficher';card.append(title,value,detail,breakdown);host.append(card);
+   const detail=document.createElement('p');detail.className='muted';
+   detail.textContent=count?'Paiements réussis : '+euro(paid)+' · Remboursements : '+euro(refund)+' · '+count+' opérations':'Aucune opération importée';
+   const stats=(statusRows||[]).find(x=>x.source===source)||{};
+   const breakdown=document.createElement('p');breakdown.className='muted';
+   breakdown.textContent=count?Number(stats.paid_count||0)+' payées · '+Number(stats.refunded_count||0)+' remboursées · '+Number(stats.failed_count||0)+' échouées · '+Number(stats.cancelled_count||0)+' annulées':'';
+   card.append(title,value,detail,breakdown);host.append(card);
   }
-  const audit=(auditRows||[])[0]||{};
-  const total=Number(audit.total_transactions||0),unlinked=Number(audit.unlinked_transactions||0),early=Number(audit.preseason_transactions||0),unverified=Number(audit.unverified_platform_transactions||0);
-  note.textContent=season==='2026/2027'?(total?total+' opérations importées · '+unlinked+' sans dossier rapproché · '+early+' antérieures au 2 juin 2026 · '+unverified+' transactions Stripe (export direct) à rapprocher. Exception 2026/2027 : encaissements pris en compte dès le 2 juin. Montants provisoires, hors total KM16/Stripe.':'Aucune transaction externe importée pour cette saison.'):'Sportigo et Fighty ne sont plus utilisés à partir de 2027/2028. Leurs historiques restent disponibles sur la saison 2026/2027.';
-  if(unverified){const stripe=host.querySelectorAll('.money-card')[2];if(stripe){const warning=document.createElement('p');warning.className='muted';const check=(stripeRows||[])[0]||{};warning.textContent=Number(check.total_transactions||0)+' opérations Stripe · '+Number(check.direct_matches||0)+' correspondance(s) directes (identifiants ch_ / pi_) · '+Number(check.unverified_transactions||0)+' à vérifier (doublons non exclus) · '+Number(check.missing_reference||0)+' sans référence exploitable. Ne pas additionner au total KM16 avant rapprochement.';stripe.append(warning);}}
- }catch(e){if(request===externalPaymentRequest)note.textContent='Paiements externes indisponibles : '+e.message;}
+  note.textContent=totalCount?'Total indicatif des sources importées : '+euro(totalPaid-totalRefund)+' · '+totalCount+' opérations. Montants bruts payés : '+euro(totalPaid)+' ; remboursements : '+euro(totalRefund)+'. Risque de doubles comptages entre plateformes : totaux non certifiés. Aucun rapprochement avec les adhérents.':'Aucune transaction importée pour cette saison.';
+ }catch(e){if(request===externalPaymentRequest)note.textContent='Montants importés indisponibles : '+e.message;}
 }
 const moneyFields=[['total_cents','Achats'],['gross_cents','Encaissé brut'],['refunded_cents','Remboursements'],['net_cents','Encaissé net'],['future_cents','Échéances futures'],['planned_cents','CA planifié · net + futur'],['overdue_cents','Échues impayées'],['cancelled_cents','Échéances annulées'],['disputed_cents','Montants contestés inclus dans le net']];
 const status=(text,error=false)=>{$('status').textContent=text;$('status').className=error?'status error':'status';};

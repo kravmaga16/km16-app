@@ -25,6 +25,8 @@ class ExportTests(unittest.TestCase):
             for i in range(44)
         ]
         self.write_rows()
+        self.manifest = self.root / "manifest.csv"
+        self.write_manifest()
 
     def write_rows(self):
         with self.csv_file.open("w", newline="", encoding="utf-8") as stream:
@@ -32,12 +34,22 @@ class ExportTests(unittest.TestCase):
             writer.writeheader()
             writer.writerows(self.rows)
 
+    def write_manifest(self):
+        with self.manifest.open("w", newline="", encoding="utf-8") as stream:
+            writer = csv.DictWriter(stream, fieldnames=("version", "name", "md5", "bytes"))
+            writer.writeheader()
+            for row in self.rows:
+                raw = row["sql"].encode("utf-8")
+                writer.writerow({"version": row["version"], "name": row["name"],
+                                 "md5": hashlib.md5(raw).hexdigest(), "bytes": len(raw)})
+
     def test_exports_all_with_unicode(self):
-        count, size = module.export(self.csv_file, self.output)
+        count, size = module.export(self.csv_file, self.output, self.manifest)
         self.assertEqual(count, 44)
         self.assertGreater(size, 0)
         self.assertEqual(len(list(self.output.glob("*.sql"))), 44)
         self.assertIn("café", next(self.output.glob("*.sql")).read_text())
+        self.assertEqual((self.output / "20261108081316_test_migration_0.sql").read_text(), self.rows[0]["sql"])
 
     def test_manifest_integrity(self):
         manifest = self.root / "manifest.csv"

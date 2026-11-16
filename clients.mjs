@@ -335,7 +335,7 @@ async function authState(s){
  const admin=s?.user.email?.toLowerCase()===ADMIN;
  $('login').hidden=!!s;$('forbidden').hidden=!s||admin;$('workspace').hidden=!admin;$('stages-panel').hidden=!admin;
  $('password').value='';$('test').checked=false;$('test-notice').hidden=true;group='';$('search').value='';
- if(admin){$('identity').textContent=s.user.email;refreshShirtKpi();refreshCourseAlerts();refreshAdminActionProgress();refreshKm16AutoMail();await load();communications.load();}else{km16ActionRequest++;km16ActionState.clear();km16ActionLoaded=false;km16ActionError='';}
+ if(admin){$('identity').textContent=s.user.email;refreshShirtKpi();refreshCourseAlerts();refreshAdminActionProgress();refreshKm16AutoMail();refreshKm16FollowupDashboard();await load();communications.load();}else{km16ActionRequest++;km16ActionState.clear();km16ActionLoaded=false;km16ActionError='';}
 }
 $('login-form').onsubmit=async event=>{event.preventDefault();if(!client)return;const button=$('login-button');button.disabled=true;status('');try{const {error}=await client.auth.signInWithPassword({email:$('email').value.trim(),password:$('password').value});if(error)throw error;}catch(e){status(e.message,true);}finally{button.disabled=false;$('password').value='';}};
 const logout=async()=>{generation++;controller?.abort();clear();await client.auth.signOut();await authState(null);};

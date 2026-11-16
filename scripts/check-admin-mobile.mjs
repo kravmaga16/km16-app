@@ -7,4 +7,6 @@ assert.match(html,/\.km16-dashboard-nav a:focus-visible/,'Keyboard focus styles 
 assert.match(html,/@media\(max-width:680px\)\{\.km16-dashboard-nav\{display:grid/,'Mobile navigation styles missing');
 assert.match(html,/\.km16-profile-block\{min-width:0;overflow-wrap:anywhere\}/,'Profile overflow protection missing');
 assert.match(html,/clients\.mjs\?v=restored-safari-login-20261116/,'Verified Safari login script reference changed');
-console.log('KM16 admin mobile CSS checks passed');
+assert.match(html,/#member-profile-close\{min-height:44px/,'Accessible member profile close button missing');
+assert.match(html,/#member-profile-content table\{display:block;max-width:100%;overflow-x:auto\}/,'Member profile table overflow handling missing');
+console.log('KM16 admin mobile CSS and member profile checks passed');

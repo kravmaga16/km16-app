@@ -38,3 +38,16 @@ Conserver un suivi de vérification distinct des données sources des adhérents
 - Le projet possède déjà un suivi administratif partagé (`km16_admin_action_progress` et ses RPC). Celui-ci porte sur des catégories d'actions, **pas** sur des fiches individuelles; il ne doit pas être détourné pour ce nouveau besoin.
 - Le modèle permanent doit traiter explicitement le cas d'un adhérent apparaissant plusieurs fois et le cas de fiches d'origine différente portant la même identité.
 - **Décision de sécurité :** aucun déploiement de table ou RPC tant que la stratégie de clés stables pour les fiches non importées n'est pas vérifiée et testée.
+
+## Vérification complémentaire de la fonction Edge `km16-clients`
+La version 22 de la fonction a été inspectée en lecture seule.
+
+- Les fiches importées non rapprochées sont émises avec `id = 'import:' + external_id`. Cette valeur est associée à `season_id` dans la table d'import.
+- Les fiches d'adhésion sont regroupées par `[user_id, nom normalisé, prénom normalisé, date de naissance]`, puis l'interface reçoit `id = entries[0].id` : il s'agit de l'UUID de la **première commande du groupe**, et non d'un identifiant personnel immuable. Le suivi permanent ne doit pas prendre cet UUID pour un identifiant stable d'adhérent sans garantie supplémentaire.
+- La fonction peut enrichir une fiche d'adhésion avec des données d'une fiche importée en cas de correspondance unique. Cela ne constitue pas une clé persistante sûre pour le suivi administratif. **Ne pas modifier cette logique de rapprochement dans cette phase.**
+
+### Décision d'implémentation
+1. Pour les fiches exclusivement importées, envisager une clé `(season_id, environment, source='import', external_id)`, sous réserve d'un contrôle de non-réutilisation des `external_id` et des règles d'archivage.
+2. Pour les fiches issues des adhésions, **bloquer les écritures permanentes** tant qu'une clé personnelle immuable n'a pas été conçue et exposée par le serveur. Ne pas utiliser le premier numéro de commande comme identifiant personnel.
+3. Le suivi temporaire de la phase 13 demeure disponible pour toutes les fiches jusqu'à la mise en service contrôlée du suivi permanent.
+4. Le statut et l'historique permanents seront stockés séparément, avec contrôle d'accès serveur et journalisation atomique. Ne pas ajouter de colonnes aux tables de paiements ou d'adhérents.

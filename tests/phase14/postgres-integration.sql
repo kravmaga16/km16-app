@@ -48,4 +48,29 @@ begin
    raise exception 'Expected anonymous history read to fail';
  exception when insufficient_privilege then null; end;
 end $test$;
+-- Exercise actual client roles, not only JWT claim simulations.
+set local role authenticated;
+select set_config('request.jwt.claim.sub','11111111-1111-4111-8111-111111111111',true);
+do $test$
+declare v record;
+begin
+ select * into v from public.km16_member_review_set('2026/2027','test','fictional-active','controle',2);
+ if v.version<>2 then raise exception 'Authenticated admin RPC failed'; end if;
+ begin
+   perform 1 from public.km16_member_review_status limit 1;
+   raise exception 'Authenticated role has direct table read access';
+ exception when insufficient_privilege then null; end;
+ begin
+   perform 1 from public.km16_member_review_history limit 1;
+   raise exception 'Authenticated role has direct history access';
+ exception when insufficient_privilege then null; end;
+end $test$;
+set local role anon;
+do $test$
+begin
+ begin
+   perform public.km16_member_review_list('2026/2027','test');
+   raise exception 'Anon can execute admin RPC';
+ exception when insufficient_privilege then null; end;
+end $test$;
 rollback;

@@ -6,6 +6,8 @@ on:
       - 'tests/test_migration_replay_preflight.py'
       - 'scripts/export-km16-migrations.py'
       - 'tests/test_migration_export.py'
+      - 'scripts/export-km16-history.sh'
+      - '.gitignore'
       - '.github/workflows/km16-migration-preflight.yml'
   workflow_dispatch:
 permissions:
@@ -22,3 +24,5 @@ jobs:
         run: |
           python -m unittest discover -s tests -p 'test_migration_replay_preflight.py' -v
           python -m unittest discover -s tests -p 'test_migration_export.py' -v
+      - name: Check local export shell syntax
+        run: bash -n scripts/export-km16-history.sh

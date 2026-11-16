@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import {reviewKeyForImportedMember,listReviewStatuses,saveReviewStatus} from './phase14-review-adapter.mjs';
+import {reviewKeyForImportedMember,listReviewStatuses,saveReviewStatus,listReviewHistory} from './phase14-review-adapter.mjs';
 const season='2026/2027', environment='test';
 assert.deepEqual(reviewKeyForImportedMember({id:'import:fictional-1',season_id:season},season,environment),{season,environment,externalId:'fictional-1'});
 assert.equal(reviewKeyForImportedMember({id:'order-uuid'},season,environment),null);
@@ -15,3 +15,13 @@ await assert.rejects(saveReviewStatus(client,{season,environment,externalId:'fic
 await assert.rejects(saveReviewStatus({rpc:async()=>({data:null,error:{code:'40001'}})},{season,environment,externalId:'fictional-1'},'controle',0),/actualisez/);
 await assert.rejects(saveReviewStatus({rpc:async()=>({data:null,error:{code:'42501'}})},{season,environment,externalId:'fictional-1'},'controle',0),/non confirmé/);
 console.log('Phase 14 RPC adapter tests passed (mock only; no production calls)');
+
+const historyKey={season,environment,externalId:'fictional-1'};
+const historyCalls=[];
+const historyClient={rpc:async(name,args)=>{historyCalls.push({name,args});return {data:[{event_id:2,new_state:'controle'}],error:null};}};
+const history=await listReviewHistory(historyClient,historyKey,1,3);
+assert.equal(history[0].event_id,2);
+assert.deepEqual(historyCalls[0],{name:'km16_member_review_history_list',args:{p_season:season,p_environment:environment,p_external_id:'fictional-1',p_limit:1,p_before_id:3}});
+await assert.rejects(listReviewHistory(historyClient,historyKey,101),/invalides/);
+await assert.rejects(listReviewHistory(historyClient,historyKey,10,-2),/invalides/);
+await assert.rejects(listReviewHistory({rpc:async()=>({data:null,error:{code:'42501'}})},historyKey),/indisponible/);

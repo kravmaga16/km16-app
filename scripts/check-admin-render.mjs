@@ -1,0 +1,13 @@
+import {readFileSync} from 'node:fs';
+import assert from 'node:assert/strict';
+const js=readFileSync('clients.mjs','utf8');
+const start=js.indexOf('function render(){');
+const end=js.indexOf('async function load(){',start);
+assert.ok(start>=0&&end>start,'Render function not found');
+const render=js.slice(start,end);
+assert.match(render,/const km16RowsFragment=document\.createDocumentFragment\(\)/,'Fragment missing');
+assert.equal((render.match(/km16RowsFragment\.append\(row\)/g)||[]).length,2,'Expected row and empty state append');
+assert.match(render,/\$\('rows'\)\.replaceChildren\(km16RowsFragment\)/,'Atomic table update missing');
+assert.doesNotMatch(render,/\$\('rows'\)\.append\(row\)/,'Repeated live DOM insertion detected');
+assert.match(js,/\$\('login-form'\)\.onsubmit/,'Login handler missing');
+console.log('KM16 member table rendering checks passed');

@@ -63,3 +63,9 @@ La version 22 de la fonction a été inspectée en lecture seule.
 - Le brouillon a été corrigé pour ne pas ajouter de clé étrangère bloquant l'archivage ou la suppression d'une fiche importée. L'existence et l'état actif de la fiche devront être vérifiés **dans la transaction serveur** avant tout changement de statut.
 - Un contrôle statique `scripts/check-member-review-schema.mjs` vérifie la RLS, la séparation des clés et l'absence d'accès direct public dans le brouillon. Il ne remplace pas des tests SQL et de sécurité sur un projet de développement.
 - Les changements restent dans la PR de conception, sans création de table ni RPC de production.
+
+## Validation PostgreSQL isolée — 16 novembre 2026
+- GitHub Actions « KM16 - Phase 14 PostgreSQL isolé », exécution **43895297929** (n° 7) : **success**, incluant préparation de données fictives, création du schéma, installation des RPC et tests d'intégration.
+- GitHub Actions « KM16 - Verification JavaScript », exécution **43895298597** (n° 69) : **success**, y compris le job `phase14-postgres` et les contrôles Chromium/WebKit.
+- Ce résultat prouve l'exécution du SQL sous PostgreSQL 16 dans un conteneur temporaire, **pas** une validation de l'authentification et des permissions réelles dans un projet Supabase ni une preuve de compatibilité de l'interface en production.
+- Les fonctions et tables restent non déployées. Prochaine étape : revue finale des privilèges Supabase, préparation d'un déploiement contrôlé et d'un retour arrière; ne pas toucher aux rapprochements ni aux paiements.

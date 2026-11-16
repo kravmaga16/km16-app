@@ -29,6 +29,8 @@ jobs:
         run: node scripts/check-admin-refresh.mjs
       - name: Verifier le rendu groupe des fiches adherents
         run: node scripts/check-admin-render.mjs
+      - name: Verifier les compteurs du tableau de bord
+        run: node scripts/check-admin-kpi.mjs
       - name: Installer navigateurs de test
         run: |
           npm install --no-save playwright@1.56.1

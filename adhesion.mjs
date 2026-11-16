@@ -104,14 +104,19 @@ function documentSummary(parent,d){
  parent.append(box);
 }
 function editDocuments(td,d,o){
- if(!d){text('span','Après le premier paiement annuel',td);return;}
- const make=(label,options,value)=>{const l=text('label',label,td),s=document.createElement('select');s.setAttribute('aria-label',label);for(const [v,t] of options)s.add(new Option(t,v));s.value=value;l.append(s);return s;};
+ const status=document.createElement('div');status.className='km16-document-status';status.setAttribute('role','status');td.append(status);
+ if(!d){status.textContent='Justificatifs non disponibles · vérifier le premier paiement annuel';status.dataset.state='missing';return;}
+ const describe=(label,value)=>label+' : '+(docStatus[value]||'À vérifier');
+ const updateStatus=()=>{const items=[describe('Santé',health.value)];if(school)items.push(describe('Saint-Jean',school.value));status.textContent=items.join(' · ');status.dataset.state=items.every((_,i)=>(i===0?health.value:school.value)==='validated')?'validated':'pending';};
+ const editor=document.createElement('details');editor.className='km16-document-editor';const summary=document.createElement('summary');summary.textContent='Vérifier ou modifier les justificatifs';editor.append(summary);td.append(editor);
+ const make=(label,options,value)=>{const l=text('label',label,editor),s=document.createElement('select');s.setAttribute('aria-label',label);for(const [v,t] of options)s.add(new Option(t,v));s.value=value;l.append(s);return s;};
  const states=['missing','received','validated'].map(x=>[x,docStatus[x]]);
  const kind=make('Pièce de santé',[['attestation','Attestation (< 15 ans)'],['certificat','Certificat médical']],d.health_kind);
  try{const at=new Intl.DateTimeFormat('en-CA',{timeZone:'Europe/Paris',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(o.consented_at));if(ageOn(o.birth_date,at)>=15)kind.options[0].disabled=true;}catch{}
  const health=make('Réception santé',states,d.health_status);
  const school=d.school_required?make('Justificatif Saint-Jean',states,d.school_status):null;
- const b=text('button','Enregistrer les justificatifs',td);b.type='button';const feedback=text('p','',td,'muted');feedback.setAttribute('role','status');feedback.setAttribute('aria-live','polite');
+ updateStatus();health.addEventListener('change',updateStatus);if(school)school.addEventListener('change',updateStatus);
+ const b=text('button','Enregistrer les justificatifs',editor);b.type='button';const feedback=text('p','',editor,'muted');feedback.setAttribute('role','status');feedback.setAttribute('aria-live','polite');
  b.onclick=async()=>{b.disabled=true;b.textContent='Enregistrement…';feedback.textContent='Enregistrement des justificatifs en cours…';try{await api({action:'documents-update',order_id:d.order_id,revision:d.revision,health_kind:kind.value,health_status:health.value,school_status:school?school.value:'not_required'});feedback.textContent='Justificatifs enregistrés avec succès.';note('Justificatifs enregistrés pour '+o.first_name+' '+o.last_name+'.');await admin();}catch(e){feedback.textContent='Échec : '+e.message;note(e.message,true);}finally{b.disabled=false;b.textContent='Enregistrer les justificatifs';}};
 }
 const requestedFollowup=new URLSearchParams(location.search).get('followup');if(['attention','all','sent','uncertain','never','recent','due'].includes(requestedFollowup))$('km16-followup-filter').value=requestedFollowup;

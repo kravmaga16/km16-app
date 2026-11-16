@@ -1,0 +1,13 @@
+import {readFileSync} from 'node:fs';
+import assert from 'node:assert/strict';
+const js=readFileSync('clients.mjs','utf8');
+const start=js.indexOf('function renderMoneySummary(){');
+const end=js.indexOf('function renderMemberQuality(){',start);
+assert.ok(start>=0&&end>start,'Finance summary missing');
+const section=js.slice(start,end);
+assert.match(section,/const totals=Object\.fromEntries\(moneyFields\.map\(\(\[key\]\)=>\[key,0\]\)\)/);
+assert.match(section,/for\(const c of all\)\{if\(c\.forecast_unknown\)partial=true;for\(const key of Object\.keys\(totals\)\)totals\[key\]\+=c\.amounts\?\.\[key\]\|\|0;\}/);
+assert.doesNotMatch(section,/all\.reduce\(/,'Redundant finance scan detected');
+assert.match(section,/const forecastKeys=/,'Partial forecast warning missing');
+assert.match(js,/\$\('login-form'\)\.onsubmit/,'Admin login missing');
+console.log('KM16 financial dashboard checks passed');

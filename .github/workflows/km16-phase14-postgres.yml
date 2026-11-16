@@ -7,9 +7,15 @@ on:
     branches:
       - 'develop/member-review-persistence-phase14-*'
   workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: km16-phase14-postgres-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
   postgres-integration:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
     services:
       postgres:
         image: postgres:16

@@ -1,0 +1,14 @@
+import {readFileSync} from 'node:fs';
+import assert from 'node:assert/strict';
+const js=readFileSync('clients.mjs','utf8');
+const start=js.indexOf('function renderApprovalDossiers(){');
+const end=js.indexOf('function renderOverview(){',start);
+assert.ok(start>=0&&end>start,'Dossier rendering not found');
+const part=js.slice(start,end);
+assert.match(part,/const dossierRows=document\.createDocumentFragment\(\)/);
+assert.match(part,/dossierRows\.append\(li\)/);
+assert.match(part,/ul\.append\(dossierRows\);host\.append\(ul\)/);
+assert.match(part,/seen\.has\(p\.order_id\)/,'Deduplication must remain');
+assert.match(part,/Vérifier \/ valider le dossier/,'Validation link must remain');
+assert.match(js,/\$\('login-form'\)\.onsubmit/,'Login handler must remain');
+console.log('KM16 dossier rendering checks passed');

@@ -351,7 +351,7 @@ $('login-form').onsubmit=async event=>{event.preventDefault();if(!client)return;
 const logout=async()=>{generation++;controller?.abort();clear();await client.auth.signOut();await authState(null);};
 $('logout').onclick=logout;$('other-account').onclick=logout;
 $('season').onchange=()=>{generation++;controller?.abort();busy=false;clear();showSeason();load();};
-$('refresh').onclick=()=>{load();refreshCourseAlerts();};let km16SearchTimer; $('search').oninput=()=>{clearTimeout(km16SearchTimer);km16SearchTimer=setTimeout(render,160);};$('search-clear').onclick=()=>{$('search').value='';render();$('search').focus();};
+$('refresh').onclick=()=>{load();refreshCourseAlerts();};let km16SearchTimer; $('search').oninput=()=>{clearTimeout(km16SearchTimer);km16SearchTimer=setTimeout(render,160);};$('search-clear').onclick=()=>{clearTimeout(km16SearchTimer);$('search').value='';render();$('search').focus();};
 $('all').onclick=()=>{group='';render();};
 for(const b of document.querySelectorAll('[data-group]'))b.onclick=()=>{group=b.dataset.group;render();};
 $('test').onchange=()=>{generation++;controller?.abort();busy=false;clear();load();};

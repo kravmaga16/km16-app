@@ -35,6 +35,8 @@ jobs:
         run: node scripts/check-admin-finance.mjs
       - name: Verifier l'affichage des dossiers a valider
         run: node scripts/check-admin-dossiers.mjs
+      - name: Verifier la stabilite de la recherche
+        run: node scripts/check-admin-stability.mjs
       - name: Installer navigateurs de test
         run: |
           npm install --no-save playwright@1.56.1

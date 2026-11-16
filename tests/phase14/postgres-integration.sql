@@ -25,6 +25,19 @@ begin
  if n<>1 then raise exception 'Active season filter failed: %',n; end if;
  select count(*) into n from public.km16_member_review_history_list('2026/2027','test','fictional-active',1,null);
  if n<>1 then raise exception 'History pagination failed'; end if;
+ -- Separate season and environment must not inherit status.
+ select count(*) into n from public.km16_member_review_list('2025/2026','test');
+ if n<>1 then raise exception 'Previous season fixture missing'; end if;
+ select count(*) into n from public.km16_member_review_list('2026/2027','live') where state<>'a_verifier' or version<>0;
+ if n<>0 then raise exception 'Live environment leaked test state'; end if;
+ begin
+   perform public.km16_member_review_set('2026/2027','test','fictional-active','unknown',2);
+   raise exception 'Invalid state was accepted';
+ exception when sqlstate '22023' then null; end;
+ begin
+   perform public.km16_member_review_set('2026/2027','test','fictional-active','controle',-1);
+   raise exception 'Invalid version was accepted';
+ exception when sqlstate '22023' then null; end;
  select count(*) into n from public.km16_member_review_status where environment='live';
  if n<>0 then raise exception 'Environment isolation failed'; end if;
 end $test$;

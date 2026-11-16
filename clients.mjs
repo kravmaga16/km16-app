@@ -257,8 +257,10 @@ $('member-profile-close').onclick=closeMemberProfile;
 const matches=c=>{const q=$('search').value.normalize('NFKC').toLocaleLowerCase('fr-FR').trim();return !q||[c.last_name,c.first_name,c.email,c.phone,c.guardian_name,...c.address,c.import_email,c.import_phone,c.additional_addresses,...c.products.map(p=>p.title)].join(' ').normalize('NFKC').toLocaleLowerCase('fr-FR').includes(q);};
 function cell(row,text){const td=document.createElement('td');td.textContent=text;row.appendChild(td);return td;}
 function renderMoneySummary(){
- const totals=Object.fromEntries(moneyFields.map(([key])=>[key,all.reduce((n,c)=>n+(c.amounts?.[key]||0),0)]));
- const partial=all.some(c=>c.forecast_unknown),forecastKeys=['future_cents','planned_cents','overdue_cents','cancelled_cents'];
+ const totals=Object.fromEntries(moneyFields.map(([key])=>[key,0]));
+ let partial=false;
+ for(const c of all){if(c.forecast_unknown)partial=true;for(const key of Object.keys(totals))totals[key]+=c.amounts?.[key]||0;}
+ const forecastKeys=['future_cents','planned_cents','overdue_cents','cancelled_cents'];
  const primary=[['net_cents','Encaissé','Après remboursements'],['future_cents','À venir','Échéances futures vérifiées'],['planned_cents','Total prévu','Encaissé + échéances à venir']];
  $('money-scope').textContent=($('test').checked?'TEST · ':'')+'Saison '+$('season').value+' · Tous les groupes · Hors filtres de recherche';
  $('money-summary').replaceChildren();

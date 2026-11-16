@@ -209,14 +209,10 @@ function clear(){externalPaymentRequest++;if($('external-payment-summary'))$('ex
 let selectedMember=null;
 function closeMemberProfile(){selectedMember=null;$('member-profile').hidden=true;$('member-profile-content').replaceChildren();}
 function profileLine(parent,label,value){const p=document.createElement('p');const strong=document.createElement('strong');strong.textContent=label+' : ';p.append(strong,document.createTextNode(value===null||value===undefined||value===''?'Non renseigné':String(value)));parent.append(p);}
-function profileBlock(parent,title){const block=document.createElement('details');block.className='km16-profile-block km16-profile-fold';block.open=title==='Identité et contact'||title.startsWith('Corriger cette fiche');const heading=document.createElement('summary');heading.textContent=title;heading.setAttribute('aria-label',title+' — afficher ou masquer');block.append(heading);parent.append(block);return block;}
+function profileBlock(parent,title){const block=document.createElement('div');block.className='km16-profile-block';const h=document.createElement('h3');h.textContent=title;block.append(h);parent.append(block);return block;}
 $('km16-quick-member-go').onclick=()=>{const query=$('km16-quick-member-input').value.trim();if(!query){$('km16-quick-member-status').textContent='Saisissez un nom, prénom ou e-mail.';return;}group='';for(const b of document.querySelectorAll('[data-group]'))b.setAttribute('aria-pressed','false');$('search').value=query;render();$('km16-quick-member-status').textContent='Recherche appliquée au fichier de la saison sélectionnée.';$('search').scrollIntoView({behavior:'smooth',block:'center'});};
 $('km16-quick-member-input').addEventListener('keydown',e=>{if(e.key==='Enter'){$('km16-quick-member-go').click();}});
-function openMemberProfile(c){if(!all.includes(c))return;selectedMember=c;const panel=$('member-profile'),body=$('member-profile-content');body.replaceChildren();$('member-profile-title').textContent='Fiche · '+[c.first_name,c.last_name].filter(Boolean).join(' ');$('member-profile-scope').textContent='Saison '+$('season').value+' · '+(c.group||'Groupe à vérifier')+($('test').checked?' · ENVIRONNEMENT TEST':'');const summary=document.createElement('div');summary.className='km16-profile-summary';
- const facts=[['Groupe',c.group||'À vérifier'],['Source',c.source||'KM16'],['Produits enregistrés',String((c.products||[]).length)],['Contact',c.email?'E-mail disponible':'E-mail à vérifier']];
- for(const [label,value] of facts){const item=document.createElement('div');item.className='km16-profile-fact';const heading=document.createElement('span');heading.textContent=label;const detail=document.createElement('strong');detail.textContent=value;item.append(heading,detail);summary.append(item);}
- body.append(summary);
- const grid=document.createElement('div');grid.className='km16-profile-grid';body.append(grid);
+function openMemberProfile(c){if(!all.includes(c))return;selectedMember=c;const panel=$('member-profile'),body=$('member-profile-content');body.replaceChildren();$('member-profile-title').textContent='Fiche · '+[c.first_name,c.last_name].filter(Boolean).join(' ');$('member-profile-scope').textContent='Saison '+$('season').value+' · '+(c.group||'Groupe à vérifier')+($('test').checked?' · ENVIRONNEMENT TEST':'');const grid=document.createElement('div');grid.className='km16-profile-grid';body.append(grid);
  const info=profileBlock(grid,'Identité et contact');profileLine(info,'Prénom',c.first_name);profileLine(info,'Nom',c.last_name);profileLine(info,'Groupe',c.group);profileLine(info,'E-mail',c.email);profileLine(info,'Téléphone',c.phone);profileLine(info,'Représentant légal',c.guardian_name);profileLine(info,'Adresse',Array.isArray(c.address)?c.address.join(', '):'');
  if(c.external_only&&typeof c.id==='string'&&c.id.startsWith('import:')){
   const edit=profileBlock(grid,'Corriger cette fiche (import externe)');const form=document.createElement('form');form.className='km16-profile-edit';
@@ -258,13 +254,7 @@ function openMemberProfile(c){if(!all.includes(c))return;selectedMember=c;const 
  }).catch(e=>{if(selectedMember===c)historyText.textContent='Historique indisponible : '+e.message;});
  panel.hidden=false;panel.scrollIntoView({behavior:'smooth',block:'start'});}
 $('member-profile-close').onclick=closeMemberProfile;
-const km16SearchNormalize=value=>String(value||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').normalize('NFKC').toLocaleLowerCase('fr-FR').replace(/\s+/g,' ').trim();
-const matches=c=>{
- const terms=km16SearchNormalize($('search').value).split(' ').filter(Boolean);
- if(!terms.length)return true;
- const searchable=km16SearchNormalize([c.last_name,c.first_name,c.email,c.phone,c.guardian_name,...(c.address||[]),c.import_email,c.import_phone,...(c.additional_addresses||[]),...(c.products||[]).map(p=>p.title)].join(' '));
- return terms.every(term=>searchable.includes(term));
-};
+const matches=c=>{const q=$('search').value.normalize('NFKC').toLocaleLowerCase('fr-FR').trim();return !q||[c.last_name,c.first_name,c.email,c.phone,c.guardian_name,...c.address,c.import_email,c.import_phone,c.additional_addresses,...c.products.map(p=>p.title)].join(' ').normalize('NFKC').toLocaleLowerCase('fr-FR').includes(q);};
 function cell(row,text){const td=document.createElement('td');td.textContent=text;row.appendChild(td);return td;}
 function renderMoneySummary(){
  const totals=Object.fromEntries(moneyFields.map(([key])=>[key,all.reduce((n,c)=>n+(c.amounts?.[key]||0),0)]));
@@ -328,7 +318,7 @@ function render(){
  for(const b of document.querySelectorAll('[data-group]'))b.setAttribute('aria-pressed',String(b.dataset.group===group));
  $('export').disabled=busy||!all.some(matches);
 }
-let lastClientsLoadedAt=0;\nasync function load(){
+async function load(){
  if(busy||session?.user.email?.toLowerCase()!==ADMIN)return;
  refreshExternalPayments();
  busy=true;render();const gen=generation,test=$('test').checked,season=$('season').value;showSeason();controller=new AbortController();
@@ -339,7 +329,7 @@ let lastClientsLoadedAt=0;\nasync function load(){
   const data=await r.json();if(!r.ok)throw Error(data.error||'Chargement impossible');
   if(gen!==generation||test!==$('test').checked)return;
   if(!Array.isArray(data.clients)||data.test!==test||data.season!==season)throw Error('Réponse inattendue');
-  all=data.clients;lastClientsLoadedAt=Date.now();overviewLoaded=true;refreshShirtKpi();$('imports-note').textContent=(data.imported_count||0)+' fiches du fichier actif rattachées à cette saison. Les montants des plateformes externes restent séparés des achats KM16, sans rapprochement des transactions avec les adhérents.';
+  all=data.clients;overviewLoaded=true;refreshShirtKpi();$('imports-note').textContent=(data.imported_count||0)+' fiches du fichier actif rattachées à cette saison. Les encaissements Sportigo/Fighty ne sont pas intégrés aux totaux ci-dessous ; les identités concordantes sont rapprochées sans ajouter de paiement.';
   for(const value of data.seasons||[]){if(![...$('season').options].some(o=>o.value===value)){const o=document.createElement('option');o.value=value;o.textContent=value;$('season').append(o);}}
   $('test-notice').hidden=!test;
   const missing=all.filter(c=>!c.address.length).length,unchecked=all.filter(c=>c.group==='À vérifier').length;
@@ -358,11 +348,11 @@ $('login-form').onsubmit=async event=>{event.preventDefault();if(!client)return;
 const logout=async()=>{generation++;controller?.abort();clear();await client.auth.signOut();await authState(null);};
 $('logout').onclick=logout;$('other-account').onclick=logout;
 $('season').onchange=()=>{generation++;controller?.abort();busy=false;clear();showSeason();load();};
-$('refresh').onclick=()=>{load();refreshCourseAlerts();};let km16SearchTimer;\n$('search').oninput=()=>{clearTimeout(km16SearchTimer);km16SearchTimer=setTimeout(render,120);};$('search-clear').onclick=()=>{clearTimeout(km16SearchTimer);$('search').value='';render();$('search').focus();};
+$('refresh').onclick=()=>{load();refreshCourseAlerts();};$('search').oninput=render;$('search-clear').onclick=()=>{$('search').value='';render();$('search').focus();};
 $('all').onclick=()=>{group='';render();};
 for(const b of document.querySelectorAll('[data-group]'))b.onclick=()=>{group=b.dataset.group;render();};
 $('test').onchange=()=>{generation++;controller?.abort();busy=false;clear();load();};
 $('export').onclick=()=>{try{const rows=all.filter(matches);if(!rows.length)return;const bytes=clientsWorkbook(rows,all);const url=URL.createObjectURL(new Blob([bytes],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}));const a=document.createElement('a');a.href=url;a.download=($('test').checked?'TEST-':'')+'KM16-Clients-'+$('season').value.replace('/','-')+'-'+new Date().toISOString().slice(0,10)+'.xlsx';document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),30000);status('Export créé : Enfants, Ados, Adultes, Synthèse et Stages par mois.');}catch(e){status(e.message,true);}};
 if(!client)status('Connexion indisponible : rechargez la page',true);
 else{client.auth.onAuthStateChange((_event,s)=>{setTimeout(()=>authState(s),0);});const {data}=await client.auth.getSession();await authState(data.session);}
-setInterval(()=>{if(!document.hidden&&!busy&&session?.user?.email?.toLowerCase()===ADMIN&&Date.now()-lastClientsLoadedAt>=60000)load();},60000);
+setInterval(()=>{if(!document.hidden)load();},60000);

@@ -7,7 +7,7 @@ on:
     branches: [main]
 jobs:
   syntax:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: Recuperer le code
         uses: actions/checkout@v4
@@ -23,6 +23,12 @@ jobs:
         run: node scripts/check-admin-login.mjs
       - name: Verifier la navigation mobile de l'administration
         run: node scripts/check-admin-mobile.mjs
+      - name: Installer navigateurs de test
+        run: |
+          npm install --no-save playwright@1.56.1
+          npx playwright install --with-deps chromium webkit
+      - name: Tester le rendu admin dans Chromium et WebKit
+        run: node scripts/check-admin-browser.mjs
       - name: Preparer un paquet de previsualisation sans publication
         if: success()
         uses: actions/upload-artifact@v4

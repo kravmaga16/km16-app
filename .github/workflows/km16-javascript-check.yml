@@ -5,9 +5,15 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+permissions:
+  contents: read
+concurrency:
+  group: km16-js-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
   syntax:
     runs-on: ubuntu-24.04
+    timeout-minutes: 20
     steps:
       - name: Recuperer le code
         uses: actions/checkout@v4
@@ -21,6 +27,8 @@ jobs:
           find . -type f \( -name '*.mjs' -o -name '*.js' \) -not -path './node_modules/*' -print0 | xargs -0 -r -n 1 node --check
       - name: Tester la presence du parcours de connexion administrateur
         run: node scripts/check-admin-login.mjs
+      - name: Verifier les garde-fous de securite de l'administration
+        run: node scripts/check-admin-safety.mjs
       - name: Verifier la navigation mobile de l'administration
         run: node scripts/check-admin-mobile.mjs
       - name: Verifier l'optimisation de recherche

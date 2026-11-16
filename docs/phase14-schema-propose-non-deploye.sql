@@ -13,10 +13,10 @@ create table if not exists public.km16_member_review_status (
   updated_at timestamptz not null default now(),
   updated_by uuid references auth.users(id),
   version bigint not null default 1 check (version >= 1),
-  primary key (season_id,environment,source,source_member_id),
-  foreign key (source_member_id,season_id)
-    references public.km16_external_clients(external_id,season_id)
-    on update restrict on delete restrict
+  primary key (season_id,environment,source,source_member_id)
+  -- The RPC must verify the active source record before writing.
+  -- No FK to external_clients: preserve review history if an import is archived
+  -- or removed under the club's existing retention rules.
 );
 
 create table if not exists public.km16_member_review_history (

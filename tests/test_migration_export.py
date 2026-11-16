@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Tests for private migration CSV export. No database access."""
 import csv
+import hashlib
 import importlib.util
 import pathlib
 import tempfile
@@ -37,6 +38,32 @@ class ExportTests(unittest.TestCase):
         self.assertGreater(size, 0)
         self.assertEqual(len(list(self.output.glob("*.sql"))), 44)
         self.assertIn("café", next(self.output.glob("*.sql")).read_text())
+
+    def test_manifest_integrity(self):
+        manifest = self.root / "manifest.csv"
+        with manifest.open("w", newline="", encoding="utf-8") as stream:
+            writer = csv.DictWriter(stream, fieldnames=("version", "name", "md5", "bytes"))
+            writer.writeheader()
+            for row in self.rows:
+                raw = row["sql"].encode("utf-8")
+                writer.writerow({"version": row["version"], "name": row["name"],
+                                 "md5": hashlib.md5(raw).hexdigest(), "bytes": len(raw)})
+        self.assertEqual(module.export(self.csv_file, self.output, manifest)[0], 44)
+
+    def test_manifest_rejects_tampered_sql(self):
+        manifest = self.root / "manifest.csv"
+        with manifest.open("w", newline="", encoding="utf-8") as stream:
+            writer = csv.DictWriter(stream, fieldnames=("version", "name", "md5", "bytes"))
+            writer.writeheader()
+            for row in self.rows:
+                raw = row["sql"].encode("utf-8")
+                writer.writerow({"version": row["version"], "name": row["name"],
+                                 "md5": hashlib.md5(raw).hexdigest(), "bytes": len(raw)})
+        self.rows[3]["sql"] = "select 999;"
+        self.write_rows()
+        with self.assertRaises(ValueError):
+            module.export(self.csv_file, self.output, manifest)
+        self.assertFalse(self.output.exists())
 
     def test_rejects_incomplete_history(self):
         self.rows.pop()

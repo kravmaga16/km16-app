@@ -1,0 +1,13 @@
+import {readFileSync} from 'node:fs';
+import assert from 'node:assert/strict';
+const js=readFileSync('clients.mjs','utf8');
+const start=js.indexOf('function render(){');
+const end=js.indexOf('async function load(){',start);
+assert.ok(start>=0&&end>start,'Render function not found');
+const render=js.slice(start,end);
+assert.match(render,/const km16GroupCounts=\{Enfants:\{total:0,saintJean:0\},Ados:\{total:0,saintJean:0\},Adultes:\{total:0,saintJean:0\}\}/);
+assert.match(render,/for\(const c of all\)\{const counts=km16GroupCounts\[c\.group\]/);
+assert.match(render,/counts\.total-counts\.saintJean/);
+assert.doesNotMatch(render,/all\.filter\(c=>c\.group==='Enfants'\)/);
+assert.match(js,/\$\('login-form'\)\.onsubmit/);
+console.log('KM16 dashboard group counters checks passed');

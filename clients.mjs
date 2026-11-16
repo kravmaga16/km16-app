@@ -313,9 +313,9 @@ function render(){
  }
  if(!shown.length){const row=document.createElement('tr'),td=cell(row,all.length?'Aucun client pour cette sélection':'Aucun achat encaissé dans cet environnement');td.colSpan=13;km16RowsFragment.append(row);}
  $('rows').replaceChildren(km16RowsFragment);
- $('count-enfants').textContent=all.filter(c=>c.group==='Enfants').length;for(const g of ['Enfants','Ados','Adultes']){const rows=all.filter(c=>c.group===g);$('split-'+g.toLowerCase()).textContent=rows.filter(c=>c.saint_jean).length+' Saint-Jean · '+rows.filter(c=>!c.saint_jean).length+' autres tarifs';}
- $('count-ados').textContent=all.filter(c=>c.group==='Ados').length;
- $('count-adultes').textContent=all.filter(c=>c.group==='Adultes').length;
+ const km16GroupCounts={Enfants:{total:0,saintJean:0},Ados:{total:0,saintJean:0},Adultes:{total:0,saintJean:0}};
+ for(const c of all){const counts=km16GroupCounts[c.group];if(!counts)continue;counts.total++;if(c.saint_jean)counts.saintJean++;}
+ for(const g of ['Enfants','Ados','Adultes']){const counts=km16GroupCounts[g];$('count-'+g.toLowerCase()).textContent=counts.total;$('split-'+g.toLowerCase()).textContent=counts.saintJean+' Saint-Jean · '+(counts.total-counts.saintJean)+' autres tarifs';}
  for(const b of document.querySelectorAll('[data-group]'))b.setAttribute('aria-pressed',String(b.dataset.group===group));
  $('export').disabled=busy||!all.some(matches);
 }

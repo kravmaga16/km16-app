@@ -40,3 +40,20 @@ export async function saveReviewStatus(supabase, key, state, expectedVersion) {
   }
   return row;
 }
+
+export async function listReviewHistory(supabase, key, limit=50, beforeId=null) {
+  if (!supabase?.rpc || !key || !/^\d{4}\/\d{4}$/.test(key.season)
+    || !['live','test'].includes(key.environment)
+    || typeof key.externalId!=='string' || !key.externalId.trim()
+    || !Number.isSafeInteger(limit) || limit<1 || limit>100
+    || (beforeId!==null && (!Number.isSafeInteger(beforeId) || beforeId<1))) {
+    throw new Error('Paramètres d’historique invalides');
+  }
+  const {data,error}=await supabase.rpc('km16_member_review_history_list',{
+    p_season:key.season,p_environment:key.environment,p_external_id:key.externalId,
+    p_limit:limit,p_before_id:beforeId
+  });
+  if (error) throw new Error('Historique indisponible : aucune modification effectuée');
+  if (!Array.isArray(data)) throw new Error('Réponse d’historique invalide');
+  return data;
+}

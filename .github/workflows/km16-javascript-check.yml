@@ -49,6 +49,8 @@ jobs:
         run: node scripts/check-phase14-review-model.mjs
       - name: Verifier le brouillon des RPC de lecture
         run: node scripts/check-phase14-rpc-read.mjs
+      - name: Verifier le brouillon de RPC d'ecriture
+        run: node scripts/check-phase14-rpc-write.mjs
       - name: Installer navigateurs de test
         run: |
           npm install --no-save playwright@1.56.1

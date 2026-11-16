@@ -51,3 +51,9 @@ La version 22 de la fonction a été inspectée en lecture seule.
 2. Pour les fiches issues des adhésions, **bloquer les écritures permanentes** tant qu'une clé personnelle immuable n'a pas été conçue et exposée par le serveur. Ne pas utiliser le premier numéro de commande comme identifiant personnel.
 3. Le suivi temporaire de la phase 13 demeure disponible pour toutes les fiches jusqu'à la mise en service contrôlée du suivi permanent.
 4. Le statut et l'historique permanents seront stockés séparément, avec contrôle d'accès serveur et journalisation atomique. Ne pas ajouter de colonnes aux tables de paiements ou d'adhérents.
+
+## Préparation du schéma SQL (non déployé)
+- Le contrôle en lecture seule du 16 novembre indique **161 fiches importées**, **161 couples (season_id, external_id) distincts**, et **aucun identifiant vide**.
+- L'index primaire de `km16_external_clients` est bien composé de `(external_id, season_id)`.
+- Un brouillon SQL a été ajouté : `docs/phase14-schema-propose-non-deploye.sql`. Il limite le suivi permanent à `source='import'`, prévoit deux tables distinctes pour le statut et l'historique, active la RLS sans accorder d'accès direct et ne crée aucune RPC.
+- Ce fichier **n'est pas une migration appliquée**. Il nécessite une validation sur environnement de test, une revue des droits serveur et une procédure de retour arrière avant tout déploiement.

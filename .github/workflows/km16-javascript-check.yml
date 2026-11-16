@@ -37,6 +37,8 @@ jobs:
         run: node scripts/check-admin-dossiers.mjs
       - name: Verifier la stabilite de la recherche
         run: node scripts/check-admin-stability.mjs
+      - name: Verifier le suivi des groupes de controle adherents
+        run: node scripts/check-member-quality.mjs
       - name: Installer navigateurs de test
         run: |
           npm install --no-save playwright@1.56.1

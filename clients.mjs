@@ -107,7 +107,7 @@ function renderKm16Daily(){
  const today=km16ParisToday();$('km16-daily-date').textContent='Aujourd’hui : '+km16DateFr(today)+' · Saison '+$('season').value;
  cards.replaceChildren();let pending=0,unknown=0,urgent=0;
  const actions=KM16_DAILY_ACTIONS.map((item,index)=>{
-  const raw=$(item.id)?.textContent?.trim()||'',valid=/^\\d+$/.test(raw),count=valid?Number(raw):null;
+  const raw=$(item.id)?.textContent?.trim()||'',valid=/^\d+$/.test(raw),count=valid?Number(raw):null;
   return {...item,index,count};
  }).sort((a,b)=>{
   const rank=x=>x.count===null?2:x.count>0?0:1;

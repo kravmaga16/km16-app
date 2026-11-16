@@ -102,16 +102,32 @@ const KM16_DAILY_ACTIONS=[
 ];
 let km16FollowupRequest=0;
 async function refreshKm16FollowupDashboard(){const seq=++km16FollowupRequest;const ids=['pending','due','never','uncertain'];if(session?.user?.email?.toLowerCase()!==ADMIN){for(const id of ids)$('km16-followup-'+id).textContent='—';$('km16-followup-dashboard-status').textContent='Connexion administrateur requise.';return;}try{const {data,error}=await client.rpc('km16_admin_followup_dashboard');if(seq!==km16FollowupRequest)return;if(error)throw error;const row=data?.[0];if(!row)throw Error('Indicateurs indisponibles');for(const id of ids)$('km16-followup-'+id).textContent=String(row[id+'_count']??'—');$('km16-followup-dashboard-status').textContent='Indicateurs calculés sur les dossiers réels en attente · Actualisés à '+new Date().toLocaleTimeString('fr-FR');}catch(e){if(seq!==km16FollowupRequest)return;for(const id of ids)$('km16-followup-'+id).textContent='—';$('km16-followup-dashboard-status').textContent='Suivi indisponible : '+e.message;}}
-function renderKm16Daily(){const cards=$('km16-daily-cards'),next=$('km16-daily-next');if(!cards||!next)return;
+function renderKm16Daily(){
+ const cards=$('km16-daily-cards'),next=$('km16-daily-next');if(!cards||!next)return;
  const today=km16ParisToday();$('km16-daily-date').textContent='Aujourd’hui : '+km16DateFr(today)+' · Saison '+$('season').value;
- cards.replaceChildren();let pending=0,unknown=0;
- for(const item of KM16_DAILY_ACTIONS){const raw=$(item.id)?.textContent?.trim()||'',valid=/^\\d+$/.test(raw),count=valid?Number(raw):null;
-  if(count===null)unknown++;else pending+=count;
-  const card=document.createElement('div');card.className='km16-kpi';const label=document.createElement('span');label.textContent=item.label;const strong=document.createElement('strong');strong.textContent=count===null?'—':String(count);const detail=document.createElement('small');detail.textContent=count===null?'Indicateur à vérifier':count===0?'Aucune action en attente':'À traiter';const link=document.createElement('a');link.href=item.href;link.textContent='Ouvrir';card.append(label,strong,detail,link);cards.append(card);
+ cards.replaceChildren();let pending=0,unknown=0,urgent=0;
+ const actions=KM16_DAILY_ACTIONS.map((item,index)=>{
+  const raw=$(item.id)?.textContent?.trim()||'',valid=/^\\d+$/.test(raw),count=valid?Number(raw):null;
+  return {...item,index,count};
+ }).sort((a,b)=>{
+  const rank=x=>x.count===null?2:x.count>0?0:1;
+  return rank(a)-rank(b)||a.index-b.index;
+ });
+ for(const item of actions){
+  const count=item.count;if(count===null)unknown++;else if(count>0){pending+=count;urgent++;}
+  const card=document.createElement('div');card.className='km16-kpi';
+  card.dataset.actionState=count===null?'unknown':count>0?'attention':'clear';
+  const label=document.createElement('span');label.textContent=item.label;
+  const strong=document.createElement('strong');strong.textContent=count===null?'—':String(count);
+  const detail=document.createElement('small');detail.textContent=count===null?'Données indisponibles':count===0?'À jour':'Action requise';
+  const link=document.createElement('a');link.href=item.href;link.textContent=count>0?'Traiter maintenant':'Consulter';
+  card.append(label,strong,detail,link);cards.append(card);
  }
- $('km16-daily-status').textContent=unknown?'Données partielles : '+unknown+' indicateur(s) indisponible(s).':pending===0?'Aucune action en attente dans les quatre catégories suivies.':pending+' action(s) en attente dans les quatre catégories suivies.';
- next.replaceChildren();const upcoming=km16UpcomingDeadlines().slice(0,3);if(!upcoming.length){const p=document.createElement('p');p.className='muted';p.textContent='Aucune échéance future renseignée.';next.append(p);return;}
- const ul=document.createElement('ul');ul.className='km16-approval-list';for(const d of upcoming){const li=document.createElement('li');li.textContent=km16DateFr(d.date)+(d.end?' au '+km16DateFr(d.end):'')+' · '+d.label;ul.append(li);}next.append(ul);
+ $('km16-daily-status').textContent=(urgent?urgent+' catégorie(s) à traiter · '+pending+' action(s) en attente. ':'Aucune action signalée dans les catégories disponibles. ')+(unknown?unknown+' indicateur(s) indisponible(s).':'Tous les indicateurs ont répondu.');
+ next.replaceChildren();const upcoming=km16UpcomingDeadlines().slice(0,3);
+ if(!upcoming.length){const p=document.createElement('p');p.className='muted';p.textContent='Aucune échéance future renseignée.';next.append(p);return;}
+ const ul=document.createElement('ul');ul.className='km16-approval-list';
+ for(const d of upcoming){const li=document.createElement('li');li.textContent=km16DateFr(d.date)+(d.end?' au '+km16DateFr(d.end):'')+' · '+d.label;ul.append(li);}next.append(ul);
 }
 $('km16-daily-refresh').onclick=()=>{refreshCourseAlerts();refreshShirtKpi();refreshAdminActionProgress();refreshKm16AutoMail();refreshKm16FollowupDashboard();load();renderKm16Daily();};
 const KM16_ACTIONS=[

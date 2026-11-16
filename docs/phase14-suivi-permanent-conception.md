@@ -57,3 +57,9 @@ La version 22 de la fonction a été inspectée en lecture seule.
 - L'index primaire de `km16_external_clients` est bien composé de `(external_id, season_id)`.
 - Un brouillon SQL a été ajouté : `docs/phase14-schema-propose-non-deploye.sql`. Il limite le suivi permanent à `source='import'`, prévoit deux tables distinctes pour le statut et l'historique, active la RLS sans accorder d'accès direct et ne crée aucune RPC.
 - Ce fichier **n'est pas une migration appliquée**. Il nécessite une validation sur environnement de test, une revue des droits serveur et une procédure de retour arrière avant tout déploiement.
+
+## Revue de pré-déploiement supplémentaire
+- Contrôle en lecture seule : 161 fiches importées en base, dont **160 actives sur la saison 2026/2027** et **1 archivée**. Le suivi permanent ne devra pas proposer une fiche archivée comme dossier actif.
+- Le brouillon a été corrigé pour ne pas ajouter de clé étrangère bloquant l'archivage ou la suppression d'une fiche importée. L'existence et l'état actif de la fiche devront être vérifiés **dans la transaction serveur** avant tout changement de statut.
+- Un contrôle statique `scripts/check-member-review-schema.mjs` vérifie la RLS, la séparation des clés et l'absence d'accès direct public dans le brouillon. Il ne remplace pas des tests SQL et de sécurité sur un projet de développement.
+- Les changements restent dans la PR de conception, sans création de table ni RPC de production.

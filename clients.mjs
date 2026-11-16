@@ -143,7 +143,7 @@ function renderKm16Daily(){
  const ul=document.createElement('ul');ul.className='km16-approval-list';
  for(const d of upcoming){const li=document.createElement('li');li.textContent=km16DateFr(d.date)+(d.end?' au '+km16DateFr(d.end):'')+' · '+d.label;ul.append(li);}next.append(ul);
 }
-$('km16-daily-refresh').onclick=()=>{refreshCourseAlerts();refreshShirtKpi();refreshAdminActionProgress();refreshKm16AutoMail();refreshKm16FollowupDashboard();load();renderKm16Daily();};
+$('km16-daily-refresh').onclick=()=>{refreshCourseAlerts();refreshShirtKpi();refreshAdminActionProgress();refreshKm16AutoMail();refreshKm16FollowupDashboard();externalPaymentLastRefresh=0;load();renderKm16Daily();};
 const KM16_ACTIONS=[
  {id:'review',label:'Dossiers administratifs à valider',kpi:'kpi-review',url:'./clients.html#km16-dossiers',priority:1},
  {id:'attendance',label:'Présences des cours passés à renseigner',kpi:'kpi-course-attendance',url:'./course-admin.html?view=attendance-pending',priority:1},
@@ -200,8 +200,8 @@ function renderOverview(){renderApprovalDossiers();const put=(id,v)=>{$(id).text
 async function refreshShirtKpi(){if(session?.user.email?.toLowerCase()!==ADMIN)return;const ticket=++shirtRefresh;putShirts('…','Consultation des commandes réelles…');try{const {data:{session:current}}=await client.auth.getSession();if(!current)throw Error('Session expirée');const r=await fetch('https://tlfewpbgbwesdriklxzb.supabase.co/functions/v1/km16-shirts',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+current.access_token},body:JSON.stringify({action:'list'})});const data=await r.json();if(!r.ok||!Array.isArray(data.orders))throw Error(data.error||'Commandes indisponibles');if(ticket!==shirtRefresh)return;const pending=data.orders.filter(o=>o.livemode===true&&o.status==='paid'&&!o.collected_at).length;putShirts(String(pending),'Commandes réelles payées · non retirées');}catch(e){if(ticket===shirtRefresh)putShirts('—','Données indisponibles · ouvrir la boutique');}}
 function putShirts(value,note){$('kpi-shirts').textContent=value;$('kpi-shirts-note').textContent=note;renderPriorities();}
 const euro=n=>new Intl.NumberFormat('fr-FR',{style:'currency',currency:'EUR'}).format(n/100);
-let externalPaymentRequest=0;
-async function refreshExternalPayments(){
+let externalPaymentRequest=0;\nlet externalPaymentLastRefresh=0;
+async function refreshExternalPayments(force=false){\n if(!force&&Date.now()-externalPaymentLastRefresh<300000)return;
  const request=++externalPaymentRequest;
  const host=$('external-payment-summary'),note=$('external-payment-status');if(!host||!note)return;
  host.replaceChildren();note.textContent='Consultation des montants importés…';
@@ -359,7 +359,7 @@ async function load(){
   const data=await r.json();if(!r.ok)throw Error(data.error||'Chargement impossible');
   if(gen!==generation||test!==$('test').checked)return;
   if(!Array.isArray(data.clients)||data.test!==test||data.season!==season)throw Error('Réponse inattendue');
-  all=data.clients;overviewLoaded=true;refreshShirtKpi();$('imports-note').textContent=(data.imported_count||0)+' fiches du fichier actif rattachées à cette saison. Les encaissements Sportigo/Fighty ne sont pas intégrés aux totaux ci-dessous ; les identités concordantes sont rapprochées sans ajouter de paiement.';
+  all=data.clients;overviewLoaded=true;refreshShirtKpi();$('imports-note').textContent=(data.imported_count||0)+' fiches du fichier actif rattachées à cette saison. Les montants Fighty et Stripe restent affichés séparément, sans rapprochement financier avec les adhérents.';
   for(const value of data.seasons||[]){if(![...$('season').options].some(o=>o.value===value)){const o=document.createElement('option');o.value=value;o.textContent=value;$('season').append(o);}}
   $('test-notice').hidden=!test;
   const missing=all.filter(c=>!c.address.length).length,unchecked=all.filter(c=>c.group==='À vérifier').length;
@@ -369,7 +369,7 @@ async function load(){
 }
 async function authState(s){
  generation++;controller?.abort();busy=false;session=s;clear();communications.reset();
- const admin=s?.user.email?.toLowerCase()===ADMIN;
+ const admin=s?.user.email?.toLowerCase()===ADMIN;\n externalPaymentLastRefresh=0;
  $('login').hidden=!!s;$('forbidden').hidden=!s||admin;$('workspace').hidden=!admin;$('stages-panel').hidden=!admin;
  $('password').value='';$('test').checked=false;$('test-notice').hidden=true;group='';$('search').value='';
  if(admin){$('identity').textContent=s.user.email;refreshShirtKpi();refreshCourseAlerts();refreshAdminActionProgress();refreshKm16AutoMail();refreshKm16FollowupDashboard();await load();communications.load();}else{km16ActionRequest++;km16ActionState.clear();km16ActionLoaded=false;km16ActionError='';}
@@ -377,8 +377,8 @@ async function authState(s){
 $('login-form').onsubmit=async event=>{event.preventDefault();if(!client)return;const button=$('login-button');button.disabled=true;status('');try{const {error}=await client.auth.signInWithPassword({email:$('email').value.trim(),password:$('password').value});if(error)throw error;}catch(e){status(e.message,true);}finally{button.disabled=false;$('password').value='';}};
 const logout=async()=>{generation++;controller?.abort();clear();await client.auth.signOut();await authState(null);};
 $('logout').onclick=logout;$('other-account').onclick=logout;
-$('season').onchange=()=>{generation++;controller?.abort();busy=false;clear();showSeason();load();};
-$('refresh').onclick=()=>{load();refreshCourseAlerts();};$('search').oninput=render;$('search-clear').onclick=()=>{$('search').value='';render();$('search').focus();};
+$('season').onchange=()=>{externalPaymentLastRefresh=0;generation++;controller?.abort();busy=false;clear();showSeason();load();};
+$('refresh').onclick=()=>{externalPaymentLastRefresh=0;load();refreshCourseAlerts();};$('search').oninput=render;$('search-clear').onclick=()=>{$('search').value='';render();$('search').focus();};
 $('all').onclick=()=>{group='';render();};
 for(const b of document.querySelectorAll('[data-group]'))b.onclick=()=>{group=b.dataset.group;render();};
 $('test').onchange=()=>{generation++;controller?.abort();busy=false;clear();load();};

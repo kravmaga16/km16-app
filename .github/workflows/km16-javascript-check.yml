@@ -27,6 +27,8 @@ jobs:
         run: node scripts/check-admin-performance.mjs
       - name: Verifier les actualisations automatiques
         run: node scripts/check-admin-refresh.mjs
+      - name: Verifier le rendu groupe des fiches adherents
+        run: node scripts/check-admin-render.mjs
       - name: Installer navigateurs de test
         run: |
           npm install --no-save playwright@1.56.1

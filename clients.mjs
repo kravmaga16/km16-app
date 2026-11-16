@@ -15,24 +15,11 @@ function showSeason(){
  $('renewal').hidden=!(selected===SEASON&&state.renewalOpen);
  $('km16-season-transition-status').textContent=selected===SEASON?(state.archived?'Saison archivée : historique conservé. Consultez la saison suivante pour les nouvelles inscriptions.':state.renewalOpen?'Réabonnements ouverts depuis le 1er juin 2027. Contrôlez les dossiers avant renouvellement.':'Réabonnements prévus à partir du 1er juin 2027. Préparez les dossiers et les communications.'):'Saison sélectionnée : '+selected+' · vérifiez les dates et offres avant toute nouvelle inscription.';
 }
-function renderKm16TodayCourses(sessions,bookings,attendance){
- const host=$('km16-course-today-cards'),note=$('km16-course-today-status');if(!host||!note)return;
- host.replaceChildren();
- const today=km16ParisToday();
- const todays=sessions.filter(x=>x.session_date===today&&x.enabled!==false).sort((a,b)=>String(a.start_time||'').localeCompare(String(b.start_time||'')));
- const ids=new Set(todays.map(x=>x.id));
- const active=bookings.filter(x=>ids.has(x.session_id)&&x.status==='Inscrit');
- const recorded=new Set((attendance||[]).map(x=>x.booking_id));
- const figures=[['Séances prévues',todays.length],['Réservations actives',active.length],['Présences renseignées',active.filter(x=>recorded.has(x.id)).length]];
- for(const [label,value] of figures){const card=document.createElement('div');card.className='km16-kpi';const name=document.createElement('span');name.textContent=label;const number=document.createElement('strong');number.textContent=String(value);card.append(name,number);host.append(card);}
- note.textContent=todays.length?'Horaires : '+todays.map(x=>String(x.start_time||'').slice(0,5)+'–'+String(x.end_time||'').slice(0,5)+' · '+(x.venue||x.category||'Cours')).join(' ; '):'Aucune séance programmée aujourd’hui.';
-}
-function setKm16TodayCoursesUnavailable(message){const host=$('km16-course-today-cards'),note=$('km16-course-today-status');if(host)host.replaceChildren();if(note)note.textContent=message;}
 let courseAlertRequest=0;
 async function refreshCourseAlerts(){
  const request=++courseAlertRequest;
  const put=(a,b,msg)=>{if(request!==courseAlertRequest)return;$('kpi-course-unlinked').textContent=a;$('kpi-course-attendance').textContent=b;$('kpi-course-status').textContent=msg;renderPriorities();};
- if(session?.user?.email?.toLowerCase()!==ADMIN){put('—','—','Accès administrateur requis.');setKm16TodayCoursesUnavailable('Connexion administrateur requise.');return;}
+ if(session?.user?.email?.toLowerCase()!==ADMIN){put('—','—','Accès administrateur requis.');return;}
  put('…','…','Actualisation des réservations et des présences…');
  try{
   const {data:{session:current}}=await client.auth.getSession();if(!current)throw Error('Session expirée');
@@ -43,10 +30,9 @@ async function refreshCourseAlerts(){
   if(links.error)throw links.error;if(attendance.error)throw attendance.error;if(externalLinks.error)throw externalLinks.error;
   const linked=new Set([...(links.data||[]),...(externalLinks.data||[])].map(x=>x.booking_id)),recorded=new Set((attendance.data||[]).map(x=>x.booking_id));
   const dates=new Map(result.sessions.map(x=>[x.id,x.session_date]));const today=new Intl.DateTimeFormat('en-CA',{timeZone:'Europe/Paris',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
-  renderKm16TodayCourses(result.sessions,result.bookings,attendance.data||[]);
   const active=result.bookings.filter(x=>x.status==='Inscrit');
   put(String(active.filter(x=>!linked.has(x.id)).length),String(active.filter(x=>dates.has(x.session_id)&&dates.get(x.session_id)<today&&!recorded.has(x.id)).length),'Suivi des cours actualisé à '+new Date().toLocaleTimeString('fr-FR')+'.');
- }catch(e){put('—','—','Suivi des cours indisponible : '+e.message);setKm16TodayCoursesUnavailable('Cours du jour indisponibles : '+e.message);}
+ }catch(e){put('—','—','Suivi des cours indisponible : '+e.message);}
 }
 const KM16_MAIL_SCHEDULE=[
  {
@@ -116,34 +102,18 @@ const KM16_DAILY_ACTIONS=[
 ];
 let km16FollowupRequest=0;
 async function refreshKm16FollowupDashboard(){const seq=++km16FollowupRequest;const ids=['pending','due','never','uncertain'];if(session?.user?.email?.toLowerCase()!==ADMIN){for(const id of ids)$('km16-followup-'+id).textContent='—';$('km16-followup-dashboard-status').textContent='Connexion administrateur requise.';return;}try{const {data,error}=await client.rpc('km16_admin_followup_dashboard');if(seq!==km16FollowupRequest)return;if(error)throw error;const row=data?.[0];if(!row)throw Error('Indicateurs indisponibles');for(const id of ids)$('km16-followup-'+id).textContent=String(row[id+'_count']??'—');$('km16-followup-dashboard-status').textContent='Indicateurs calculés sur les dossiers réels en attente · Actualisés à '+new Date().toLocaleTimeString('fr-FR');}catch(e){if(seq!==km16FollowupRequest)return;for(const id of ids)$('km16-followup-'+id).textContent='—';$('km16-followup-dashboard-status').textContent='Suivi indisponible : '+e.message;}}
-function renderKm16Daily(){
- const cards=$('km16-daily-cards'),next=$('km16-daily-next');if(!cards||!next)return;
+function renderKm16Daily(){const cards=$('km16-daily-cards'),next=$('km16-daily-next');if(!cards||!next)return;
  const today=km16ParisToday();$('km16-daily-date').textContent='Aujourd’hui : '+km16DateFr(today)+' · Saison '+$('season').value;
- cards.replaceChildren();let pending=0,unknown=0,urgent=0;
- const actions=KM16_DAILY_ACTIONS.map((item,index)=>{
-  const raw=$(item.id)?.textContent?.trim()||'',valid=/^\d+$/.test(raw),count=valid?Number(raw):null;
-  return {...item,index,count};
- }).sort((a,b)=>{
-  const rank=x=>x.count===null?2:x.count>0?0:1;
-  return rank(a)-rank(b)||a.index-b.index;
- });
- for(const item of actions){
-  const count=item.count;if(count===null)unknown++;else if(count>0){pending+=count;urgent++;}
-  const card=document.createElement('div');card.className='km16-kpi';
-  card.dataset.actionState=count===null?'unknown':count>0?'attention':'clear';
-  const label=document.createElement('span');label.textContent=item.label;
-  const strong=document.createElement('strong');strong.textContent=count===null?'—':String(count);
-  const detail=document.createElement('small');detail.textContent=count===null?'Données indisponibles':count===0?'À jour':'Action requise';
-  const link=document.createElement('a');link.href=item.href;link.textContent=count>0?'Traiter maintenant':'Consulter';
-  card.append(label,strong,detail,link);cards.append(card);
+ cards.replaceChildren();let pending=0,unknown=0;
+ for(const item of KM16_DAILY_ACTIONS){const raw=$(item.id)?.textContent?.trim()||'',valid=/^\\d+$/.test(raw),count=valid?Number(raw):null;
+  if(count===null)unknown++;else pending+=count;
+  const card=document.createElement('div');card.className='km16-kpi';const label=document.createElement('span');label.textContent=item.label;const strong=document.createElement('strong');strong.textContent=count===null?'—':String(count);const detail=document.createElement('small');detail.textContent=count===null?'Indicateur à vérifier':count===0?'Aucune action en attente':'À traiter';const link=document.createElement('a');link.href=item.href;link.textContent='Ouvrir';card.append(label,strong,detail,link);cards.append(card);
  }
- $('km16-daily-status').textContent=(urgent?urgent+' catégorie(s) à traiter · '+pending+' action(s) en attente. ':'Aucune action signalée dans les catégories disponibles. ')+(unknown?unknown+' indicateur(s) indisponible(s).':'Tous les indicateurs ont répondu.');
- next.replaceChildren();const upcoming=km16UpcomingDeadlines().slice(0,3);
- if(!upcoming.length){const p=document.createElement('p');p.className='muted';p.textContent='Aucune échéance future renseignée.';next.append(p);return;}
- const ul=document.createElement('ul');ul.className='km16-approval-list';
- for(const d of upcoming){const li=document.createElement('li');li.textContent=km16DateFr(d.date)+(d.end?' au '+km16DateFr(d.end):'')+' · '+d.label;ul.append(li);}next.append(ul);
+ $('km16-daily-status').textContent=unknown?'Données partielles : '+unknown+' indicateur(s) indisponible(s).':pending===0?'Aucune action en attente dans les quatre catégories suivies.':pending+' action(s) en attente dans les quatre catégories suivies.';
+ next.replaceChildren();const upcoming=km16UpcomingDeadlines().slice(0,3);if(!upcoming.length){const p=document.createElement('p');p.className='muted';p.textContent='Aucune échéance future renseignée.';next.append(p);return;}
+ const ul=document.createElement('ul');ul.className='km16-approval-list';for(const d of upcoming){const li=document.createElement('li');li.textContent=km16DateFr(d.date)+(d.end?' au '+km16DateFr(d.end):'')+' · '+d.label;ul.append(li);}next.append(ul);
 }
-$('km16-daily-refresh').onclick=()=>{refreshCourseAlerts();refreshShirtKpi();refreshAdminActionProgress();refreshKm16AutoMail();refreshKm16FollowupDashboard();externalPaymentLastRefresh=0;load();renderKm16Daily();};
+$('km16-daily-refresh').onclick=()=>{refreshCourseAlerts();refreshShirtKpi();refreshAdminActionProgress();refreshKm16AutoMail();refreshKm16FollowupDashboard();load();renderKm16Daily();};
 const KM16_ACTIONS=[
  {id:'review',label:'Dossiers administratifs à valider',kpi:'kpi-review',url:'./clients.html#km16-dossiers',priority:1},
  {id:'attendance',label:'Présences des cours passés à renseigner',kpi:'kpi-course-attendance',url:'./course-admin.html?view=attendance-pending',priority:1},
@@ -200,8 +170,8 @@ function renderOverview(){renderApprovalDossiers();const put=(id,v)=>{$(id).text
 async function refreshShirtKpi(){if(session?.user.email?.toLowerCase()!==ADMIN)return;const ticket=++shirtRefresh;putShirts('…','Consultation des commandes réelles…');try{const {data:{session:current}}=await client.auth.getSession();if(!current)throw Error('Session expirée');const r=await fetch('https://tlfewpbgbwesdriklxzb.supabase.co/functions/v1/km16-shirts',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+current.access_token},body:JSON.stringify({action:'list'})});const data=await r.json();if(!r.ok||!Array.isArray(data.orders))throw Error(data.error||'Commandes indisponibles');if(ticket!==shirtRefresh)return;const pending=data.orders.filter(o=>o.livemode===true&&o.status==='paid'&&!o.collected_at).length;putShirts(String(pending),'Commandes réelles payées · non retirées');}catch(e){if(ticket===shirtRefresh)putShirts('—','Données indisponibles · ouvrir la boutique');}}
 function putShirts(value,note){$('kpi-shirts').textContent=value;$('kpi-shirts-note').textContent=note;renderPriorities();}
 const euro=n=>new Intl.NumberFormat('fr-FR',{style:'currency',currency:'EUR'}).format(n/100);
-let externalPaymentRequest=0;\nlet externalPaymentLastRefresh=0;
-async function refreshExternalPayments(force=false){\n if(!force&&Date.now()-externalPaymentLastRefresh<300000)return;
+let externalPaymentRequest=0;
+async function refreshExternalPayments(){
  const request=++externalPaymentRequest;
  const host=$('external-payment-summary'),note=$('external-payment-status');if(!host||!note)return;
  host.replaceChildren();note.textContent='Consultation des montants importés…';
@@ -359,7 +329,7 @@ async function load(){
   const data=await r.json();if(!r.ok)throw Error(data.error||'Chargement impossible');
   if(gen!==generation||test!==$('test').checked)return;
   if(!Array.isArray(data.clients)||data.test!==test||data.season!==season)throw Error('Réponse inattendue');
-  all=data.clients;overviewLoaded=true;refreshShirtKpi();$('imports-note').textContent=(data.imported_count||0)+' fiches du fichier actif rattachées à cette saison. Les montants Fighty et Stripe restent affichés séparément, sans rapprochement financier avec les adhérents.';
+  all=data.clients;overviewLoaded=true;refreshShirtKpi();$('imports-note').textContent=(data.imported_count||0)+' fiches du fichier actif rattachées à cette saison. Les encaissements Sportigo/Fighty ne sont pas intégrés aux totaux ci-dessous ; les identités concordantes sont rapprochées sans ajouter de paiement.';
   for(const value of data.seasons||[]){if(![...$('season').options].some(o=>o.value===value)){const o=document.createElement('option');o.value=value;o.textContent=value;$('season').append(o);}}
   $('test-notice').hidden=!test;
   const missing=all.filter(c=>!c.address.length).length,unchecked=all.filter(c=>c.group==='À vérifier').length;
@@ -369,7 +339,7 @@ async function load(){
 }
 async function authState(s){
  generation++;controller?.abort();busy=false;session=s;clear();communications.reset();
- const admin=s?.user.email?.toLowerCase()===ADMIN;\n externalPaymentLastRefresh=0;
+ const admin=s?.user.email?.toLowerCase()===ADMIN;
  $('login').hidden=!!s;$('forbidden').hidden=!s||admin;$('workspace').hidden=!admin;$('stages-panel').hidden=!admin;
  $('password').value='';$('test').checked=false;$('test-notice').hidden=true;group='';$('search').value='';
  if(admin){$('identity').textContent=s.user.email;refreshShirtKpi();refreshCourseAlerts();refreshAdminActionProgress();refreshKm16AutoMail();refreshKm16FollowupDashboard();await load();communications.load();}else{km16ActionRequest++;km16ActionState.clear();km16ActionLoaded=false;km16ActionError='';}
@@ -377,8 +347,8 @@ async function authState(s){
 $('login-form').onsubmit=async event=>{event.preventDefault();if(!client)return;const button=$('login-button');button.disabled=true;status('');try{const {error}=await client.auth.signInWithPassword({email:$('email').value.trim(),password:$('password').value});if(error)throw error;}catch(e){status(e.message,true);}finally{button.disabled=false;$('password').value='';}};
 const logout=async()=>{generation++;controller?.abort();clear();await client.auth.signOut();await authState(null);};
 $('logout').onclick=logout;$('other-account').onclick=logout;
-$('season').onchange=()=>{externalPaymentLastRefresh=0;generation++;controller?.abort();busy=false;clear();showSeason();load();};
-$('refresh').onclick=()=>{externalPaymentLastRefresh=0;load();refreshCourseAlerts();};$('search').oninput=render;$('search-clear').onclick=()=>{$('search').value='';render();$('search').focus();};
+$('season').onchange=()=>{generation++;controller?.abort();busy=false;clear();showSeason();load();};
+$('refresh').onclick=()=>{load();refreshCourseAlerts();};$('search').oninput=render;$('search-clear').onclick=()=>{$('search').value='';render();$('search').focus();};
 $('all').onclick=()=>{group='';render();};
 for(const b of document.querySelectorAll('[data-group]'))b.onclick=()=>{group=b.dataset.group;render();};
 $('test').onchange=()=>{generation++;controller?.abort();busy=false;clear();load();};

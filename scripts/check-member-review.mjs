@@ -1,0 +1,10 @@
+import {readFileSync} from 'node:fs';
+import assert from 'node:assert/strict';
+const js=readFileSync('clients.mjs','utf8');
+const start=js.indexOf('function renderMemberQuality(){'),end=js.indexOf('function render(){',start);
+assert.ok(start>=0&&end>start);
+const section=js.slice(start,end);
+for(const token of ['km16ReviewedInSession.has(c)','km16ReviewedInSession.delete(c)','km16ReviewedInSession.add(c)','Marquer contrôlé (session)','suivi temporaire, perdu au rechargement','if(individual)'])assert.ok(section.includes(token),token);
+assert.match(js,/const km16ReviewedInSession=new WeakSet\(\)/);
+assert.match(js,/\$\('login-form'\)\.onsubmit/);
+console.log('KM16 temporary member review controls verified');

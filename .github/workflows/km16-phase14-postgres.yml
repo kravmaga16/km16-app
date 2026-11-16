@@ -1,5 +1,8 @@
 name: KM16 - Phase 14 PostgreSQL isolé
 on:
+  pull_request:
+    branches:
+      - main
   push:
     branches:
       - 'develop/member-review-persistence-phase14-*'

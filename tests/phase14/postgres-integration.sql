@@ -112,6 +112,24 @@ begin
    raise exception 'Authenticated role can delete history directly';
  exception when insufficient_privilege then null; end;
 end $test$;
+-- Verify authorization under the real authenticated database role, not only a JWT claim.
+set local role authenticated;
+select set_config('request.jwt.claim.sub','22222222-2222-4222-8222-222222222222',true);
+do $test$
+begin
+ begin
+   perform public.km16_member_review_list('2026/2027','test');
+   raise exception 'Authenticated non-admin can list reviews';
+ exception when insufficient_privilege then null; end;
+ begin
+   perform public.km16_member_review_history_list('2026/2027','test','fictional-active');
+   raise exception 'Authenticated non-admin can read review history';
+ exception when insufficient_privilege then null; end;
+ begin
+   perform public.km16_member_review_set('2026/2027','test','fictional-active','a_verifier',2);
+   raise exception 'Authenticated non-admin can update review status';
+ exception when insufficient_privilege then null; end;
+end $test$;
 set local role anon;
 do $test$
 begin

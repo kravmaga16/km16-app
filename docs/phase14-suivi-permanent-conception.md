@@ -31,3 +31,10 @@ Conserver un suivi de vérification distinct des données sources des adhérents
 5. Déployer la base et l'interface dans des étapes distinctes avec plan de retour arrière.
 
 **État : conception uniquement. Aucune migration, aucune table et aucune fonction de production modifiées.**
+
+## Vérification technique du 16 novembre 2026
+- La table `km16_external_clients` possède une clé `external_id` et un `season_id`. L'identifiant affiché côté console utilise le préfixe `import:` pour certaines fiches; la correspondance doit être testée avant toute écriture.
+- La fonction `km16_client_rows` renvoie des identifiants UUID de commandes d'adhésion : un identifiant de commande n'est pas nécessairement un identifiant de personne. Ne pas utiliser cette valeur seule pour suivre une personne sur plusieurs achats.
+- Le projet possède déjà un suivi administratif partagé (`km16_admin_action_progress` et ses RPC). Celui-ci porte sur des catégories d'actions, **pas** sur des fiches individuelles; il ne doit pas être détourné pour ce nouveau besoin.
+- Le modèle permanent doit traiter explicitement le cas d'un adhérent apparaissant plusieurs fois et le cas de fiches d'origine différente portant la même identité.
+- **Décision de sécurité :** aucun déploiement de table ou RPC tant que la stratégie de clés stables pour les fiches non importées n'est pas vérifiée et testée.

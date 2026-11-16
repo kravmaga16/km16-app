@@ -6,7 +6,7 @@ const end=js.indexOf('function render(){',start);
 assert.ok(start>=0&&end>start,'Member quality function missing');
 const section=js.slice(start,end);
 assert.match(section,/const expandedGroups=\[\.\.\.host\.querySelectorAll\('details'\)\]\.map\(details=>details\.open\)/);
-assert.match(section,/for\(const \[index,\[label,items\]\] of groups\.entries\(\)\)/);
+assert.match(section,/for\(const \[index,\[label,items(?:,individual)?\]\] of groups\.entries\(\)\)/);
 assert.match(section,/details\.open=expandedGroups\[index\]\|\|false/);
 assert.match(section,/host\.replaceChildren\(\)/);
 assert.match(js,/\$\('login-form'\)\.onsubmit/);

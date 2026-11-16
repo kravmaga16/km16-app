@@ -1,0 +1,10 @@
+import {readFileSync} from 'node:fs';
+import assert from 'node:assert/strict';
+const sql=readFileSync('docs/phase14-rpc-lecture-non-deploye.sql','utf8');
+for(const fn of ['km16_member_review_list','km16_member_review_history_list'])assert.ok(sql.includes('function public.'+fn+'('),'Missing '+fn);
+assert.equal((sql.match(/auth\.uid\(\) is null/g)||[]).length,2,'Both RPCs must authenticate');
+assert.equal((sql.match(/lower\(u\.email\)/g)||[]).length,2,'Both RPCs must authorize admin');
+assert.match(sql,/c\.archived_at is null/,'Exclude archived clients');
+assert.match(sql,/p_limit not between 1 and 100/,'History page size bound');
+assert.doesNotMatch(sql,/\b(insert|update|delete|truncate)\s+(into\s+|from\s+)?public\./i,'Read-only RPC must not mutate tables');
+console.log('KM16 phase 14 read-only RPC draft checks passed (static only)');

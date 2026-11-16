@@ -40,12 +40,13 @@ create index if not exists km16_member_review_history_lookup_idx
 
 alter table public.km16_member_review_status enable row level security;
 alter table public.km16_member_review_history enable row level security;
--- Defense in depth: even table owners are subject to RLS, unless bypassrls.
-alter table public.km16_member_review_status force row level security;
-alter table public.km16_member_review_history force row level security;
-
--- No direct grants to anon/authenticated and no RLS policies.
--- Only a separately reviewed, authenticated server-side RPC should read/write.
+-- RLS is enabled but NOT forced: SECURITY DEFINER functions owned by the
+-- table owner need controlled access; FORCE RLS with no policies would deny
+-- the owner's writes. Do not grant direct access to client roles.
+revoke all on public.km16_member_review_status from public, anon, authenticated;
+revoke all on public.km16_member_review_history from public, anon, authenticated;
+-- The function owner must be reviewed, and must not be a client-facing role.
+-- Only separately reviewed, authenticated server-side RPCs should read/write.
 -- The RPC must verify admin authorization on the server, check the source
 -- record is active, validate state transitions, perform versioned updates
 -- and append history atomically. No RPC is included in this migration.

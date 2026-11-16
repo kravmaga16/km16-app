@@ -45,6 +45,8 @@ jobs:
         run: node scripts/check-member-review.mjs
       - name: Verifier le projet de schema de suivi permanent
         run: node scripts/check-member-review-schema.mjs
+      - name: Tester le modele de suivi permanent isole
+        run: node scripts/check-phase14-review-model.mjs
       - name: Installer navigateurs de test
         run: |
           npm install --no-save playwright@1.56.1

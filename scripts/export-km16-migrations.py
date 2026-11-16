@@ -7,7 +7,7 @@ to Supabase and never uploads migration SQL to GitHub.
 psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -c "\\copy (SELECT version, name, array_to_string(statements, E'\\n') AS sql FROM supabase_migrations.schema_migrations ORDER BY version) TO 'km16-migrations.csv' WITH (FORMAT csv, HEADER true)"
 
 Then:
-python3 scripts/export-km16-migrations.py --csv km16-migrations.csv --output-dir ./km16-migrations-private
+python3 scripts/export-km16-migrations.py --csv km16-migrations.csv --output-dir ./km16-migrations-private --manifest tests/fixtures/km16-production-migration-manifest.csv
 """
 import argparse
 import csv
@@ -33,6 +33,8 @@ def export(csv_path, output_dir, manifest_path=None):
         raise ValueError("Unexpected historical migration boundaries")
     if any(not row.get("sql", "").strip() for row in rows):
         raise ValueError("One or more migrations have empty SQL")
+    if manifest_path is None:
+        raise ValueError("Manifest is mandatory for integrity verification")
     if manifest_path is not None:
         with manifest_path.open(newline='', encoding='utf-8') as mf:
             manifest = {row['version']: row for row in csv.DictReader(mf)}
@@ -49,7 +51,7 @@ def export(csv_path, output_dir, manifest_path=None):
     for row in rows:
         safe_name = re.sub(r"[^a-zA-Z0-9_-]+", "_", row["name"]).strip("_") or "migration"
         (output_dir / f'{row["version"]}_{safe_name}.sql').write_text(
-            row["sql"].rstrip() + "\n", encoding="utf-8"
+            row["sql"], encoding="utf-8"
         )
     return len(rows), sum(len(row["sql"].encode("utf-8")) for row in rows)
 
@@ -57,7 +59,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--csv", type=pathlib.Path, required=True)
     parser.add_argument("--output-dir", type=pathlib.Path, required=True)
-    parser.add_argument("--manifest", type=pathlib.Path, help="Expected migration fingerprints CSV")
+    parser.add_argument("--manifest", type=pathlib.Path, required=True, help="Required expected production fingerprints CSV")
     args = parser.parse_args()
     try:
         count, size = export(args.csv, args.output_dir, args.manifest)

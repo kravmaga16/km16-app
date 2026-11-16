@@ -288,7 +288,7 @@ function renderMoneySummary(){
 function renderMemberQuality(){
  const summary=$('km16-member-quality-summary'),host=$('km16-member-quality-results');if(!summary||!host)return;
  host.replaceChildren();if(!overviewLoaded){summary.textContent='Analyse en attente du fichier adhérents…';return;}
- const norm=v=>String(v||'').normalize('NFD').replace(/\p{M}/gu,'').toLocaleLowerCase('fr-FR').replace(/[^a-z0-9]/g,'');
+ const norm=v=>String(v||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLocaleLowerCase('fr-FR').replace(/[^a-z0-9]/g,'');
  const emailGroups=new Map(),nameGroups=new Map();let missingEmail=0,missingName=0;
  for(const c of all){const email=String(c.email||'').trim().toLocaleLowerCase('fr-FR'),first=norm(c.first_name),last=norm(c.last_name);
   if(email){if(!emailGroups.has(email))emailGroups.set(email,[]);emailGroups.get(email).push(c);}else missingEmail++;

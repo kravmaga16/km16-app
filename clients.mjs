@@ -15,11 +15,24 @@ function showSeason(){
  $('renewal').hidden=!(selected===SEASON&&state.renewalOpen);
  $('km16-season-transition-status').textContent=selected===SEASON?(state.archived?'Saison archivée : historique conservé. Consultez la saison suivante pour les nouvelles inscriptions.':state.renewalOpen?'Réabonnements ouverts depuis le 1er juin 2027. Contrôlez les dossiers avant renouvellement.':'Réabonnements prévus à partir du 1er juin 2027. Préparez les dossiers et les communications.'):'Saison sélectionnée : '+selected+' · vérifiez les dates et offres avant toute nouvelle inscription.';
 }
+function renderKm16TodayCourses(sessions,bookings,attendance){
+ const host=$('km16-course-today-cards'),note=$('km16-course-today-status');if(!host||!note)return;
+ host.replaceChildren();
+ const today=km16ParisToday();
+ const todays=sessions.filter(x=>x.session_date===today&&x.enabled!==false).sort((a,b)=>String(a.start_time||'').localeCompare(String(b.start_time||'')));
+ const ids=new Set(todays.map(x=>x.id));
+ const active=bookings.filter(x=>ids.has(x.session_id)&&x.status==='Inscrit');
+ const recorded=new Set((attendance||[]).map(x=>x.booking_id));
+ const figures=[['Séances prévues',todays.length],['Réservations actives',active.length],['Présences renseignées',active.filter(x=>recorded.has(x.id)).length]];
+ for(const [label,value] of figures){const card=document.createElement('div');card.className='km16-kpi';const name=document.createElement('span');name.textContent=label;const number=document.createElement('strong');number.textContent=String(value);card.append(name,number);host.append(card);}
+ note.textContent=todays.length?'Horaires : '+todays.map(x=>String(x.start_time||'').slice(0,5)+'–'+String(x.end_time||'').slice(0,5)+' · '+(x.venue||x.category||'Cours')).join(' ; '):'Aucune séance programmée aujourd’hui.';
+}
+function setKm16TodayCoursesUnavailable(message){const host=$('km16-course-today-cards'),note=$('km16-course-today-status');if(host)host.replaceChildren();if(note)note.textContent=message;}
 let courseAlertRequest=0;
 async function refreshCourseAlerts(){
  const request=++courseAlertRequest;
  const put=(a,b,msg)=>{if(request!==courseAlertRequest)return;$('kpi-course-unlinked').textContent=a;$('kpi-course-attendance').textContent=b;$('kpi-course-status').textContent=msg;renderPriorities();};
- if(session?.user?.email?.toLowerCase()!==ADMIN){put('—','—','Accès administrateur requis.');return;}
+ if(session?.user?.email?.toLowerCase()!==ADMIN){put('—','—','Accès administrateur requis.');setKm16TodayCoursesUnavailable('Connexion administrateur requise.');return;}
  put('…','…','Actualisation des réservations et des présences…');
  try{
   const {data:{session:current}}=await client.auth.getSession();if(!current)throw Error('Session expirée');
@@ -30,9 +43,10 @@ async function refreshCourseAlerts(){
   if(links.error)throw links.error;if(attendance.error)throw attendance.error;if(externalLinks.error)throw externalLinks.error;
   const linked=new Set([...(links.data||[]),...(externalLinks.data||[])].map(x=>x.booking_id)),recorded=new Set((attendance.data||[]).map(x=>x.booking_id));
   const dates=new Map(result.sessions.map(x=>[x.id,x.session_date]));const today=new Intl.DateTimeFormat('en-CA',{timeZone:'Europe/Paris',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
+  renderKm16TodayCourses(result.sessions,result.bookings,attendance.data||[]);
   const active=result.bookings.filter(x=>x.status==='Inscrit');
   put(String(active.filter(x=>!linked.has(x.id)).length),String(active.filter(x=>dates.has(x.session_id)&&dates.get(x.session_id)<today&&!recorded.has(x.id)).length),'Suivi des cours actualisé à '+new Date().toLocaleTimeString('fr-FR')+'.');
- }catch(e){put('—','—','Suivi des cours indisponible : '+e.message);}
+ }catch(e){put('—','—','Suivi des cours indisponible : '+e.message);setKm16TodayCoursesUnavailable('Cours du jour indisponibles : '+e.message);}
 }
 const KM16_MAIL_SCHEDULE=[
  {

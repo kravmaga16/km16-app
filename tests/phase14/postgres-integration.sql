@@ -95,6 +95,23 @@ begin
    raise exception 'Authenticated role can write history directly';
  exception when insufficient_privilege then null; end;
 end $test$;
+-- Prevent direct status modification/deletion and direct history deletion.
+set local role authenticated;
+do $test$
+begin
+ begin
+   update public.km16_member_review_status set state='controle' where source_member_id='fictional-active';
+   raise exception 'Authenticated role can update status directly';
+ exception when insufficient_privilege then null; end;
+ begin
+   delete from public.km16_member_review_status where source_member_id='fictional-active';
+   raise exception 'Authenticated role can delete status directly';
+ exception when insufficient_privilege then null; end;
+ begin
+   delete from public.km16_member_review_history where source_member_id='fictional-active';
+   raise exception 'Authenticated role can delete history directly';
+ exception when insufficient_privilege then null; end;
+end $test$;
 set local role anon;
 do $test$
 begin

@@ -76,3 +76,38 @@ jobs:
             **/*.json
           if-no-files-found: error
           retention-days: 7
+
+  phase14-postgres:
+    runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: phase14-test-only
+          POSTGRES_DB: phase14_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d phase14_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      PGHOST: localhost
+      PGPORT: '5432'
+      PGUSER: postgres
+      PGPASSWORD: phase14-test-only
+      PGDATABASE: phase14_test
+    steps:
+      - uses: actions/checkout@v4
+      - name: Preparer les donnees fictives
+        run: psql -v ON_ERROR_STOP=1 -f tests/phase14/postgres-fixture.sql
+      - name: Installer le schema de test
+        run: psql -v ON_ERROR_STOP=1 -f docs/phase14-schema-propose-non-deploye.sql
+      - name: Installer les fonctions SQL
+        run: |
+          psql -v ON_ERROR_STOP=1 -f docs/phase14-rpc-lecture-non-deploye.sql
+          psql -v ON_ERROR_STOP=1 -f docs/phase14-rpc-ecriture-non-deploye.sql
+      - name: Executer les tests PostgreSQL
+        run: psql -v ON_ERROR_STOP=1 -f tests/phase14/postgres-integration.sql

@@ -9,4 +9,6 @@ assert.match(html,/\.km16-profile-block\{min-width:0;overflow-wrap:anywhere\}/,'
 assert.match(html,/clients\.mjs\?v=restored-safari-login-20261116/,'Verified Safari login script reference changed');
 assert.match(html,/#member-profile-close\{min-height:44px/,'Accessible member profile close button missing');
 assert.match(html,/#member-profile-content table\{display:block;max-width:100%;overflow-x:auto\}/,'Member profile table overflow handling missing');
-console.log('KM16 admin mobile CSS and member profile checks passed');
+assert.match(html,/#km16-dossiers\{scroll-margin-top:20px;border-left:4px solid #b9832c\}/,'Dashboard priority marker missing');
+assert.match(html,/#km16-quick-actions\{display:grid;grid-template-columns:1fr\}/,'Mobile quick actions missing');
+console.log('KM16 admin mobile CSS, member profile and dashboard checks passed');

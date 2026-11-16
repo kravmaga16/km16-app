@@ -33,6 +33,9 @@ def main():
         print(f"FAIL: expected {EXPECTED_COUNT} migrations, found {len(files)}")
         return 2
     versions = [p.name.split("_", 1)[0] for p in files]
+    if versions[:2] != ["20261108081316", "20261108154725"]:
+        print("FAIL: first two migration versions do not match the recorded production history")
+        return 2
     if len(set(versions)) != len(versions) or any(not re.fullmatch(r"\d{14}", v) for v in versions):
         print("FAIL: duplicate or invalid migration version")
         return 2
@@ -40,6 +43,9 @@ def main():
         print("FAIL: baseline SQL file is required for dependency checks")
         return 2
     baseline = args.baseline.read_text(encoding="utf-8")
+    # Ignore ordinary SQL comments so a commented-out CREATE cannot satisfy checks.
+    baseline = re.sub(r"/\\*.*?\\*/", "", baseline, flags=re.S)
+    baseline = re.sub(r"(?m)^\\s*--[^\\n]*$", "", baseline)
     first = files[0].read_text(encoding="utf-8")
     second = files[1].read_text(encoding="utf-8")
     errors = []

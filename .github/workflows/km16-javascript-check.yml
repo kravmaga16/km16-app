@@ -23,6 +23,8 @@ jobs:
         run: node scripts/check-admin-login.mjs
       - name: Verifier la navigation mobile de l'administration
         run: node scripts/check-admin-mobile.mjs
+      - name: Verifier l'optimisation de recherche
+        run: node scripts/check-admin-performance.mjs
       - name: Installer navigateurs de test
         run: |
           npm install --no-save playwright@1.56.1

@@ -1,0 +1,8 @@
+# KM16: private production migration exports; NEVER commit these files.
+km16-migrations.csv
+km16-migrations-private/
+km16-schema.sql
+km16-baseline-*.sql
+.env
+.env.*
+!.env.example

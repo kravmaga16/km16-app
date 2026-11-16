@@ -11,6 +11,7 @@ python3 scripts/export-km16-migrations.py --csv km16-migrations.csv --output-dir
 """
 import argparse
 import csv
+import hashlib
 import pathlib
 import re
 import sys
@@ -18,7 +19,7 @@ import sys
 VERSION = re.compile(r"^\d{14}$")
 EXPECTED_COUNT = 44
 
-def export(csv_path, output_dir):
+def export(csv_path, output_dir, manifest_path=None):
     with csv_path.open(newline="", encoding="utf-8") as handle:
         rows = list(csv.DictReader(handle))
     if len(rows) != EXPECTED_COUNT:
@@ -32,6 +33,16 @@ def export(csv_path, output_dir):
         raise ValueError("Unexpected historical migration boundaries")
     if any(not row.get("sql", "").strip() for row in rows):
         raise ValueError("One or more migrations have empty SQL")
+    if manifest_path is not None:
+        with manifest_path.open(newline='', encoding='utf-8') as mf:
+            manifest = {row['version']: row for row in csv.DictReader(mf)}
+        if len(manifest) != EXPECTED_COUNT or set(manifest) != set(versions):
+            raise ValueError('Migration manifest differs from export history')
+        for row in rows:
+            raw = row['sql'].encode('utf-8')
+            reference = manifest[row['version']]
+            if hashlib.md5(raw).hexdigest() != reference['md5'] or len(raw) != int(reference['bytes']) or row['name'] != reference['name']:
+                raise ValueError(f"Migration integrity mismatch: {row['version']}")
     if output_dir.exists() and any(output_dir.iterdir()):
         raise ValueError("Output directory is not empty; refusing to overwrite")
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -46,9 +57,10 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--csv", type=pathlib.Path, required=True)
     parser.add_argument("--output-dir", type=pathlib.Path, required=True)
+    parser.add_argument("--manifest", type=pathlib.Path, help="Expected migration fingerprints CSV")
     args = parser.parse_args()
     try:
-        count, size = export(args.csv, args.output_dir)
+        count, size = export(args.csv, args.output_dir, args.manifest)
     except (ValueError, KeyError, OSError) as exc:
         print(f"FAIL: {exc}", file=sys.stderr)
         return 1

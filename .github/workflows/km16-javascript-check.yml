@@ -5,9 +5,15 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+permissions:
+  contents: read
+concurrency:
+  group: km16-js-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
   syntax:
     runs-on: ubuntu-24.04
+    timeout-minutes: 20
     steps:
       - name: Recuperer le code
         uses: actions/checkout@v4
@@ -21,6 +27,8 @@ jobs:
           find . -type f \( -name '*.mjs' -o -name '*.js' \) -not -path './node_modules/*' -print0 | xargs -0 -r -n 1 node --check
       - name: Tester la presence du parcours de connexion administrateur
         run: node scripts/check-admin-login.mjs
+      - name: Verifier les garde-fous de securite de l'administration
+        run: node scripts/check-admin-safety.mjs
       - name: Verifier la navigation mobile de l'administration
         run: node scripts/check-admin-mobile.mjs
       - name: Verifier l'optimisation de recherche
@@ -43,12 +51,24 @@ jobs:
         run: node scripts/check-member-quality-missing.mjs
       - name: Verifier le suivi temporaire des dossiers
         run: node scripts/check-member-review.mjs
+      - name: Verifier le projet de schema de suivi permanent
+        run: node scripts/check-member-review-schema.mjs
+      - name: Tester le modele de suivi permanent isole
+        run: node scripts/check-phase14-review-model.mjs
+      - name: Verifier le brouillon des RPC de lecture
+        run: node scripts/check-phase14-rpc-read.mjs
+      - name: Verifier le brouillon de RPC d'ecriture
+        run: node scripts/check-phase14-rpc-write.mjs
+      - name: Tester l'adaptateur RPC de la phase 14
+        run: node scripts/check-phase14-review-adapter.mjs
       - name: Installer navigateurs de test
         run: |
           npm install --no-save playwright@1.56.1
           npx playwright install --with-deps chromium webkit
       - name: Tester le rendu admin dans Chromium et WebKit
         run: node scripts/check-admin-browser.mjs
+      - name: Tester le composant de suivi phase 14 dans Chromium et WebKit
+        run: node scripts/check-phase14-review-ui-browser.mjs
       - name: Preparer un paquet de previsualisation sans publication
         if: success()
         uses: actions/upload-artifact@v4
@@ -68,3 +88,38 @@ jobs:
             **/*.json
           if-no-files-found: error
           retention-days: 7
+
+  phase14-postgres:
+    runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: phase14-test-only
+          POSTGRES_DB: phase14_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d phase14_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      PGHOST: localhost
+      PGPORT: '5432'
+      PGUSER: postgres
+      PGPASSWORD: phase14-test-only
+      PGDATABASE: phase14_test
+    steps:
+      - uses: actions/checkout@v4
+      - name: Preparer les donnees fictives
+        run: psql -v ON_ERROR_STOP=1 -f tests/phase14/postgres-fixture.sql
+      - name: Installer le schema de test
+        run: psql -v ON_ERROR_STOP=1 -f docs/phase14-schema-propose-non-deploye.sql
+      - name: Installer les fonctions SQL
+        run: |
+          psql -v ON_ERROR_STOP=1 -f docs/phase14-rpc-lecture-non-deploye.sql
+          psql -v ON_ERROR_STOP=1 -f docs/phase14-rpc-ecriture-non-deploye.sql
+      - name: Executer les tests PostgreSQL
+        run: psql -v ON_ERROR_STOP=1 -f tests/phase14/postgres-integration.sql

@@ -1,0 +1,27 @@
+import assert from 'node:assert/strict';
+import {reviewKeyForImportedMember,listReviewStatuses,saveReviewStatus,listReviewHistory} from './phase14-review-adapter.mjs';
+const season='2026/2027', environment='test';
+assert.deepEqual(reviewKeyForImportedMember({id:'import:fictional-1',season_id:season},season,environment),{season,environment,externalId:'fictional-1'});
+assert.equal(reviewKeyForImportedMember({id:'order-uuid'},season,environment),null);
+assert.equal(reviewKeyForImportedMember({id:'import:fictional-1',season_id:'2025/2026'},season,environment),null);
+let calls=[];
+const client={rpc:async(name,args)=>{calls.push({name,args});return {data:name==='km16_member_review_list'?[{source_member_id:'fictional-1',state:'a_verifier',version:0}]:[{state:'controle',version:1}],error:null};}};
+const listed=await listReviewStatuses(client,season,environment);
+assert.equal(listed.length,1);
+const saved=await saveReviewStatus(client,{season,environment,externalId:'fictional-1'},'controle',0);
+assert.equal(saved.version,1);
+assert.deepEqual(calls[1],{name:'km16_member_review_set',args:{p_season:season,p_environment:environment,p_external_id:'fictional-1',p_state:'controle',p_expected_version:0}});
+await assert.rejects(saveReviewStatus(client,{season,environment,externalId:'fictional-1'},'invalid',0),/invalides/);
+await assert.rejects(saveReviewStatus({rpc:async()=>({data:null,error:{code:'40001'}})},{season,environment,externalId:'fictional-1'},'controle',0),/actualisez/);
+await assert.rejects(saveReviewStatus({rpc:async()=>({data:null,error:{code:'42501'}})},{season,environment,externalId:'fictional-1'},'controle',0),/non confirmé/);
+console.log('Phase 14 RPC adapter tests passed (mock only; no production calls)');
+
+const historyKey={season,environment,externalId:'fictional-1'};
+const historyCalls=[];
+const historyClient={rpc:async(name,args)=>{historyCalls.push({name,args});return {data:[{event_id:2,new_state:'controle'}],error:null};}};
+const history=await listReviewHistory(historyClient,historyKey,1,3);
+assert.equal(history[0].event_id,2);
+assert.deepEqual(historyCalls[0],{name:'km16_member_review_history_list',args:{p_season:season,p_environment:environment,p_external_id:'fictional-1',p_limit:1,p_before_id:3}});
+await assert.rejects(listReviewHistory(historyClient,historyKey,101),/invalides/);
+await assert.rejects(listReviewHistory(historyClient,historyKey,10,-2),/invalides/);
+await assert.rejects(listReviewHistory({rpc:async()=>({data:null,error:{code:'42501'}})},historyKey),/indisponible/);

@@ -21,3 +21,22 @@ jobs:
           find . -type f \( -name '*.mjs' -o -name '*.js' \) -not -path './node_modules/*' -print0 | xargs -0 -r -n 1 node --check
       - name: Tester la presence du parcours de connexion administrateur
         run: node scripts/check-admin-login.mjs
+      - name: Preparer un paquet de previsualisation sans publication
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: km16-preview-static
+          path: |
+            **/*.html
+            **/*.css
+            **/*.js
+            **/*.mjs
+            **/*.png
+            **/*.jpg
+            **/*.jpeg
+            **/*.svg
+            **/*.webp
+            **/*.ico
+            **/*.json
+          if-no-files-found: error
+          retention-days: 7

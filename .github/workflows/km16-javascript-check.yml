@@ -18,3 +18,5 @@ jobs:
         run: |
           set -eu
           find . -type f \( -name '*.mjs' -o -name '*.js' \) -not -path './node_modules/*' -print0 | xargs -0 -r -n 1 node --check
+      - name: Tester la presence du parcours de connexion administrateur
+        run: node scripts/check-admin-login.mjs

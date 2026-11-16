@@ -78,6 +78,23 @@ begin
    raise exception 'Authenticated role has direct history access';
  exception when insufficient_privilege then null; end;
 end $test$;
+-- Verify client roles cannot write directly to either review table.
+set local role authenticated;
+do $test$
+begin
+ begin
+   insert into public.km16_member_review_status
+     (season_id,environment,source,source_member_id,state)
+   values ('2026/2027','test','import','fictional-active','controle');
+   raise exception 'Authenticated role can write review status directly';
+ exception when insufficient_privilege then null; end;
+ begin
+   insert into public.km16_member_review_history
+     (season_id,environment,source,source_member_id,new_state,version)
+   values ('2026/2027','test','import','fictional-active','controle',1);
+   raise exception 'Authenticated role can write history directly';
+ exception when insufficient_privilege then null; end;
+end $test$;
 set local role anon;
 do $test$
 begin

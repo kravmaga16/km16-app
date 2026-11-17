@@ -13,8 +13,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Apply source-hash-checked frontend patch
-        run: python3 .maintenance/apply-email-fix.py
+      - name: Preserve administrator catalogue initialization
+        run: python3 .maintenance/refine-email-fix.py
       - name: Check syntax and payment rules
         run: |
           node --check adhesion.mjs
@@ -25,10 +25,10 @@ jobs:
           npx playwright install --with-deps chromium webkit
       - name: Test customer email flow without any external calls
         run: node scripts/check-member-email.mjs
-      - name: Commit only the two tested frontend files to the fix branch
+      - name: Commit tested frontend refinement to the fix branch
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add adhesion.html adhesion.mjs
-          git commit -m 'fix: restore account email before catalogue and guide sign-in before checkout'
+          git add adhesion.mjs
+          git commit -m 'fix: retain catalogue-dependent admin setup after early session restoration'
           git push origin HEAD:fix/adhesion-email-20261117

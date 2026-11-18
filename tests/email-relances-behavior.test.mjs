@@ -69,3 +69,12 @@ test('invalid page types and excess page numbers are rejected',async()=>{
   if(page===null){assert.equal(r.status,200);}else{assert.equal(r.status,400);}
  }
 });
+
+test('null and array request bodies are rejected',async()=>{
+ const h=harness();
+ for(const body of [null,[],[1],false]){
+  const r=await h.call({body});
+  assert.equal(r.status,400);
+ }
+ assert.equal(h.stats().reads,0);
+});

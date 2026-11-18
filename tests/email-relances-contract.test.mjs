@@ -37,6 +37,7 @@ test('client has manual read-only controls and clears on auth change',()=>{
 
 test('request and response security contracts',()=>{
  assert.match(server,/req\.headers\.get\('origin'\) !== ORIGIN/);
+ assert.match(server,/status: 403, headers: \{ 'Content-Type': 'application\/json', 'Cache-Control': 'no-store', 'Vary': 'Origin' \}/);
  assert.match(server,/Access-Control-Allow-Origin/);
  assert.match(server,/Cache-Control': 'no-store'/);
  assert.match(server,/user\.is_anonymous/);

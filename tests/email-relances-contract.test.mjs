@@ -34,3 +34,16 @@ test('client has manual read-only controls and clears on auth change',()=>{
  assert.match(html,/id="km16-email-relances-more"/);
  assert.match(menu,/clients\.html#km16-email-relances/);
 });
+
+test('request and response security contracts',()=>{
+ assert.match(server,/req\.headers\.get\('origin'\) !== ORIGIN/);
+ assert.match(server,/Access-Control-Allow-Origin/);
+ assert.match(server,/Cache-Control': 'no-store'/);
+ assert.match(server,/user\.is_anonymous/);
+ assert.match(server,/return json\(\{ error: 'Accès refusé' \}, 403\)/);
+ assert.match(server,/page < 0 \|\| page > 10000/);
+ assert.match(server,/has_more:/);
+ assert.match(client,/body:JSON\.stringify\(\{page\}\)/);
+ assert.match(client,/result\.page!==page/);
+ assert.match(client,/km16EmailRequest/);
+});

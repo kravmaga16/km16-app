@@ -61,4 +61,12 @@ Les tests PostgreSQL « Phase 14 » du dépôt concernent un autre module. Ils n
 
 ## Passage à l’étape suivante
 
-La préparation est livrée pour revue dans la PR n°26. Avant une mise en service, il reste à vérifier la configuration réelle de la fonction dans un environnement de préproduction et sa chaîne d’accès complète, puis à organiser son déploiement. Cette étape ne met en place aucun renvoi. Un futur renvoi nécessitera une nouvelle lecture du statut, une décision administrative tracée et une protection contre les doublons.
+La préparation est livrée pour revue dans la PR n°26. Avant une mise en service, il reste à vérifier la configuration du projet hébergé destiné au déploiement. Cette étape ne met en place aucun renvoi. Un futur renvoi nécessitera une nouvelle lecture du statut, une décision administrative tracée et une protection contre les doublons.
+
+## Intégration complète dans une instance jetable
+
+Le workflow `email-relances-integration.yml` démarre une vraie instance locale Supabase avec la CLI versionnée `3.2.0`, PostgreSQL 17, Auth, PostgREST, la passerelle et le moteur Edge. Il copie le code exact de `km16-admin-email-alerts`, conserve `verify_jwt = true` et n’utilise aucun projet hébergé, lien distant ni secret de production. Seules les tables fictives nécessaires sont créées ; les migrations KM16 et les workers d’envoi sont absents.
+
+`node tests/email-relances-integration.mjs` crée deux identités de test via l’API administrative locale, avec confirmation immédiate, puis obtient leurs vrais jetons par connexion avec mot de passe. Il vérifie les refus d’accès directs aux tables, les refus de jetons absents/falsifiés et de membre non autorisé, CORS, le seuil exact des quinze minutes, la pagination de 218 alertes, les entrées invalides et le refus d’un jeton dont l’utilisateur local a été supprimé. Les empreintes des trois tables doivent rester identiques et la boîte de capture Mailpit doit rester vide. Le workflow détruit l’instance et ses volumes en fin d’exécution.
+
+Le test exige des adresses `127.0.0.1` sur les ports réservés, refuse les redirections et les options de connexion cachées dans les URL, et refuse une base Auth déjà peuplée ou des tables KM16 existantes. Il vérifie donc la chaîne réelle des composants dans un environnement isolé. Une réussite ne vaut pas validation des paramètres propres à un projet Supabase hébergé ; son résultat est consigné dans les exécutions CI et dans la PR.

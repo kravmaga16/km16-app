@@ -1,0 +1,62 @@
+# Disposable CI stack only. Never linked to a hosted project.
+project_id = "km16-email-integration"
+
+[api]
+enabled = true
+port = 54321
+schemas = ["public"]
+extra_search_path = ["public", "extensions"]
+max_rows = 1000
+
+[db]
+port = 54322
+shadow_port = 54320
+major_version = 17
+
+[db.migrations]
+enabled = false
+
+[db.seed]
+enabled = false
+
+[db.pooler]
+enabled = false
+
+[auth]
+enabled = true
+site_url = "http://127.0.0.1:3000"
+additional_redirect_urls = []
+enable_signup = false
+enable_anonymous_sign_ins = false
+jwt_expiry = 3600
+minimum_password_length = 12
+
+[auth.email]
+enabled = true
+enable_confirmations = true
+
+# Captures local Auth mail; no external SMTP credentials or sending worker.
+[local_smtp]
+enabled = true
+port = 54324
+
+[edge_runtime]
+enabled = true
+policy = "per_worker"
+deno_version = 2
+
+[functions.km16-admin-email-alerts]
+enabled = true
+verify_jwt = true
+
+[realtime]
+enabled = false
+
+[storage]
+enabled = false
+
+[studio]
+enabled = false
+
+[analytics]
+enabled = false

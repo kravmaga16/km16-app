@@ -1,0 +1,23 @@
+name: KM16 email alert safety checks
+on:
+  pull_request:
+    paths:
+      - 'clients.html'
+      - 'clients.mjs'
+      - 'admin-menu.js'
+      - 'supabase/functions/km16-admin-email-alerts/**'
+      - 'tests/email-relances-contract.test.mjs'
+      - '.github/workflows/email-relances-contract.yml'
+  workflow_dispatch:
+jobs:
+  contract:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Run offline contract tests
+        run: node --test tests/email-relances-contract.test.mjs

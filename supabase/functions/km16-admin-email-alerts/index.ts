@@ -30,7 +30,7 @@ Deno.serve(async (req) => {
     if (authError || !user) return json({ error: 'Session invalide' }, 401);
     // Existing KM16 admin convention. Before deployment, replace this email
     // allowlist with the central server-side admin authorization mechanism.
-    if (user.email?.toLowerCase() !== ADMIN_EMAIL || !user.email_confirmed_at)
+    if (user.email?.toLowerCase() !== ADMIN_EMAIL || !user.email_confirmed_at || user.is_anonymous)
       return json({ error: 'Accès refusé' }, 403);
     const db = createClient(url, secret, { auth: { persistSession: false } });
     // Only actionable records are queried. Pagination is explicit per source;

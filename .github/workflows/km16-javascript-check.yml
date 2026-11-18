@@ -67,7 +67,9 @@ jobs:
       - name: Tester la protection des comptes et des brouillons
         run: node --test tests/checkout-account.test.mjs
       - name: Installer Playwright
-        timeout-minutes: 3
+        # Browsers and OS dependencies are already provided by the job container.
+        # Allow npm to recover from transient registry/network delays.
+        timeout-minutes: 10
         run: npm install --no-save --no-audit --no-fund playwright@1.56.1
       - name: Tester le parcours client et le remplissage de l'e-mail
         run: node scripts/check-member-email.mjs

@@ -35,8 +35,10 @@ Deno.serve(async (req) => {
     const db = createClient(url, secret, { auth: { persistSession: false } });
     // Only actionable records are queried. Pagination is explicit per source;
     // the client must not interpret a partial page as the complete queue.
-    const body = await req.json().catch(() => ({}));
-    const page = body?.page ?? 0;
+    const body = await req.json().catch(() => null);
+    if (!body || typeof body !== 'object' || Array.isArray(body))
+      return json({ error: 'Requête invalide' }, 400);
+    const page = body.page === undefined ? 0 : body.page;
     if (!Number.isSafeInteger(page) || page < 0 || page > 10000)
       return json({ error: 'Page invalide' }, 400);
     const size = 100, from = page * size, to = from + size;

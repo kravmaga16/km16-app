@@ -7,7 +7,18 @@
   const result=`${y}-${m.padStart(2,'0')}-${d.padStart(2,'0')}`;
   const date=new Date(result+'T12:00:00Z');return Number.isFinite(date.getTime())&&date.toISOString().slice(0,10)===result?result:null;
  }
- function cutoff(value){const date=day(value);if(!date)return null;const target=date+'T15:00';for(const offset of ['+01:00','+02:00']){const n=Date.parse(target+':00'+offset);if(local(n)===target)return n;}return null;}
+ function cutoff(value){
+  const date=day(value);
+  if(!date)return null;
+  const nextDay=new Date(date+'T00:00:00Z');
+  nextDay.setUTCDate(nextDay.getUTCDate()+1);
+  const target=nextDay.toISOString().slice(0,10)+'T00:00';
+  for(const offset of ['+01:00','+02:00']){
+   const instant=Date.parse(target+':00'+offset);
+   if(local(instant)===target)return instant;
+  }
+  return null;
+ }
  function visible(value,now=Date.now()){const until=cutoff(value);return until===null||now<until;}
  globalThis.KM16StageVisibility={day,cutoff,visible};
 })();

@@ -14,6 +14,9 @@ jobs:
   syntax:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
+    container:
+      image: mcr.microsoft.com/playwright:v1.56.1-noble
+      options: --ipc=host
     steps:
       - name: Recuperer le code
         uses: actions/checkout@v4
@@ -66,9 +69,6 @@ jobs:
       - name: Installer Playwright
         timeout-minutes: 3
         run: npm install --no-save --no-audit --no-fund playwright@1.56.1
-      - name: Installer navigateurs de test
-        timeout-minutes: 6
-        run: npx playwright install --with-deps chromium webkit
       - name: Tester le parcours client et le remplissage de l'e-mail
         run: node scripts/check-member-email.mjs
       - name: Tester les achats sans compte préalable

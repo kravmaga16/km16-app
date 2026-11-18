@@ -15,7 +15,7 @@ const json = (value: unknown, status = 200) => new Response(JSON.stringify(value
   status, headers: { ...cors, 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' },
 });
 Deno.serve(async (req) => {
-  if (req.headers.get('origin') !== ORIGIN) return json({ error: 'Origine refusée' }, 403);
+  if (req.headers.get('origin') !== ORIGIN) return new Response(JSON.stringify({ error: 'Origine refusée' }), { status: 403, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', 'Vary': 'Origin' } });
   if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors });
   if (req.method !== 'POST') return json({ error: 'Méthode refusée' }, 405);
   const token = /^Bearer (.+)$/i.exec(req.headers.get('authorization') || '')?.[1];

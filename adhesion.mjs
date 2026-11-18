@@ -1,6 +1,7 @@
 import {enhanceBirthDate} from './birth-date-input.mjs?v=1';
 enhanceBirthDate(document.getElementById('birth_date'));
 import {preparePhoto} from './member-photo.mjs?v=1';
+import {createMemberCamera} from './member-camera.mjs?v=1';
 import {parseEuro,eligibleProducts} from './purchase-links.mjs?v=liens1';
 import {splitAmount,ageOn,validateOrder} from './rules.mjs';
 import {createCheckoutAccess,verifiedAccount,normalizeEmail} from './checkout-account.mjs?v=1';
@@ -16,8 +17,7 @@ let products=[],selected=null,session=null,enabled=false,category='Tous',busy=fa
 const linkToken=new URLSearchParams(location.hash.slice(1)).get('offre')||'';
 let specialOffer=null;
 let photoData='',photoRevision=0,photoPreparing=false;
-async function selectMemberPhoto(input){
- const file=input.files?.[0];
+async function selectMemberPhoto(input,file=input?.files?.[0]){
  if(!file||busy)return;
  const revision=++photoRevision;
  photoPreparing=true;buttonState();$('photo-status').textContent='Préparation de la photo…';
@@ -25,22 +25,24 @@ async function selectMemberPhoto(input){
   const value=await preparePhoto(file);
   if(revision!==photoRevision)return;
   photoData=value;$('member_photo').required=false;
-  $(input.id==='member_camera'?'member_photo':'member_camera').value='';
+  for(const id of ['member_photo','member_camera'])if(id!==input?.id)$(id).value='';
   $('photo-preview').src=value;$('photo-preview').hidden=false;
   $('photo-status').textContent='Photo prête. Elle sera envoyée avec votre demande.';
  }catch(error){
   if(revision!==photoRevision)return;
-  input.value='';$('member_photo').required=!photoData;
+  if(input)input.value='';$('member_photo').required=!photoData;
   $('photo-status').textContent=error.message+(photoData?' Votre photo précédente est conservée.':'');
  }finally{
   if(revision===photoRevision){photoPreparing=false;buttonState();}
  }
 }
 for(const id of ['member_photo','member_camera'])$(id).onchange=()=>selectMemberPhoto($(id));
-$('take-photo').onclick=()=>{
- if(busy||photoPreparing)return;
- $('member_camera').value='';$('member_camera').click();
-};
+const memberCamera=createMemberCamera({
+ dialog:$('member-camera-dialog'),trigger:$('take-photo'),canOpen:()=>!busy&&!photoPreparing,
+ onPhoto:file=>selectMemberPhoto(null,file),
+ onFile:()=>$('member_photo').click(),
+ onNative:()=>{$('member_camera').value='';$('member_camera').click();}
+});
 if(accountView){
  $('account-access').open=true;
  document.body.classList.add('account-view');document.title='Mon espace adhérent · KM16';
@@ -115,6 +117,7 @@ $('login').onsubmit=async e=>{
 const draftFields=['first_name','last_name','birth_date','phone','guardian_name','contact_email'];
 const draftChecks=['license','terms','privacy','eligibility','installments'];
 function resetRegistration(){
+ memberCamera.close();
  $('order').reset();photoData='';photoRevision++;photoPreparing=false;requestId=crypto.randomUUID();
  $('member_photo').required=true;$('photo-preview').removeAttribute('src');$('photo-preview').hidden=true;$('photo-status').textContent='';
  $('birth_date').dispatchEvent(new Event('change'));
@@ -152,7 +155,7 @@ $('email-link-login').onsubmit=async event=>{
 };
 $('logout').onclick=async()=>{await checkoutAccess.clear();resetRegistration();await client.auth.signOut({scope:'local'});};
 $('order').onsubmit=async e=>{
- e.preventDefault();if(busy||photoPreparing||!selected||!enabled||!$('order').reportValidity())return;
+ e.preventDefault();if(busy||photoPreparing||$('member-camera-dialog').open||!selected||!enabled||!$('order').reportValidity())return;
  const controls=[...$('order').querySelectorAll('input,select')].map(element=>({element,disabled:element.disabled}));
  const photoToUpload=photoData;
  for(const {element} of controls)element.disabled=true;

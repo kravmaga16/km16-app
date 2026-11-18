@@ -1,0 +1,14 @@
+#take-photo{width:100%;min-height:46px;margin:8px 0;background:#202020;color:#fff;font-weight:650}
+#member-camera-dialog{position:fixed;inset:auto 0 auto 0;box-sizing:border-box;width:calc(100% - 24px)!important;max-width:480px!important;max-height:var(--camera-height,calc(100dvh - 24px));margin:0 auto;border:1px solid #ddd;border-radius:16px;padding:18px!important;overflow:auto;background:#fff;color:#202020;box-shadow:0 10px 45px #0004}
+#member-camera-dialog::backdrop{background:rgba(0,0,0,.65)}
+#member-camera-dialog .camera-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px}
+#member-camera-dialog h2{font-size:21px;margin:0}
+#member-camera-dialog button{min-height:44px}
+#member-camera-dialog button:focus-visible{outline:3px solid #c81920;outline-offset:3px}
+#member-camera-dialog .camera-view{display:block;width:100%;height:min(46vh,360px);max-height:calc(var(--camera-height,100dvh) - 240px);min-height:100px;object-fit:contain;background:#191919;border-radius:10px}
+#member-camera-dialog #member-camera-status{font-size:14px;line-height:1.5;margin:12px 0}
+#member-camera-dialog .camera-actions{display:flex;flex-wrap:wrap;gap:8px}
+#member-camera-dialog .camera-actions button{flex:1 1 160px}
+#member-camera-dialog #member-camera-file{display:block;width:100%;margin-top:12px}
+#member-camera-dialog .camera-privacy{font-size:12px;line-height:1.5;color:#666;margin:10px 0 0}
+@media(max-width:520px){#member-camera-dialog{padding:14px!important}#member-camera-dialog .camera-actions button{flex-basis:100%}}

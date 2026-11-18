@@ -11,6 +11,11 @@ const confirmed={user:{email:'test@example.invalid',id:'fixture-user',is_anonymo
 const types={'.html':'text/html','.mjs':'text/javascript','.js':'text/javascript','.css':'text/css','.json':'application/json','.png':'image/png'};
 const server=createServer(async(req,res)=>{try{
  const name=decodeURIComponent(new URL(req.url,'http://localhost').pathname);
+ if(name==='/__camera-host.html'){
+  res.writeHead(200,{'Content-Type':'text/html','Cache-Control':'no-store'});
+  res.end(`<!doctype html><html lang="fr"><head><meta name="viewport" content="width=device-width,initial-scale=1"><style>body{margin:0;font:16px system-ui}.panel:not(.active),[hidden]{display:none!important}main{max-width:1200px;margin:auto;padding:12px}header{height:140px;background:#222;color:#fff;padding:12px;box-sizing:border-box}</style></head><body><header>Page d’accueil KM16 — simulation locale</header><main><section id="tarifs" class="panel active"><div id="payment-console"><h2>Votre inscription</h2><p id="payment-console-status"></p><p id="payment-legacy" hidden></p><div id="payment-console-host"></div></div></section></main><script type="module" src="/payment-console.mjs"></script></body></html>`);return;
+ }
+
  const path=resolve(root,'.'+(name==='/'?'/index.html':name));
  if(!path.startsWith(root+sep)||!(await stat(path)).isFile())throw Error('Invalid path');
  res.writeHead(200,{'Content-Type':types[extname(path)]||'application/octet-stream','Cache-Control':'no-store'});res.end(await readFile(path));
@@ -18,7 +23,8 @@ const server=createServer(async(req,res)=>{try{
 await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
 const origin='http://127.0.0.1:'+server.address().port;
 const engines=process.env.KM16_CHROMIUM_ONLY?[['Chromium',chromium]]:[['Chromium',chromium],['WebKit',webkit]];
-const scenarios=['guest','session','anonymous','unconfirmed','slow-catalogue','guest-refresh','network-error','network-reload','rate-limit','wrong-identity','draft-new-tab','logout','minor','identity-switch-before-checkout','camera'];
+const allScenarios=['guest','session','anonymous','unconfirmed','slow-catalogue','guest-refresh','network-error','network-reload','rate-limit','wrong-identity','draft-new-tab','logout','minor','identity-switch-before-checkout','camera','camera-errors','camera-cancel-pending','camera-embed'];
+const scenarios=process.env.KM16_CAMERA_ONLY?allScenarios.filter(name=>name.startsWith('camera')):allScenarios;
 const otpCalls=events=>events.filter(e=>e.type==='otp');
 const writes=events=>events.filter(e=>e.type==='api'&&['photo-upload','checkout'].includes(e.body.action));
 let count=0;
@@ -42,6 +48,33 @@ async function harness(browser,width,scenario){
   window.TEST_SESSION=saved?JSON.parse(saved):initial;
   window.TEST_OTP_BEHAVIOR=['network-error','network-reload'].includes(scenario)&&!localStorage.getItem('km16-test-otp-ok')?'network':scenario==='rate-limit'?'rate-limit':'ok';
   window.TEST_CHECKOUT_DELAY=0;
+  // A real synthetic video stream exercises video.play(), canvas capture and JPEG
+  // conversion, without requesting a device or granting camera permissions.
+  const camera=window.TEST_CAMERA={behavior:'ok',color:'#4466aa',requests:[],streams:[],pending:[]};
+  function cameraStream(constraints){
+   const canvas=document.createElement('canvas');canvas.width=320;canvas.height=400;
+   const paint=()=>{const ctx=canvas.getContext('2d');ctx.fillStyle=camera.color;ctx.fillRect(0,0,320,400);ctx.fillStyle='#fff';ctx.fillRect(80,100,160,200);};
+   paint();const stream=canvas.captureStream(12),timer=setInterval(paint,80);
+   const deviceId=constraints.video?.deviceId?.exact||'fixture-front';
+   const facingMode=deviceId==='fixture-rear'?'environment':'user';
+   for(const track of stream.getTracks()){
+    const stop=track.stop.bind(track),settings=track.getSettings.bind(track);
+    track.stop=()=>{clearInterval(timer);stop();};
+    track.getSettings=()=>({...settings(),deviceId,facingMode});
+   }
+   camera.streams.push(stream);return stream;
+  }
+  Object.defineProperty(navigator,'mediaDevices',{configurable:true,value:{
+   getUserMedia:async constraints=>{
+    camera.requests.push(constraints);
+    if(camera.behavior==='pending')return new Promise((resolve,reject)=>camera.pending.push({resolve:()=>resolve(cameraStream(constraints)),reject}));
+    if(camera.behavior!=='ok')throw new DOMException('Synthetic camera failure',camera.behavior);
+    return cameraStream(constraints);
+   },
+   enumerateDevices:async()=>[{kind:'videoinput',deviceId:'fixture-front',label:'Caméra avant fictive'},{kind:'videoinput',deviceId:'fixture-rear',label:'Caméra arrière fictive'}],
+   getSupportedConstraints:()=>({facingMode:true,width:true,height:true})
+  }});
+
   const listeners=[];
   window.authNotify=(event,next)=>{
    window.TEST_SESSION=next;localStorage.setItem('km16-test-auth',JSON.stringify(next));localStorage.setItem('km16-video-auth',JSON.stringify(next));
@@ -86,12 +119,46 @@ async function harness(browser,width,scenario){
    return new Response(JSON.stringify(data),{status:200,headers:{'Content-Type':'application/json'}});
   };
  },{initial,products,scenario,confirmed});
- const page=await context.newPage();await page.goto(origin+'/adhesion.html');
+ const hostPage=await context.newPage();let page=hostPage;
+ if(scenario==='camera-embed'){
+  await hostPage.goto(origin+'/__camera-host.html');
+  const handle=await hostPage.waitForSelector('#payment-console-frame');page=await handle.contentFrame();
+ }else await page.goto(origin+'/adhesion.html');
  await page.waitForFunction(()=>document.querySelectorAll('#catalogue button:not([disabled])').length>0);
  await page.locator('#catalogue button:not([disabled])').first().click();
  if(scenario!=='slow-catalogue')await page.waitForFunction(()=>!document.querySelector('#pay').disabled);
- return {context,page,events,errors,unexpected};
+ return {context,page,hostPage,events,errors,unexpected};
 }
+async function cameraReady(page){
+ await page.waitForFunction(()=>{
+  const dialog=document.querySelector('#member-camera-dialog'),video=document.querySelector('#member-camera-video');
+  return dialog.open&&video.readyState>=2&&video.videoWidth>0&&!document.querySelector('#member-camera-capture').disabled;
+ });
+}
+async function openCamera(page){await page.locator('#take-photo').click();await cameraReady(page);}
+async function cameraStopped(page){
+ await page.waitForFunction(()=>!document.querySelector('#member-camera-dialog').open&&window.TEST_CAMERA.streams.every(stream=>stream.getTracks().every(track=>track.readyState==='ended')),null,{polling:50});
+}
+async function captureCamera(page){
+ await page.locator('#member-camera-capture').click();
+ await page.waitForFunction(()=>!document.querySelector('#member-camera-preview').hidden&&!document.querySelector('#member-camera-use').disabled);
+ assert.match(await page.locator('#member-camera-preview').getAttribute('src'),/^(?:data:image\/|blob:)/,'snapshot comes from the live video');
+ await page.locator('#member-camera-preview').evaluate(image=>image.decode());
+ assert.equal(await page.locator('#member-camera-preview').evaluate(image=>image.naturalWidth>0),true,'snapshot decodes as an image');
+ await page.waitForFunction(()=>window.TEST_CAMERA.streams.every(stream=>stream.getTracks().every(track=>track.readyState==='ended')));
+}
+async function useCameraPhoto(page){
+ const previous=await page.locator('#photo-preview').getAttribute('src');
+ await page.locator('#member-camera-use').click();
+ await page.waitForFunction(previous=>document.querySelector('#photo-status').textContent.includes('Photo prête')&&!document.querySelector('#pay').disabled&&document.querySelector('#photo-preview').getAttribute('src')!==previous,previous);
+ await cameraStopped(page);
+}
+async function cameraError(page){
+ await page.waitForFunction(()=>document.querySelector('#member-camera-dialog').open&&!document.querySelector('#member-camera-retry').hidden&&!document.querySelector('#member-camera-retry').disabled&&document.querySelector('#member-camera-status').textContent.length>0);
+ assert.equal(await page.locator('#member-camera-capture').isDisabled(),true,'errors cannot capture a blank frame');
+ assert.equal(await page.evaluate(()=>window.TEST_CAMERA.streams.every(stream=>stream.getTracks().every(track=>track.readyState==='ended'))),true,'camera failure releases streams');
+}
+
 async function photoFile(page,color='#ccc'){
  const data=await page.evaluate(color=>{const c=document.createElement('canvas');c.width=160;c.height=200;const x=c.getContext('2d');x.fillStyle=color;x.fillRect(0,0,160,200);return c.toDataURL('image/png').split(',')[1];},color);
  return {name:'portrait-fictif.png',mimeType:'image/png',buffer:Buffer.from(data,'base64')};
@@ -131,7 +198,7 @@ try{
  for(const [engineName,engine] of engines){
   const browser=await engine.launch({headless:true,...(engineName==='Chromium'&&process.env.KM16_CHROMIUM_PATH?{executablePath:process.env.KM16_CHROMIUM_PATH,args:['--no-sandbox']}: {})});
   try{for(const width of [390,1280])for(const scenario of scenarios){
-   const {context,page,events,errors,unexpected}=await harness(browser,width,scenario);
+   const {context,page,hostPage,events,errors,unexpected}=await harness(browser,width,scenario);
    try{
     assert.equal(await page.locator('#order').isVisible(),true,'form opens before account creation');
     assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),true,'no horizontal overflow');
@@ -142,36 +209,114 @@ try{
     if(scenario==='camera'){
      await fill(page,{photo:false});
      assert.equal(await page.locator('#member_camera').getAttribute('accept'),'image/*');
-     assert.equal(await page.locator('#member_camera').getAttribute('capture'),'user','request front camera on supported phones');
+     assert.equal(await page.locator('#member_camera').getAttribute('capture'),'user','native capture remains an explicit fallback');
      assert.equal(await page.locator('#member_photo').getAttribute('capture'),null,'gallery selection remains available');
-     await page.evaluate(()=>document.getElementById('member_camera').addEventListener('change',()=>{
-      window.CAMERA_BUSY=['pay','take-photo','member_photo','member_camera'].every(id=>document.getElementById(id).disabled);
-     }));
-     const firstChooser=page.waitForEvent('filechooser');await page.locator('#take-photo').click();
-     const camera=await firstChooser;assert.equal(await camera.element().getAttribute('id'),'member_camera');
-     await camera.setFiles(await photoFile(page));
-     await page.waitForFunction(()=>document.querySelector('#photo-status').textContent.includes('Photo prête'));
+     assert.equal(await page.evaluate(()=>window.TEST_CAMERA.requests.length),0,'camera is never opened before a deliberate click');
+     let fileChoosers=0;page.on('filechooser',()=>fileChoosers++);
+     await openCamera(page);
+     assert.equal(fileChoosers,0,'main camera button opens live video, not a file picker');
+     assert.equal(await page.locator('#member-camera-video').evaluate(video=>video.muted&&video.playsInline&&video.srcObject instanceof MediaStream),true,'inline muted live stream');
+     assert.equal(await page.evaluate(()=>window.TEST_CAMERA.requests[0].audio),false,'microphone is not requested');
+     assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),true,'camera fits mobile width');
+     if(process.env.KM16_SCREENSHOTS&&width===390)await page.screenshot({path:resolve(process.env.KM16_SCREENSHOTS,`member-camera-live-${engineName}-${width}.png`)});
+     await captureCamera(page);
+     assert.equal(await page.locator('#photo-preview').isVisible(),false,'snapshot is not added before confirmation');
+     const firstSnapshot=await page.locator('#member-camera-preview').getAttribute('src');
+     await page.evaluate(()=>{window.TEST_CAMERA.color='#bb6644';});
+     await page.locator('#member-camera-retake').click();await cameraReady(page);
+     await captureCamera(page);
+     assert.notEqual(await page.locator('#member-camera-preview').getAttribute('src'),firstSnapshot,'retake captures a fresh frame');
+     await useCameraPhoto(page);
      const firstPhoto=await page.locator('#photo-preview').getAttribute('src');
      assert.match(firstPhoto,/^data:image\/jpeg;base64,/,'camera follows the same private JPEG conversion');
-     assert.equal(await page.evaluate(()=>window.CAMERA_BUSY),true,'capture and submission disabled while photo is prepared');
      assert.equal(await page.locator('#take-photo').textContent(),'Reprendre une photo');
-     const cancelledChooser=page.waitForEvent('filechooser');await page.locator('#take-photo').click();
-     await (await cancelledChooser).setFiles([]);
-     assert.equal(await page.locator('#photo-preview').getAttribute('src'),firstPhoto,'cancelling capture preserves the accepted photo');
-     assert.equal(await page.locator('#photo-preview').isVisible(),true);
-     await page.locator('#member_camera').setInputFiles({name:'invalide.png',mimeType:'image/png',buffer:Buffer.from('not an image')});
-     await page.waitForFunction(()=>!document.querySelector('#pay').disabled&&!document.querySelector('#photo-status').textContent.includes('Préparation'));
-     assert.equal(await page.locator('#photo-preview').getAttribute('src'),firstPhoto,'invalid replacement preserves the accepted photo');
+     assert.deepEqual(writes(events),[],'camera preview and capture do not upload the portrait');
+     await openCamera(page);await page.locator('#member-camera-close').click();await cameraStopped(page);
+     assert.equal(await page.locator('#photo-preview').getAttribute('src'),firstPhoto,'closing camera preserves the accepted photo');
+     await openCamera(page);await captureCamera(page);await page.keyboard.press('Escape');await cameraStopped(page);
+     assert.equal(await page.locator('#photo-preview').getAttribute('src'),firstPhoto,'discarding a snapshot preserves the accepted photo');
+     await openCamera(page);const beforeSwitch=await page.evaluate(()=>window.TEST_CAMERA.streams.length);
+     const previousDevice=await page.locator('#member-camera-video').evaluate(video=>video.srcObject.getVideoTracks()[0].getSettings().deviceId);
+     await page.locator('#member-camera-switch').click();await cameraReady(page);
+     assert.equal(await page.evaluate(()=>window.TEST_CAMERA.streams.length),beforeSwitch+1,'camera switch starts a new stream');
+     assert.notEqual(await page.locator('#member-camera-video').evaluate(video=>video.srcObject.getVideoTracks()[0].getSettings().deviceId),previousDevice,'camera switch selects a different device');
+     assert.equal(await page.evaluate(()=>window.TEST_CAMERA.streams.slice(0,-1).every(stream=>stream.getTracks().every(track=>track.readyState==='ended'))),true,'camera switch releases the previous stream');
+     await page.evaluate(()=>window.dispatchEvent(new PageTransitionEvent('pagehide',{persisted:true})));await cameraStopped(page);
+     assert.equal(await page.locator('#photo-preview').getAttribute('src'),firstPhoto,'leaving the page does not overwrite the photo');
      await addPhoto(page,'#4488cc');
      const galleryPhoto=await page.locator('#photo-preview').getAttribute('src');
      assert.notEqual(galleryPhoto,firstPhoto,'gallery can replace a camera photo');
-     const replacementChooser=page.waitForEvent('filechooser');await page.locator('#take-photo').click();
-     await (await replacementChooser).setFiles(await photoFile(page,'#66aa55'));
-     await page.waitForFunction(previous=>document.querySelector('#photo-preview').getAttribute('src')!==previous&&document.querySelector('#photo-status').textContent.includes('Photo prête'),galleryPhoto);
+     await page.evaluate(()=>{window.TEST_CAMERA.color='#66aa55';});
+     await openCamera(page);await captureCamera(page);await useCameraPhoto(page);
      const finalPhoto=await page.locator('#photo-preview').getAttribute('src');
+     assert.notEqual(finalPhoto,galleryPhoto,'camera can replace a gallery photo');
      if(process.env.KM16_SCREENSHOTS&&width===390){await page.locator('#take-photo').evaluate(element=>element.scrollIntoView({block:'start'}));await page.screenshot({path:resolve(process.env.KM16_SCREENSHOTS,`member-camera-${engineName}-${width}.png`)});}
      await submitEmail(page,events);await notify(page);await checkout(page,events);
-     assert.equal(writes(events)[0].body.photo,finalPhoto,'only the latest accepted capture is uploaded');
+     assert.equal(writes(events)[0].body.photo,finalPhoto,'only the latest confirmed capture is uploaded');
+    }else if(scenario==='camera-errors'){
+     await fill(page);const previous=await page.locator('#photo-preview').getAttribute('src');
+     await page.evaluate(()=>{window.TEST_CAMERA.behavior='NotAllowedError';});
+     await page.locator('#take-photo').click();await cameraError(page);
+     assert.equal(await page.locator('#photo-preview').getAttribute('src'),previous,'permission refusal preserves the photo');
+     for(const error of ['NotFoundError','NotReadableError']){
+      await page.evaluate(error=>{window.TEST_CAMERA.behavior=error;},error);
+      await page.locator('#member-camera-retry').click();await cameraError(page);
+      assert.equal(await page.locator('#photo-preview').getAttribute('src'),previous,'hardware errors preserve the photo');
+     }
+     await page.evaluate(()=>{window.TEST_CAMERA.behavior='ok';});
+     await page.locator('#member-camera-retry').click();await cameraReady(page);
+     await page.locator('#member-camera-close').click();await cameraStopped(page);
+     await page.evaluate(()=>{window.TEST_CAMERA.behavior='NotAllowedError';});
+     await page.locator('#take-photo').click();await cameraError(page);
+     const nativeChooser=page.waitForEvent('filechooser');await page.locator('#member-camera-native').click();
+     const native=await nativeChooser;assert.equal(await native.element().getAttribute('id'),'member_camera');
+     await native.setFiles(await photoFile(page,'#bb5522'));
+     await page.waitForFunction(previous=>document.querySelector('#photo-preview').getAttribute('src')!==previous&&document.querySelector('#photo-status').textContent.includes('Photo prête'),previous);
+     const nativePhoto=await page.locator('#photo-preview').getAttribute('src');
+     await page.locator('#member_photo').setInputFiles({name:'invalide.png',mimeType:'image/png',buffer:Buffer.from('not an image')});
+     await page.waitForFunction(()=>!document.querySelector('#pay').disabled&&!document.querySelector('#photo-status').textContent.includes('Préparation'));
+     assert.equal(await page.locator('#photo-preview').getAttribute('src'),nativePhoto,'invalid replacement preserves a confirmed photo');
+     await page.locator('#take-photo').click();await cameraError(page);
+     const galleryChooser=page.waitForEvent('filechooser');await page.locator('#member-camera-file').click();
+     const gallery=await galleryChooser;assert.equal(await gallery.element().getAttribute('id'),'member_photo');
+     await gallery.setFiles(await photoFile(page,'#114477'));
+     await page.waitForFunction(previous=>document.querySelector('#photo-preview').getAttribute('src')!==previous&&document.querySelector('#photo-status').textContent.includes('Photo prête'),nativePhoto);
+     assert.deepEqual(writes(events),[],'recovery stays local');
+    }else if(scenario==='camera-embed'){
+     // ResizeObserver and the shipped embed module handle a genuinely tall form.
+     await page.evaluate(()=>{const filler=document.createElement('div');filler.style.height='4000px';document.body.append(filler);});
+     await hostPage.waitForFunction(()=>document.getElementById('payment-console-frame').getBoundingClientRect().height>4000);
+     for(const hiding of ['class','hidden']){
+      await page.locator('#take-photo').scrollIntoViewIfNeeded();await openCamera(page);
+      for(const id of ['member-camera-dialog','member-camera-close','member-camera-capture']){
+       const bounds=await page.locator('#'+id).boundingBox();assert.ok(bounds,`${id} is visible in the iframe`);
+       assert.ok(bounds.y>=-1&&bounds.y+bounds.height<=845,`${id} stays inside the parent viewport: ${JSON.stringify(bounds)}`);
+       assert.ok(bounds.x>=-1&&bounds.x+bounds.width<=width+1,`${id} stays inside the parent width`);
+      }
+      if(process.env.KM16_SCREENSHOTS&&hiding==='class')await hostPage.screenshot({path:resolve(process.env.KM16_SCREENSHOTS,`member-camera-embed-${engineName}-${width}.png`)});
+      await hostPage.evaluate(hiding=>{const section=document.getElementById('tarifs');if(hiding==='hidden')section.hidden=true;else section.classList.remove('active');},hiding);
+      await cameraStopped(page);
+      await hostPage.evaluate(()=>{const section=document.getElementById('tarifs');section.hidden=false;section.classList.add('active');});
+     }
+     assert.deepEqual(writes(events),[]);
+    }else if(scenario==='camera-cancel-pending'){
+     await fill(page);const previous=await page.locator('#photo-preview').getAttribute('src');
+     await page.evaluate(()=>{window.TEST_CAMERA.behavior='pending';});
+     await page.locator('#take-photo').click();await page.waitForFunction(()=>window.TEST_CAMERA.pending.length===1);
+     assert.equal(await page.locator('#member-camera-capture').isDisabled(),true,'capture waits for a real video frame');
+     await page.locator('#member-camera-close').click();
+     await page.evaluate(()=>window.TEST_CAMERA.pending[0].resolve());await cameraStopped(page);
+     assert.equal(await page.locator('#photo-preview').getAttribute('src'),previous,'late permission answer cannot alter the accepted photo');
+     await page.locator('#take-photo').click();await page.waitForFunction(()=>window.TEST_CAMERA.pending.length===2);
+     await page.keyboard.press('Escape');
+     await page.locator('#take-photo').click();await page.waitForFunction(()=>window.TEST_CAMERA.pending.length===3);
+     await page.evaluate(()=>window.TEST_CAMERA.pending[2].resolve());await cameraReady(page);
+     await page.evaluate(()=>window.TEST_CAMERA.pending[1].resolve());
+     await page.waitForFunction(()=>window.TEST_CAMERA.streams.filter(stream=>stream.getTracks().some(track=>track.readyState==='live')).length===1);
+     assert.equal(await page.locator('#member-camera-video').evaluate(video=>video.srcObject===window.TEST_CAMERA.streams[1]),true,'stale permission promise cannot replace a newer camera session');
+     await page.locator('#member-camera-close').click();await cameraStopped(page);
+     assert.equal(await page.locator('#photo-preview').getAttribute('src'),previous);
+     assert.deepEqual(writes(events),[]);
     }else if(scenario==='identity-switch-before-checkout'){
      await fill(page);await page.locator('#pay').click();
      await page.waitForFunction(()=>document.querySelector('#status').textContent.includes('connexion a changé')&&!document.querySelector('#pay').disabled);

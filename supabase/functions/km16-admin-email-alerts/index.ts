@@ -33,34 +33,40 @@ Deno.serve(async (req) => {
     if (user.email?.toLowerCase() !== ADMIN_EMAIL || !user.email_confirmed_at)
       return json({ error: 'Accès refusé' }, 403);
     const db = createClient(url, secret, { auth: { persistSession: false } });
+    // Only actionable records are queried. Pagination is explicit per source;
+    // the client must not interpret a partial page as the complete queue.
+    const body = await req.json().catch(() => ({}));
+    const page = Number(body?.page ?? 0);
+    if (!Number.isSafeInteger(page) || page < 0 || page > 10000)
+      return json({ error: 'Page invalide' }, 400);
+    const size = 100, from = page * size, to = from + size;
+    const cutoff = new Date(Date.now() - 15 * 60_000).toISOString();
+    const filter = `state.in.(failed,uncertain),and(state.eq.sending,attempted_at.lt.${cutoff})`;
     const [purchases, campaigns] = await Promise.all([
       db.from('km16_admin_purchase_notifications')
         .select('id,event_key,recipient,state,attempted_at')
-        .in('state', ['failed', 'uncertain', 'sending']).limit(1000),
+        .or(filter).order('id', { ascending: true }).range(from, to),
       db.from('km16_scheduled_mail_deliveries')
         .select('id,campaign_id,email,state,attempted_at')
-        .in('state', ['failed', 'uncertain', 'sending']).limit(1000),
+        .or(filter).order('id', { ascending: true }).range(from, to),
     ]);
     if (purchases.error || campaigns.error) {
       console.error('KM16 relances read error', purchases.error?.code, campaigns.error?.code);
       return json({ error: 'Consultation indisponible' }, 503);
     }
-    const now = Date.now();
-    const action = (state: string, attempted: string | null) =>
+    const action = (state: string) =>
       state === 'failed' ? 'validation_requise' :
-      state === 'uncertain' ? 'verification_manuelle' :
-      state === 'sending' && attempted && now - Date.parse(attempted) > 15 * 60_000
-        ? 'blocage_a_verifier' : null;
+      state === 'uncertain' ? 'verification_manuelle' : 'blocage_a_verifier';
     const alerts = [
-      ...(purchases.data || []).map(x => ({ categorie: 'achats', notification_id: x.id,
+      ...(purchases.data || []).slice(0,size).map(x => ({ categorie: 'achats', notification_id: x.id,
         reference: x.event_key, destinataire: x.recipient, statut: x.state,
-        derniere_tentative: x.attempted_at, action_requise: action(x.state, x.attempted_at) })),
-      ...(campaigns.data || []).map(x => ({ categorie: 'emails_programmes', notification_id: x.id,
+        derniere_tentative: x.attempted_at, action_requise: action(x.state) })),
+      ...(campaigns.data || []).slice(0,size).map(x => ({ categorie: 'emails_programmes', notification_id: x.id,
         reference: x.campaign_id, destinataire: x.email, statut: x.state,
-        derniere_tentative: x.attempted_at, action_requise: action(x.state, x.attempted_at) })),
-    ].filter(x => x.action_requise);
-    return json({ alerts, truncated: (purchases.data?.length || 0) === 1000 ||
-      (campaigns.data?.length || 0) === 1000 });
+        derniere_tentative: x.attempted_at, action_requise: action(x.state) })),
+    ];
+    return json({ alerts, page, has_more: (purchases.data?.length || 0) > size ||
+      (campaigns.data?.length || 0) > size });
   } catch (error) {
     console.error('KM16 relances unexpected error', error instanceof Error ? error.name : 'unknown');
     return json({ error: 'Consultation indisponible' }, 503);

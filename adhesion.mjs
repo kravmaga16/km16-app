@@ -15,8 +15,32 @@ const categoryFor=value=>{const s=String(value).toLowerCase();return s.includes(
 let products=[],selected=null,session=null,enabled=false,category='Tous',busy=false,requestId=crypto.randomUUID(),generation=0;
 const linkToken=new URLSearchParams(location.hash.slice(1)).get('offre')||'';
 let specialOffer=null;
-let photoData='',photoRevision=0;
-$('member_photo').onchange=async()=>{const revision=++photoRevision;photoData='';$('member_photo').required=true;$('photo-preview').hidden=true;$('photo-status').textContent='Préparation de la photo…';try{const value=await preparePhoto($('member_photo').files[0]);if(revision!==photoRevision)return;photoData=value;$('member_photo').required=false;$('photo-preview').src=value;$('photo-preview').hidden=false;$('photo-status').textContent='Photo prête. Elle sera envoyée avec votre demande.';}catch(e){if(revision===photoRevision){$('member_photo').value='';$('photo-status').textContent=e.message;}}};
+let photoData='',photoRevision=0,photoPreparing=false;
+async function selectMemberPhoto(input){
+ const file=input.files?.[0];
+ if(!file||busy)return;
+ const revision=++photoRevision;
+ photoPreparing=true;buttonState();$('photo-status').textContent='Préparation de la photo…';
+ try{
+  const value=await preparePhoto(file);
+  if(revision!==photoRevision)return;
+  photoData=value;$('member_photo').required=false;
+  $(input.id==='member_camera'?'member_photo':'member_camera').value='';
+  $('photo-preview').src=value;$('photo-preview').hidden=false;
+  $('photo-status').textContent='Photo prête. Elle sera envoyée avec votre demande.';
+ }catch(error){
+  if(revision!==photoRevision)return;
+  input.value='';$('member_photo').required=!photoData;
+  $('photo-status').textContent=error.message+(photoData?' Votre photo précédente est conservée.':'');
+ }finally{
+  if(revision===photoRevision){photoPreparing=false;buttonState();}
+ }
+}
+for(const id of ['member_photo','member_camera'])$(id).onchange=()=>selectMemberPhoto($(id));
+$('take-photo').onclick=()=>{
+ if(busy||photoPreparing)return;
+ $('member_camera').value='';$('member_camera').click();
+};
 if(accountView){
  $('account-access').open=true;
  document.body.classList.add('account-view');document.title='Mon espace adhérent · KM16';
@@ -58,7 +82,7 @@ async function restoreAccount(){
  try{const {data,error}=await accountTimeout(client.auth.getSession());if(revision!==accountRevision)return;if(error)throw error;await authState(data.session);}
  catch{if(revision===accountRevision)accountMessage('Votre connexion n’a pas pu être rétablie. Connectez-vous ci-dessous.',true);}
 }
-function buttonState(){ $('pay').disabled=busy||!enabled||!selected||selected.draft;$('reset-request').disabled=busy;$('pay').textContent=busy?'Préparation de votre demande…':!enabled?'Paiement indisponible':!accountSession(session)?'Valider ma demande':selected?.amount===0?'Envoyer ma demande gratuite':'Continuer vers le paiement';}
+function buttonState(){ $('pay').disabled=busy||photoPreparing||!enabled||!selected||selected.draft;$('reset-request').disabled=busy;$('pay').textContent=busy?'Préparation de votre demande…':photoPreparing?'Préparation de la photo…':!enabled?'Paiement indisponible':!accountSession(session)?'Valider ma demande':selected?.amount===0?'Envoyer ma demande gratuite':'Continuer vers le paiement';for(const id of ['member_photo','member_camera','take-photo'])$(id).disabled=busy||photoPreparing;$('take-photo').textContent=photoData?'Reprendre une photo':'Prendre une photo';}
 function render(){
  if(linkToken){$('catalogue').replaceChildren();$('filters').replaceChildren();return;}
  const offered=products.filter(p=>p.category!=='Interne'&&p.category!=='Équipement'&&(!p.event_date||p.event_date>=today())&&(!embedded||!p.draft));
@@ -91,7 +115,7 @@ $('login').onsubmit=async e=>{
 const draftFields=['first_name','last_name','birth_date','phone','guardian_name','contact_email'];
 const draftChecks=['license','terms','privacy','eligibility','installments'];
 function resetRegistration(){
- $('order').reset();photoData='';photoRevision++;requestId=crypto.randomUUID();
+ $('order').reset();photoData='';photoRevision++;photoPreparing=false;requestId=crypto.randomUUID();
  $('member_photo').required=true;$('photo-preview').removeAttribute('src');$('photo-preview').hidden=true;$('photo-status').textContent='';
  $('birth_date').dispatchEvent(new Event('change'));
  if(selected){$('count').value=String(specialOffer?.count||1);updateSchedule();}
@@ -128,7 +152,7 @@ $('email-link-login').onsubmit=async event=>{
 };
 $('logout').onclick=async()=>{await checkoutAccess.clear();resetRegistration();await client.auth.signOut({scope:'local'});};
 $('order').onsubmit=async e=>{
- e.preventDefault();if(busy||!selected||!enabled||!$('order').reportValidity())return;
+ e.preventDefault();if(busy||photoPreparing||!selected||!enabled||!$('order').reportValidity())return;
  const controls=[...$('order').querySelectorAll('input,select')].map(element=>({element,disabled:element.disabled}));
  const photoToUpload=photoData;
  for(const {element} of controls)element.disabled=true;

@@ -18,7 +18,7 @@ const server=createServer(async(req,res)=>{try{
 await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
 const origin='http://127.0.0.1:'+server.address().port;
 const engines=process.env.KM16_CHROMIUM_ONLY?[['Chromium',chromium]]:[['Chromium',chromium],['WebKit',webkit]];
-const scenarios=['guest','session','anonymous','unconfirmed','slow-catalogue','guest-refresh','network-error','network-reload','rate-limit','wrong-identity','draft-new-tab','logout','minor','identity-switch-before-checkout'];
+const scenarios=['guest','session','anonymous','unconfirmed','slow-catalogue','guest-refresh','network-error','network-reload','rate-limit','wrong-identity','draft-new-tab','logout','minor','identity-switch-before-checkout','camera'];
 const otpCalls=events=>events.filter(e=>e.type==='otp');
 const writes=events=>events.filter(e=>e.type==='api'&&['photo-upload','checkout'].includes(e.body.action));
 let count=0;
@@ -92,9 +92,12 @@ async function harness(browser,width,scenario){
  if(scenario!=='slow-catalogue')await page.waitForFunction(()=>!document.querySelector('#pay').disabled);
  return {context,page,events,errors,unexpected};
 }
-async function addPhoto(page){
- const data=await page.evaluate(()=>{const c=document.createElement('canvas');c.width=160;c.height=200;const x=c.getContext('2d');x.fillStyle='#ccc';x.fillRect(0,0,160,200);return c.toDataURL('image/png').split(',')[1];});
- await page.locator('#member_photo').setInputFiles({name:'portrait-fictif.png',mimeType:'image/png',buffer:Buffer.from(data,'base64')});
+async function photoFile(page,color='#ccc'){
+ const data=await page.evaluate(color=>{const c=document.createElement('canvas');c.width=160;c.height=200;const x=c.getContext('2d');x.fillStyle=color;x.fillRect(0,0,160,200);return c.toDataURL('image/png').split(',')[1];},color);
+ return {name:'portrait-fictif.png',mimeType:'image/png',buffer:Buffer.from(data,'base64')};
+}
+async function addPhoto(page,color='#ccc'){
+ await page.locator('#member_photo').setInputFiles(await photoFile(page,color));
  await page.waitForFunction(()=>document.querySelector('#photo-status').textContent.includes('Photo prête'));
 }
 async function fill(page,{photo=true,minor=false}={}){
@@ -136,7 +139,40 @@ try{
      assert.equal(await page.locator('#contact_email').isEditable(),true,'guest email editable');
      assert.equal(await page.locator('#login').isVisible(),false,'password is optional');
     }
-    if(scenario==='identity-switch-before-checkout'){
+    if(scenario==='camera'){
+     await fill(page,{photo:false});
+     assert.equal(await page.locator('#member_camera').getAttribute('accept'),'image/*');
+     assert.equal(await page.locator('#member_camera').getAttribute('capture'),'user','request front camera on supported phones');
+     assert.equal(await page.locator('#member_photo').getAttribute('capture'),null,'gallery selection remains available');
+     await page.evaluate(()=>document.getElementById('member_camera').addEventListener('change',()=>{
+      window.CAMERA_BUSY=['pay','take-photo','member_photo','member_camera'].every(id=>document.getElementById(id).disabled);
+     }));
+     const firstChooser=page.waitForEvent('filechooser');await page.locator('#take-photo').click();
+     const camera=await firstChooser;assert.equal(await camera.element().getAttribute('id'),'member_camera');
+     await camera.setFiles(await photoFile(page));
+     await page.waitForFunction(()=>document.querySelector('#photo-status').textContent.includes('Photo prête'));
+     const firstPhoto=await page.locator('#photo-preview').getAttribute('src');
+     assert.match(firstPhoto,/^data:image\/jpeg;base64,/,'camera follows the same private JPEG conversion');
+     assert.equal(await page.evaluate(()=>window.CAMERA_BUSY),true,'capture and submission disabled while photo is prepared');
+     assert.equal(await page.locator('#take-photo').textContent(),'Reprendre une photo');
+     const cancelledChooser=page.waitForEvent('filechooser');await page.locator('#take-photo').click();
+     await (await cancelledChooser).setFiles([]);
+     assert.equal(await page.locator('#photo-preview').getAttribute('src'),firstPhoto,'cancelling capture preserves the accepted photo');
+     assert.equal(await page.locator('#photo-preview').isVisible(),true);
+     await page.locator('#member_camera').setInputFiles({name:'invalide.png',mimeType:'image/png',buffer:Buffer.from('not an image')});
+     await page.waitForFunction(()=>!document.querySelector('#pay').disabled&&!document.querySelector('#photo-status').textContent.includes('Préparation'));
+     assert.equal(await page.locator('#photo-preview').getAttribute('src'),firstPhoto,'invalid replacement preserves the accepted photo');
+     await addPhoto(page,'#4488cc');
+     const galleryPhoto=await page.locator('#photo-preview').getAttribute('src');
+     assert.notEqual(galleryPhoto,firstPhoto,'gallery can replace a camera photo');
+     const replacementChooser=page.waitForEvent('filechooser');await page.locator('#take-photo').click();
+     await (await replacementChooser).setFiles(await photoFile(page,'#66aa55'));
+     await page.waitForFunction(previous=>document.querySelector('#photo-preview').getAttribute('src')!==previous&&document.querySelector('#photo-status').textContent.includes('Photo prête'),galleryPhoto);
+     const finalPhoto=await page.locator('#photo-preview').getAttribute('src');
+     if(process.env.KM16_SCREENSHOTS&&width===390){await page.locator('#take-photo').evaluate(element=>element.scrollIntoView({block:'start'}));await page.screenshot({path:resolve(process.env.KM16_SCREENSHOTS,`member-camera-${engineName}-${width}.png`)});}
+     await submitEmail(page,events);await notify(page);await checkout(page,events);
+     assert.equal(writes(events)[0].body.photo,finalPhoto,'only the latest accepted capture is uploaded');
+    }else if(scenario==='identity-switch-before-checkout'){
      await fill(page);await page.locator('#pay').click();
      await page.waitForFunction(()=>document.querySelector('#status').textContent.includes('connexion a changé')&&!document.querySelector('#pay').disabled);
      assert.deepEqual(writes(events).map(e=>e.body.action),['photo-upload'],'changed session cannot create checkout');

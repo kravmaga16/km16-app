@@ -3,6 +3,9 @@ on:
   pull_request:
     paths:
       - 'supabase/functions/km16-admin-email-alerts/**'
+      - 'supabase/functions/km16-admin-email-reviews/**'
+      - 'supabase/migrations/*email_alert_review_journal.sql'
+      - 'tests/email-reviews-integration.mjs'
       - 'tests/email-relances-integration*'
       - 'tests/email-relances-stack.toml'
       - '.github/workflows/email-relances-integration.yml'
@@ -29,6 +32,7 @@ jobs:
           mkdir -p "$RUNNER_TEMP/km16-email-integration/supabase/functions"
           cp tests/email-relances-stack.toml "$RUNNER_TEMP/km16-email-integration/supabase/config.toml"
           cp -R supabase/functions/km16-admin-email-alerts "$RUNNER_TEMP/km16-email-integration/supabase/functions/"
+          cp -R supabase/functions/km16-admin-email-reviews "$RUNNER_TEMP/km16-email-integration/supabase/functions/"
           supabase start --help > /dev/null
           supabase functions serve --help > /dev/null
           supabase status --help > /dev/null
@@ -56,9 +60,9 @@ jobs:
           PY
       - name: Serve the exact function source with server-side session verification
         run: |
-          supabase --workdir "$RUNNER_TEMP/km16-email-integration" functions serve km16-admin-email-alerts \
+          supabase --workdir "$RUNNER_TEMP/km16-email-integration" functions serve \
             > "$RUNNER_TEMP/km16-email-functions.log" 2>&1 &
-      - name: Test actual sessions, private tables and read-only alerts
+      - name: Test actual sessions, read-only alerts and separate audit journal
         timeout-minutes: 5
         run: node tests/email-relances-integration.mjs
       - name: Show local diagnostics on failure

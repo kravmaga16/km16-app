@@ -1,12 +1,13 @@
 // Real local Auth -> Edge -> PostgREST -> PostgreSQL integration; no hosted access.
 // Run only after a disposable Supabase stack and this function are served locally.
 // Environment: API_URL, DB_URL, ANON_KEY, SERVICE_ROLE_KEY; optional MAILPIT_URL.
-// Only fixture setup and the creation/removal of fictional Auth users write data.
+// Audit tests append fictional journal entries; delivery tables remain unchanged.
 import assert from 'node:assert/strict';
 import { randomBytes } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { setTimeout as delay } from 'node:timers/promises';
+import { testEmailReviewJournal } from './email-reviews-integration.mjs';
 
 function localUrl(name, protocol, port, path) {
   assert.ok(process.env[name], name + ' must be provided explicitly');
@@ -89,6 +90,7 @@ assert.equal(edgeReady?.status, 204, 'local Edge function must become ready');
 await checkMailpit();
 sql(['-v', 'km16_email_integration=1', '-v', 'fixture_observed_at=' + observedAt,
   '-f', fileURLToPath(new URL('./email-relances-integration-fixture.sql', import.meta.url))]);
+sql(['-1', '-f', fileURLToPath(new URL('../supabase/migrations/20261118134753_email_alert_review_journal.sql', import.meta.url))]);
 const before = sql(['-c', fingerprintSql]);
 let restReady;
 for (let attempt = 0; attempt < 20; attempt++) {
@@ -192,11 +194,17 @@ for (const body of [null, [], { page: -1 }, { page: '1' }, { page: 1 }, { page: 
 }
 passed('malformed requests and cursor errors return HTTP 400');
 
+await testEmailReviewJournal({ request, sql, admin, member, anon, service, observedAt, alertsCall: call });
+
 const deleted = await request('/auth/v1/admin/users/' + encodeURIComponent(member.id), {
   token: service, key: service, method: 'DELETE',
 });
 assert.ok([200, 204].includes(deleted.status), 'fixture member deletion must succeed');
 assert.equal((await call(member.token)).status, 401, 'stale JWT for removed user must be rejected by Auth');
+assert.equal((await request('/functions/v1/km16-admin-email-reviews', {
+  token: member.token, method: 'POST', origin: ORIGIN,
+  body: { action: 'history', categorie: 'achats', notification_id: 1 },
+})).status, 401, 'review endpoint rejects deleted fixture user too');
 passed('a real previously valid JWT stops authorizing after its fixture user is deleted');
 
 assert.equal(sql(['-c', fingerprintSql]), before, 'all notification/campaign values must remain unchanged');

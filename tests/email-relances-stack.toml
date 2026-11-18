@@ -51,6 +51,10 @@ enabled = true
 # Match hosted deployment with modern asymmetric Auth signing keys.
 verify_jwt = false
 
+[functions.km16-admin-email-reviews]
+enabled = true
+verify_jwt = false
+
 [realtime]
 enabled = false
 

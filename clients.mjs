@@ -365,6 +365,9 @@ function renderKm16EmailAlerts(){
     date&&Number.isFinite(date.getTime())?date.toLocaleString('fr-FR'):'—',KM16_EMAIL_LABELS[item.action_requise]]){
    const td=document.createElement('td');td.textContent=String(value??'');tr.append(td);
   }
+  const actionCell=document.createElement('td'),follow=document.createElement('button');
+  follow.type='button';follow.textContent='Suivi';follow.setAttribute('aria-label','Suivi de '+item.reference);
+  follow.addEventListener('click',()=>openKm16EmailReview(item));actionCell.append(follow);tr.append(actionCell);
   body.append(tr);
  }
  const count=$('km16-email-relances-count');
@@ -375,6 +378,7 @@ function renderKm16EmailAlerts(){
  if(more)more.hidden=!km16EmailHasMore;
 }
 function clearKm16EmailAlerts(){
+ clearKm16EmailReview();
  km16EmailRequest++;km16EmailController?.abort();km16EmailController=null;
  km16EmailAlerts=[];km16EmailPage=0;km16EmailHasMore=false;km16EmailCursor=null;km16EmailLoaded=false;
  for(const id of ['km16-email-relances-refresh','km16-email-relances-more'])if($(id))$(id).disabled=false;
@@ -386,6 +390,7 @@ async function refreshKm16EmailAlerts(next=false){
  if(!statusNode||!button)return;
  if(!isKm16EmailAdmin(session)){clearKm16EmailAlerts();return;}
  if(next&&(!km16EmailHasMore||!km16EmailCursor))return;
+ if(!next)clearKm16EmailReview();
  const request=++km16EmailRequest,userId=session.user.id;
  km16EmailController?.abort();
  const requestController=new AbortController();km16EmailController=requestController;
@@ -432,6 +437,145 @@ async function refreshKm16EmailAlerts(next=false){
 $('km16-email-relances-refresh')?.addEventListener('click',()=>refreshKm16EmailAlerts(false));
 $('km16-email-relances-more')?.addEventListener('click',()=>refreshKm16EmailAlerts(true));
 $('km16-email-relances-filter')?.addEventListener('change',renderKm16EmailAlerts);
+
+const KM16_REVIEW_DECISIONS={verification_effectuee:'Vérification effectuée',a_reexaminer:'Vérification à poursuivre',ne_pas_relancer:'Ne pas relancer'};
+const km16ReviewUuid=value=>typeof value==='string'&&/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
+const km16ReviewDate=value=>typeof value==='string'&&/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?(?:Z|[+-]\d{2}:\d{2})$/i.test(value)&&Number.isFinite(Date.parse(value));
+const km16ReviewInstant=value=>{
+ const fraction=/\.(\d{1,6})(?:Z|[+-]\d{2}:\d{2})$/i.exec(value)?.[1]||'';
+ return BigInt(Date.parse(value))*1000n+BigInt(fraction.padEnd(6,'0').slice(3));
+};
+const km16ReviewSameDate=(a,b)=>a===null||b===null?a===b:km16ReviewDate(a)&&km16ReviewDate(b)&&km16ReviewInstant(a)===km16ReviewInstant(b);
+const km16ReviewNoteLength=value=>Array.from(value).length;
+const km16ReviewDateLabel=value=>value===null?'Non renseignée':new Date(value).toLocaleString('fr-FR');
+let km16ReviewSelection=null,km16ReviewRows=[],km16ReviewRequest=0,km16ReviewController=null;
+let km16ReviewLoaded=false,km16ReviewBusy=false,km16ReviewNext=null,km16ReviewLastId=0,km16ReviewPending=null,km16ReviewConflict=false;
+function validKm16EmailReview(row,selection){
+ return !!(row&&typeof row==='object'&&!Array.isArray(row)&&Number.isSafeInteger(row.id)&&row.id>0&&
+  km16ReviewUuid(row.request_id)&&row.categorie===selection.categorie&&row.notification_id===selection.notification_id&&
+  Object.hasOwn(KM16_REVIEW_DECISIONS,row.decision)&&typeof row.note==='string'&&km16ReviewNoteLength(row.note.trim())>=3&&km16ReviewNoteLength(row.note)<=1000&&
+  Object.hasOwn(KM16_EMAIL_ACTIONS,row.observed_state)&&(row.observed_attempted_at===null||km16ReviewDate(row.observed_attempted_at))&&
+  Number.isSafeInteger(row.previous_review_id)&&row.previous_review_id>=0&&row.previous_review_id<row.id&&
+  km16ReviewUuid(row.recorded_by)&&km16ReviewDate(row.recorded_at));
+}
+function updateKm16EmailReviewControls(){
+ const locked=!km16ReviewLoaded||km16ReviewBusy||!!km16ReviewPending||km16ReviewConflict;
+ for(const id of ['km16-email-review-decision','km16-email-review-note'])if($(id))$(id).disabled=locked;
+ const save=$('km16-email-review-save');
+ if(save){save.disabled=!km16ReviewSelection||!km16ReviewLoaded||km16ReviewBusy||km16ReviewConflict;save.textContent=km16ReviewPending?'Réessayer cette vérification':'Enregistrer la vérification';}
+ const reload=$('km16-email-review-reload');if(reload)reload.disabled=km16ReviewBusy||!!km16ReviewPending;
+ const more=$('km16-email-review-more');if(more){more.hidden=km16ReviewNext===null;more.disabled=km16ReviewBusy||!!km16ReviewPending;}
+ const abandon=$('km16-email-review-abandon');if(abandon){abandon.hidden=!km16ReviewPending||km16ReviewBusy;abandon.disabled=km16ReviewBusy;}
+}
+function renderKm16EmailReview(){
+ const history=$('km16-email-review-history');if(!history)return;
+ history.replaceChildren();
+ for(const review of km16ReviewRows){
+  const li=document.createElement('li'),heading=document.createElement('strong'),note=document.createElement('p'),attempt=document.createElement('p');
+  heading.textContent=KM16_REVIEW_DECISIONS[review.decision]+' · '+km16ReviewDateLabel(review.recorded_at);
+  note.className='km16-email-review-note';note.textContent=review.note;
+  attempt.className='muted';attempt.textContent='Tentative observée : '+review.observed_state+' · '+km16ReviewDateLabel(review.observed_attempted_at);
+  li.append(heading,note,attempt);
+  if(km16ReviewSelection&&(review.observed_state!==km16ReviewSelection.statut||!km16ReviewSameDate(review.observed_attempted_at,km16ReviewSelection.derniere_tentative))){
+   const old=document.createElement('p');old.className='km16-email-review-old';old.textContent='Annotation d’une ancienne tentative : l’état ou la date diffère de l’alerte affichée.';li.append(old);
+  }
+  history.append(li);
+ }
+ const empty=$('km16-email-review-empty');if(empty)empty.hidden=!km16ReviewLoaded||km16ReviewRows.length>0;
+ updateKm16EmailReviewControls();
+}
+function clearKm16EmailReview(){
+ km16ReviewRequest++;km16ReviewController?.abort();km16ReviewController=null;
+ km16ReviewSelection=null;km16ReviewRows=[];km16ReviewLoaded=false;km16ReviewBusy=false;km16ReviewNext=null;km16ReviewLastId=0;km16ReviewPending=null;km16ReviewConflict=false;
+ if($('km16-email-review'))$('km16-email-review').hidden=true;
+ for(const id of ['km16-email-review-detail','km16-email-review-status'])if($(id))$(id).textContent='';
+ for(const id of ['km16-email-review-decision','km16-email-review-note'])if($(id))$(id).value='';
+ renderKm16EmailReview();
+}
+function openKm16EmailReview(item){
+ clearKm16EmailReview();if(!isKm16EmailAdmin(session))return;
+ km16ReviewSelection={...item};
+ $('km16-email-review-detail').textContent='Référence : '+item.reference+'\nDestinataire : '+item.destinataire+'\nÉtat observé : '+item.statut+'\nDernière tentative : '+km16ReviewDateLabel(item.derniere_tentative);
+ $('km16-email-review').hidden=false;$('km16-email-review-title').focus();
+ $('km16-email-review').scrollIntoView({block:'nearest'});
+ loadKm16EmailReviews();
+}
+async function km16EmailReviewApi(payload,request,requestController){
+ const userId=session?.user?.id;
+ const {data:{session:current}}=await client.auth.getSession();
+ if(request!==km16ReviewRequest)return null;
+ if(!isKm16EmailAdmin(session)||!isKm16EmailAdmin(current)||current.user.id!==userId||session.user.id!==userId){
+  clearKm16EmailAlerts();$('km16-email-relances-status').textContent='Session expirée. Reconnectez-vous pour consulter le suivi.';return null;
+ }
+ const response=await fetch('https://tlfewpbgbwesdriklxzb.supabase.co/functions/v1/km16-admin-email-reviews',{
+  method:'POST',headers:{Authorization:'Bearer '+current.access_token,'apikey':'sb_publishable_OGRSgobOGf54jlfmXGmS8g_04Ftvfsn','Content-Type':'application/json'},
+  body:JSON.stringify(payload),cache:'no-store',signal:requestController.signal
+ });
+ const result=await response.json().catch(()=>null);
+ if(request!==km16ReviewRequest)return null;
+ if(response.status===401||response.status===403){
+  clearKm16EmailAlerts();$('km16-email-relances-status').textContent='Accès au suivi refusé. Reconnectez-vous avec le compte administrateur.';return null;
+ }
+ if(!response.ok){const error=Error(typeof result?.error==='string'?result.error:'Suivi indisponible');error.status=response.status;throw error;}
+ return result;
+}
+async function loadKm16EmailReviews(next=false){
+ if(!km16ReviewSelection||km16ReviewBusy||km16ReviewPending||!isKm16EmailAdmin(session)||(next&&km16ReviewNext===null))return;
+ const selection=km16ReviewSelection,beforeId=next?km16ReviewNext:null,request=++km16ReviewRequest;
+ km16ReviewController?.abort();const requestController=new AbortController();km16ReviewController=requestController;km16ReviewBusy=true;
+ if(!next){km16ReviewLoaded=false;km16ReviewRows=[];km16ReviewNext=null;km16ReviewLastId=0;}
+ renderKm16EmailReview();$('km16-email-review-status').textContent='Chargement de l’historique…';
+ try{
+  const result=await km16EmailReviewApi({action:'history',categorie:selection.categorie,notification_id:selection.notification_id,...(next?{before_id:beforeId}:{})},request,requestController);
+  if(request!==km16ReviewRequest)return;
+  if(!result||!Array.isArray(result.reviews)||result.reviews.length>20||typeof result.has_more!=='boolean'||
+   !result.reviews.every((row,index)=>validKm16EmailReview(row,selection)&&(!next||row.id<beforeId)&&(index===0||row.id<result.reviews[index-1].id))||
+   (result.has_more?result.reviews.length===0||result.next_before_id!==result.reviews.at(-1).id:result.next_before_id!==null))throw Error('Historique inattendu');
+  km16ReviewRows=next?[...km16ReviewRows,...result.reviews]:result.reviews;
+  if(!next)km16ReviewLastId=result.reviews[0]?.id||0;
+  km16ReviewNext=result.has_more?result.next_before_id:null;km16ReviewLoaded=true;renderKm16EmailReview();
+  $('km16-email-review-status').textContent=km16ReviewConflict?'Historique rechargé. Actualisez les alertes puis ouvrez de nouveau ce suivi avant d’enregistrer.':km16ReviewRows.length+' vérification(s) chargée(s). Aucun e-mail envoyé.';
+ }catch(e){if(request===km16ReviewRequest)$('km16-email-review-status').textContent='Historique indisponible. Rechargez-le avant d’enregistrer une vérification.';}
+ finally{if(request===km16ReviewRequest){km16ReviewBusy=false;km16ReviewController=null;updateKm16EmailReviewControls();}}
+}
+async function saveKm16EmailReview(){
+ if(!km16ReviewSelection||!km16ReviewLoaded||km16ReviewBusy||km16ReviewConflict||!isKm16EmailAdmin(session))return;
+ if(!km16ReviewPending){
+  const decision=$('km16-email-review-decision').value,note=$('km16-email-review-note').value.trim();
+  if(!Object.hasOwn(KM16_REVIEW_DECISIONS,decision)||km16ReviewNoteLength(note)<3||km16ReviewNoteLength(note)>1000){$('km16-email-review-status').textContent='Choisissez une décision et saisissez une note de 3 à 1 000 caractères.';return;}
+  km16ReviewPending={action:'record',categorie:km16ReviewSelection.categorie,notification_id:km16ReviewSelection.notification_id,
+   request_id:crypto.randomUUID(),expected_state:km16ReviewSelection.statut,expected_attempted_at:km16ReviewSelection.derniere_tentative,
+   expected_last_review_id:km16ReviewLastId,decision,note};
+  $('km16-email-review-note').value=note;
+ }
+ const payload=km16ReviewPending,selection=km16ReviewSelection,request=++km16ReviewRequest;
+ km16ReviewController?.abort();const requestController=new AbortController();km16ReviewController=requestController;km16ReviewBusy=true;
+ updateKm16EmailReviewControls();$('km16-email-review-status').textContent='Enregistrement de la vérification…';
+ try{
+  const result=await km16EmailReviewApi(payload,request,requestController);
+  if(request!==km16ReviewRequest)return;
+  const review=result?.review;
+  if(!validKm16EmailReview(review,selection)||review.request_id!==payload.request_id||review.decision!==payload.decision||review.note!==payload.note||
+   review.observed_state!==payload.expected_state||!km16ReviewSameDate(review.observed_attempted_at,payload.expected_attempted_at)||review.previous_review_id!==payload.expected_last_review_id)throw Error('Enregistrement non confirmé');
+  const unique=new Map(km16ReviewRows.map(row=>[row.id,row]));unique.set(review.id,review);
+  km16ReviewRows=[...unique.values()].sort((a,b)=>b.id-a.id);km16ReviewLastId=Math.max(km16ReviewLastId,review.id);km16ReviewPending=null;
+  $('km16-email-review-decision').value='';$('km16-email-review-note').value='';renderKm16EmailReview();
+  $('km16-email-review-status').textContent='Vérification enregistrée. L’alerte reste affichée. Aucun e-mail envoyé.';
+ }catch(e){
+  if(request!==km16ReviewRequest)return;
+  if(e.status===409){km16ReviewPending=null;km16ReviewConflict=true;$('km16-email-review-status').textContent='Le suivi ou la tentative a changé. Rechargez l’historique et actualisez les alertes avant de recommencer. Aucun enregistrement n’est confirmé.';}
+  else if(e.status>=400&&e.status<500&&e.status!==408&&e.status!==429){km16ReviewPending=null;$('km16-email-review-status').textContent='Vérification refusée : '+e.message;}
+  else $('km16-email-review-status').textContent='Résultat non confirmé. Réessayez cette même vérification ou abandonnez la tentative et rechargez l’historique. Fermer le panneau n’annule pas un enregistrement déjà effectué.';
+ }finally{if(request===km16ReviewRequest){km16ReviewBusy=false;km16ReviewController=null;updateKm16EmailReviewControls();}}
+}
+$('km16-email-review-close')?.addEventListener('click',clearKm16EmailReview);
+$('km16-email-review-reload')?.addEventListener('click',()=>loadKm16EmailReviews(false));
+$('km16-email-review-more')?.addEventListener('click',()=>loadKm16EmailReviews(true));
+$('km16-email-review-save')?.addEventListener('click',saveKm16EmailReview);
+$('km16-email-review-abandon')?.addEventListener('click',()=>{
+ if(km16ReviewBusy||!km16ReviewPending)return;
+ km16ReviewPending=null;$('km16-email-review-decision').value='';$('km16-email-review-note').value='';loadKm16EmailReviews(false);
+});
 
 async function authState(s){
  generation++;controller?.abort();busy=false;session=s;clear();clearKm16EmailAlerts();communications.reset();

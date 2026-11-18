@@ -6,6 +6,9 @@ on:
       - 'clients.mjs'
       - 'admin-menu.js'
       - 'supabase/functions/km16-admin-email-alerts/**'
+      - 'supabase/functions/km16-admin-email-reviews/**'
+      - 'supabase/migrations/*email_alert_review_journal.sql'
+      - 'tests/email-reviews-*'
       - 'supabase/sql/km16_preparer_relances.sql'
       - 'tests/email-relances-contract.test.mjs'
       - 'tests/email-relances-behavior.test.mjs'
@@ -24,7 +27,7 @@ jobs:
         with:
           node-version: '22'
       - name: Run offline contract tests
-        run: node --test tests/email-relances-contract.test.mjs tests/email-relances-behavior.test.mjs
+        run: node --test tests/email-relances-contract.test.mjs tests/email-relances-behavior.test.mjs tests/email-reviews-behavior.test.mjs
   email-postgres:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
@@ -54,3 +57,5 @@ jobs:
       - uses: actions/checkout@v4
       - name: Test read-only SQL, permissions and rollback with fictional data
         run: psql -X -P pager=off -v ON_ERROR_STOP=1 -f tests/email-relances-postgres.sql
+      - name: Test audit-only SQL, stale observations and journal permissions
+        run: psql -X -P pager=off -v ON_ERROR_STOP=1 -f tests/email-reviews-postgres.sql

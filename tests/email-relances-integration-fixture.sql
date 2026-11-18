@@ -94,6 +94,10 @@ GRANT USAGE ON SCHEMA public TO service_role;
 GRANT SELECT ON public.km16_scheduled_campaigns,
     public.km16_admin_purchase_notifications,
     public.km16_scheduled_mail_deliveries TO service_role;
+-- Match existing production worker grants: FOR SHARE needs UPDATE privilege.
+-- The review RPC only locks and reads these sources; fingerprints detect writes.
+GRANT UPDATE ON public.km16_admin_purchase_notifications,
+    public.km16_scheduled_mail_deliveries TO service_role;
 -- No RLS policies: the real service_role bypasses RLS. Browser roles have no SELECT.
 
 CREATE TEMP TABLE fixture_cases (

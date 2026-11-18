@@ -2,6 +2,8 @@
 
 Périmètre : consultation administrative des alertes, sans envoi ni modification de statut. Le code, les vérifications et le suivi de mise en service sont regroupés dans la PR n°26.
 
+Un [journal administratif séparé](admin-email-review-journal.md) complète cette consultation. Ses écritures portent uniquement sur les vérifications et décisions, jamais sur les statuts de livraison ; la fonction de consultation ci-dessous reste en lecture seule.
+
 ## Comportement attendu
 
 | État | Condition | Action affichée |

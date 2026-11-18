@@ -30,3 +30,10 @@ Sources existantes :
 4. Tests locaux : 14 cas, 6 alertes, 8 exclusions, aucune donnée conservée après ROLLBACK (résultat transmis par l'utilisateur le 18/11/2026).
 5. Vérification du vrai schéma et de la chaîne d'authentification avant toute intégration.
 6. Revue de code et validation explicite avant fusion vers main.
+
+## Vérification du 18/11/2026
+- Schéma distant `KM16-Videos` inspecté en lecture seule : les colonnes nécessaires existent dans les deux tables.
+- Aucun contenu de notification ni donnée personnelle n'a été extrait pendant ce contrôle.
+- Les tests GitHub Actions « KM16 email alert safety checks » et « Phase 14 PostgreSQL isolé » sont passés ; la suite JavaScript générale doit encore être validée.
+- Déploiement toujours bloqué tant que l'autorisation administrative centralisée, les tests HTTP/CORS et les tests navigateur ne sont pas validés.
+- La fonction est un prototype : aucune relance automatique et aucun statut modifié.

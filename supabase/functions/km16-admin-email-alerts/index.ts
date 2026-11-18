@@ -1,5 +1,5 @@
 // KM16 - read-only email follow-up alerts.
-// SOURCE ONLY: not deployed. Requires SUPABASE_URL, SUPABASE_ANON_KEY and
+// Requires SUPABASE_URL, SUPABASE_ANON_KEY and
 // SUPABASE_SERVICE_ROLE_KEY in the server environment. Never bundle in GitHub Pages.
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.49.10';
 

@@ -54,7 +54,7 @@ jobs:
                       print('::add-mask::' + value)
                   output.write(key + '=' + value + '\n')
           PY
-      - name: Serve the exact function source with JWT verification
+      - name: Serve the exact function source with server-side session verification
         run: |
           supabase --workdir "$RUNNER_TEMP/km16-email-integration" functions serve km16-admin-email-alerts \
             > "$RUNNER_TEMP/km16-email-functions.log" 2>&1 &

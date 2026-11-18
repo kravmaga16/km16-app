@@ -1,6 +1,6 @@
 # KM16 — Préparation des relances d’e-mails
 
-État : code de préproduction sur la branche dédiée et PR n°26. Aucun déploiement de la fonction serveur, aucun envoi et aucune modification de statut par ce module.
+Périmètre : consultation administrative des alertes, sans envoi ni modification de statut. Le code, les vérifications et le suivi de mise en service sont regroupés dans la PR n°26.
 
 ## Comportement attendu
 
@@ -34,6 +34,8 @@ Tout changement de session annule la requête en cours, efface les données et r
 
 La fonction serveur `km16-admin-email-alerts` accepte uniquement `POST` depuis l’origine `https://app.km16.fr`, avec un prévol `OPTIONS` dédié. Elle vérifie le jeton auprès de Supabase Auth via `getUser(token)`, puis applique la convention administrateur KM16 actuelle : adresse autorisée confirmée et compte non anonyme. L’adresse affichée dans une session locale ne constitue pas l’autorisation serveur.
 
+La configuration de déploiement utilise `verify_jwt = false` au niveau de la passerelle ; le contrôle de session demeure obligatoire dans la fonction, avant toute lecture privilégiée. Ce choix est reproduit dans le test d’intégration complet. Il évite de dépendre de la compatibilité de l’ancien contrôle de passerelle avec les clés Auth asymétriques et la clé publique moderne du projet. Le 18 novembre 2026, le projet publiait une clé de signature ES256 et toutes ses fonctions existantes utilisaient cette configuration. Les documentations Supabase [sur les en-têtes d’authentification](https://supabase.com/docs/guides/functions/auth-headers) et [sur les erreurs 401](https://supabase.com/kb/troubleshooting/edge-function-401-error-response) décrivent différemment cette compatibilité ; l’autorisation du module repose explicitement sur `getUser`, puis sur l’identité administrateur vérifiée, et non sur une simple lecture du JWT.
+
 La clé `service_role` reste dans l’environnement serveur. Aucune clé secrète n’est placée dans les fichiers clients. Le navigateur reçoit uniquement les colonnes nécessaires à la liste, après autorisation. Les réponses portent `Cache-Control: no-store`. Les erreurs publiques ne renvoient pas les détails du fournisseur.
 
 La fonction serveur lit directement les deux tables via le SDK Supabase ; elle ne dépend pas de l’installation de la fonction SQL de préparation. Les contrôles SQL et ceux du handler restent donc distincts.
@@ -59,13 +61,13 @@ Le précédent essai sur le Mac s’est arrêté sur un fichier introuvable ; au
 
 Les tests PostgreSQL « Phase 14 » du dépôt concernent un autre module. Ils ne prouvent pas le fonctionnement de ces relances. De même, les tests avec Auth simulé ne remplacent pas un essai de la chaîne Supabase Auth/PostgREST/Edge complète.
 
-## Passage à l’étape suivante
+## Mise en service et évolution
 
-La préparation est livrée pour revue dans la PR n°26. Avant une mise en service, il reste à vérifier la configuration du projet hébergé destiné au déploiement. Cette étape ne met en place aucun renvoi. Un futur renvoi nécessitera une nouvelle lecture du statut, une décision administrative tracée et une protection contre les doublons.
+La PR n°26 consigne les contrôles CI et la mise en service. Les paramètres du projet hébergé sont vérifiés avant le déploiement de la fonction : URL, clé publique utilisée par le client, schéma, droits de lecture et existence du compte administrateur confirmé. Les essais d’accès refusé après déploiement ne remplacent pas l’observation de l’interface avec une session administrateur réelle. Un futur renvoi nécessitera une nouvelle lecture du statut, une décision administrative tracée et une protection contre les doublons.
 
 ## Intégration complète dans une instance jetable
 
-Le workflow `email-relances-integration.yml` démarre une vraie instance locale Supabase avec la CLI versionnée `3.2.0`, PostgreSQL 17, Auth, PostgREST, la passerelle et le moteur Edge. Il copie le code exact de `km16-admin-email-alerts`, conserve `verify_jwt = true` et n’utilise aucun projet hébergé, lien distant ni secret de production. Seules les tables fictives nécessaires sont créées ; les migrations KM16 et les workers d’envoi sont absents.
+Le workflow `email-relances-integration.yml` démarre une vraie instance locale Supabase avec la CLI versionnée `3.2.0`, PostgreSQL 17, Auth, PostgREST, la passerelle et le moteur Edge. Il copie le code exact de `km16-admin-email-alerts`, utilise `verify_jwt = false` comme le déploiement prévu et exige la validation de session dans le handler. Il n’utilise aucun projet hébergé, lien distant ni secret de production. Seules les tables fictives nécessaires sont créées ; les migrations KM16 et les workers d’envoi sont absents.
 
 `node tests/email-relances-integration.mjs` crée deux identités de test via l’API administrative locale, avec confirmation immédiate, puis obtient leurs vrais jetons par connexion avec mot de passe. Il vérifie les refus d’accès directs aux tables, les refus de jetons absents/falsifiés et de membre non autorisé, CORS, le seuil exact des quinze minutes, la pagination de 218 alertes, les entrées invalides et le refus d’un jeton dont l’utilisateur local a été supprimé. Les empreintes des trois tables doivent rester identiques et la boîte de capture Mailpit doit rester vide. Le workflow détruit l’instance et ses volumes en fin d’exécution.
 

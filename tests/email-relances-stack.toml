@@ -47,7 +47,9 @@ deno_version = 2
 
 [functions.km16-admin-email-alerts]
 enabled = true
-verify_jwt = true
+# Authentication is enforced by auth.getUser(token) and the admin allowlist.
+# Match hosted deployment with modern asymmetric Auth signing keys.
+verify_jwt = false
 
 [realtime]
 enabled = false

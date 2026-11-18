@@ -94,7 +94,7 @@
   }
   function revealTarget() {
     const id = location.hash.slice(1);
-    if (['admin','link-form','workspace','money-summary','stages-panel'].includes(id)) document.getElementById(id)?.scrollIntoView({block:'start'});
+    if (['admin','link-form','workspace','money-summary','stages-panel','km16-email-relances'].includes(id)) document.getElementById(id)?.scrollIntoView({block:'start'});
   }
   function sync() {
     const wasHidden = shell.hidden;

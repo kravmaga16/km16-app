@@ -23,7 +23,7 @@ function harness({user={email:'alexandre.marchat@gmail.com',email_confirmed_at:'
   const headers={origin};if(token)headers.authorization='Bearer '+token;
   const req=new Request('https://example.invalid',{method,headers,...(method==='POST'?{body:JSON.stringify(body)}:{})});
   const response=await handler(req);
-  return {status:response.status,data:await response.json(),headers:response.headers};
+  return {status:response.status,data:response.status===204?null:await response.json(),headers:response.headers};
  },stats:()=>({reads,writes})};
 }
 test('unauthenticated and unauthorized requests cannot query tables',async()=>{

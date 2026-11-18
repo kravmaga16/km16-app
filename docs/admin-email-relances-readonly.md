@@ -37,3 +37,10 @@ Sources existantes :
 - Les tests GitHub Actions « KM16 email alert safety checks » et « Phase 14 PostgreSQL isolé » sont passés ; la suite JavaScript générale doit encore être validée.
 - Déploiement toujours bloqué tant que l'autorisation administrative centralisée, les tests HTTP/CORS et les tests navigateur ne sont pas validés.
 - La fonction est un prototype : aucune relance automatique et aucun statut modifié.
+
+## État des vérifications CI — 18 novembre 2026
+Sur le commit `fb72fa2bb330c19f7fc7bb7846fb73e04e2d5704`, les workflows GitHub suivants ont terminé avec succès :
+- `KM16 email alert safety checks` — run 44289675942 ;
+- `KM16 - Phase 14 PostgreSQL isolé` — run 44289675926 ;
+- `KM16 - Verification JavaScript` — run 44289675877 (incluant les tests navigateurs existants).
+Ces succès valident le contrat statique et les tests existants, **pas** l'autorisation de bout en bout de la nouvelle Edge Function, non déployée. Les tests HTTP avec identité autorisée/interdite et les scénarios de pagination doivent encore être exécutés en environnement isolé.

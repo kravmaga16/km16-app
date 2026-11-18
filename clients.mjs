@@ -383,7 +383,7 @@ async function refreshKm16EmailAlerts(){
   if(request!==km16EmailRequest)return;
   km16EmailAlerts=result.alerts.filter(x=>['validation_requise','blocage_a_verifier','verification_manuelle'].includes(x.action_requise));
   renderKm16EmailAlerts();
-  statusNode.textContent=km16EmailAlerts.length+' alerte(s) à vérifier'+(result.truncated?' — liste partielle':'')+'. Aucun e-mail envoyé.';
+  statusNode.textContent=km16EmailAlerts.length+' alerte(s) à vérifier'+(result.has_more?' — liste partielle, pages supplémentaires disponibles côté serveur':'')+'. Aucun e-mail envoyé.';
  }catch(e){
   if(request!==km16EmailRequest)return;
   km16EmailAlerts=[];renderKm16EmailAlerts();

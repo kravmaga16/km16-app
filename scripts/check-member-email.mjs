@@ -23,7 +23,7 @@ const server=createServer(async(req,res)=>{try{
 await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
 const origin='http://127.0.0.1:'+server.address().port;
 const engines=process.env.KM16_CHROMIUM_ONLY?[['Chromium',chromium]]:[['Chromium',chromium],['WebKit',webkit]];
-const allScenarios=['guest','session','anonymous','unconfirmed','slow-catalogue','guest-refresh','network-error','network-reload','rate-limit','wrong-identity','draft-new-tab','logout','minor','identity-switch-before-checkout','camera','camera-errors','camera-cancel-pending','camera-embed'];
+const allScenarios=['guest','session','anonymous','unconfirmed','slow-catalogue','guest-refresh','network-error','network-reload','rate-limit','wrong-identity','draft-new-tab','logout','minor','identity-switch-before-checkout','camera','camera-errors','camera-cancel-pending','camera-embed','camera-desktop-devices','camera-device-recovery','camera-framing'];
 const scenarios=process.env.KM16_CAMERA_ONLY?allScenarios.filter(name=>name.startsWith('camera')):allScenarios;
 const otpCalls=events=>events.filter(e=>e.type==='otp');
 const writes=events=>events.filter(e=>e.type==='api'&&['photo-upload','checkout'].includes(e.body.action));
@@ -50,29 +50,56 @@ async function harness(browser,width,scenario){
   window.TEST_CHECKOUT_DELAY=0;
   // A real synthetic video stream exercises video.play(), canvas capture and JPEG
   // conversion, without requesting a device or granting camera permissions.
-  const camera=window.TEST_CAMERA={behavior:'ok',color:'#4466aa',requests:[],streams:[],pending:[]};
+  const desktopCameras=['camera-desktop-devices','camera-device-recovery'].includes(scenario);
+  const camera=window.TEST_CAMERA={
+   behavior:'ok',color:'#4466aa',requests:[],streams:[],pending:[],playPending:[],enumerations:0,
+   defaultDeviceId:desktopCameras?'fixture-iphone':'fixture-front',
+   labelsRequirePermission:scenario==='camera-desktop-devices',permissionGranted:false,
+   deviceBehaviors:{},blockedVideoDevices:[],pattern:scenario==='camera-framing'?'quadrants':'portrait',
+   devices:desktopCameras?[
+    {kind:'videoinput',deviceId:'fixture-iphone',label:'iPhone de test (Caméra Continuité)'},
+    {kind:'videoinput',deviceId:'fixture-facetime',label:'FaceTime HD Camera (Built-in)'},
+    {kind:'videoinput',deviceId:'fixture-usb',label:'Webcam USB de test'}
+   ]:[{kind:'videoinput',deviceId:'fixture-front',label:'Caméra avant fictive'},{kind:'videoinput',deviceId:'fixture-rear',label:'Caméra arrière fictive'}]
+  };
   function cameraStream(constraints){
-   const canvas=document.createElement('canvas');canvas.width=320;canvas.height=400;
-   const paint=()=>{const ctx=canvas.getContext('2d');ctx.fillStyle=camera.color;ctx.fillRect(0,0,320,400);ctx.fillStyle='#fff';ctx.fillRect(80,100,160,200);};
+   const canvas=document.createElement('canvas');canvas.width=camera.pattern==='quadrants'?640:320;canvas.height=camera.pattern==='quadrants'?480:400;
+   const paint=()=>{
+    const ctx=canvas.getContext('2d');
+    if(camera.pattern==='quadrants'){
+     for(const [color,x,y] of [['#dc1e1e',0,0],['#14c81e',320,0],['#1432dc',0,240],['#e1c814',320,240]]){ctx.fillStyle=color;ctx.fillRect(x,y,320,240);}
+    }else{ctx.fillStyle=camera.color;ctx.fillRect(0,0,320,400);ctx.fillStyle='#fff';ctx.fillRect(80,100,160,200);}
+   };
    paint();const stream=canvas.captureStream(12),timer=setInterval(paint,80);
-   const deviceId=constraints.video?.deviceId?.exact||'fixture-front';
+   const deviceId=constraints.video?.deviceId?.exact||camera.defaultDeviceId;
    const facingMode=deviceId==='fixture-rear'?'environment':'user';
    for(const track of stream.getTracks()){
     const stop=track.stop.bind(track),settings=track.getSettings.bind(track);
     track.stop=()=>{clearInterval(timer);stop();};
     track.getSettings=()=>({...settings(),deviceId,facingMode});
+    Object.defineProperty(track,'label',{configurable:true,value:camera.devices.find(device=>device.deviceId===deviceId)?.label||'Caméra de test'});
    }
-   camera.streams.push(stream);return stream;
+   camera.permissionGranted=true;camera.streams.push(stream);return stream;
   }
+  const realVideoPlay=HTMLMediaElement.prototype.play;
+  HTMLMediaElement.prototype.play=function(){
+   const deviceId=this.srcObject?.getVideoTracks?.()[0]?.getSettings?.().deviceId;
+   if(this.id==='member-camera-video'&&camera.blockedVideoDevices.includes(deviceId))return new Promise(resolve=>camera.playPending.push({deviceId,resolve}));
+   return realVideoPlay.call(this);
+  };
+  const deviceEvents=new EventTarget();
   Object.defineProperty(navigator,'mediaDevices',{configurable:true,value:{
    getUserMedia:async constraints=>{
     camera.requests.push(constraints);
-    if(camera.behavior==='pending')return new Promise((resolve,reject)=>camera.pending.push({resolve:()=>resolve(cameraStream(constraints)),reject}));
-    if(camera.behavior!=='ok')throw new DOMException('Synthetic camera failure',camera.behavior);
+    const deviceId=constraints.video?.deviceId?.exact||camera.defaultDeviceId,behavior=camera.deviceBehaviors[deviceId]||camera.behavior;
+    if(behavior==='pending')return new Promise((resolve,reject)=>camera.pending.push({deviceId,resolve:()=>resolve(cameraStream(constraints)),reject}));
+    if(behavior!=='ok')throw new DOMException('Synthetic camera failure',behavior);
     return cameraStream(constraints);
    },
-   enumerateDevices:async()=>[{kind:'videoinput',deviceId:'fixture-front',label:'Caméra avant fictive'},{kind:'videoinput',deviceId:'fixture-rear',label:'Caméra arrière fictive'}],
-   getSupportedConstraints:()=>({facingMode:true,width:true,height:true})
+   enumerateDevices:async()=>{camera.enumerations++;return camera.devices.map(device=>({...device,label:camera.labelsRequirePermission&&!camera.permissionGranted?'':device.label}));},
+   getSupportedConstraints:()=>({facingMode:true,width:true,height:true,deviceId:true}),
+   addEventListener:deviceEvents.addEventListener.bind(deviceEvents),
+   removeEventListener:deviceEvents.removeEventListener.bind(deviceEvents)
   }});
 
   const listeners=[];
@@ -158,6 +185,41 @@ async function cameraError(page){
  assert.equal(await page.locator('#member-camera-capture').isDisabled(),true,'errors cannot capture a blank frame');
  assert.equal(await page.evaluate(()=>window.TEST_CAMERA.streams.every(stream=>stream.getTracks().every(track=>track.readyState==='ended'))),true,'camera failure releases streams');
 }
+async function cameraDevice(page,deviceId){
+ await cameraReady(page);
+ await page.waitForFunction(deviceId=>document.querySelector('#member-camera-video').srcObject?.getVideoTracks()[0]?.getSettings().deviceId===deviceId,deviceId);
+ assert.equal(await page.locator('#member-camera-device').inputValue(),deviceId,'selector names the camera actually displayed');
+}
+async function cameraZoom(page,value){
+ const input=page.locator('#member-camera-zoom');
+ assert.equal(await input.isEnabled(),true,'framing controls remain usable');
+ await input.evaluate((element,value)=>{element.value=String(value);element.dispatchEvent(new Event('input',{bubbles:true}));},value);
+ assert.equal(Number(await input.inputValue()),value);
+}
+async function dragCameraImage(page,from,to){
+ const stage=page.locator('#member-camera-stage');await stage.scrollIntoViewIfNeeded();
+ const bounds=await stage.boundingBox();assert.ok(bounds&&bounds.width>100&&bounds.height>100,'portrait frame has usable dimensions');
+ await page.mouse.move(bounds.x+bounds.width*from[0],bounds.y+bounds.height*from[1]);
+ await page.mouse.down();
+ await page.mouse.move(bounds.x+bounds.width*to[0],bounds.y+bounds.height*to[1],{steps:8});
+ await page.mouse.up();
+}
+async function imageSamples(page,src){
+ return page.evaluate(async src=>{
+  const image=new Image();image.src=src;await image.decode();
+  const canvas=document.createElement('canvas');canvas.width=image.naturalWidth;canvas.height=image.naturalHeight;
+  const ctx=canvas.getContext('2d');ctx.drawImage(image,0,0);
+  return {width:canvas.width,height:canvas.height,pixels:[[.2,.2],[.8,.2],[.2,.8],[.8,.8]].map(([x,y])=>Array.from(ctx.getImageData(Math.floor(canvas.width*x),Math.floor(canvas.height*y),1,1).data))};
+ },src);
+}
+async function stageSamples(page){
+ const screenshot=await page.locator('#member-camera-stage').screenshot();
+ return imageSamples(page,'data:image/png;base64,'+screenshot.toString('base64'));
+}
+function assertFramingColor(sample,color,message){
+ const channel=color==='green'?1:2;
+ for(const pixel of sample.pixels)assert.ok(pixel[channel]>Math.max(...pixel.slice(0,3).filter((_,index)=>index!==channel))+45,`${message}: ${JSON.stringify(pixel)}`);
+}
 
 async function photoFile(page,color='#ccc'){
  const data=await page.evaluate(color=>{const c=document.createElement('canvas');c.width=160;c.height=200;const x=c.getContext('2d');x.fillStyle=color;x.fillRect(0,0,160,200);return c.toDataURL('image/png').split(',')[1];},color);
@@ -226,9 +288,13 @@ try{
      await page.locator('#member-camera-retake').click();await cameraReady(page);
      await captureCamera(page);
      assert.notEqual(await page.locator('#member-camera-preview').getAttribute('src'),firstSnapshot,'retake captures a fresh frame');
+     const maximumZoom=Number(await page.locator('#member-camera-zoom').getAttribute('max'));
+     await cameraZoom(page,maximumZoom);
      await useCameraPhoto(page);
      const firstPhoto=await page.locator('#photo-preview').getAttribute('src');
      assert.match(firstPhoto,/^data:image\/jpeg;base64,/,'camera follows the same private JPEG conversion');
+     const maximumZoomPhoto=await imageSamples(page,firstPhoto);
+     assert.ok(maximumZoomPhoto.width>=100&&maximumZoomPhoto.height>=100,'maximum zoom still produces a portrait accepted by the upload preparation');
      assert.equal(await page.locator('#take-photo').textContent(),'Reprendre une photo');
      assert.deepEqual(writes(events),[],'camera preview and capture do not upload the portrait');
      await openCamera(page);await page.locator('#member-camera-close').click();await cameraStopped(page);
@@ -253,6 +319,83 @@ try{
      if(process.env.KM16_SCREENSHOTS&&width===390){await page.locator('#take-photo').evaluate(element=>element.scrollIntoView({block:'start'}));await page.screenshot({path:resolve(process.env.KM16_SCREENSHOTS,`member-camera-${engineName}-${width}.png`)});}
      await submitEmail(page,events);await notify(page);await checkout(page,events);
      assert.equal(writes(events)[0].body.photo,finalPhoto,'only the latest confirmed capture is uploaded');
+    }else if(scenario==='camera-desktop-devices'){
+     await fill(page,{photo:false});
+     assert.equal(await page.evaluate(()=>window.TEST_CAMERA.enumerations),0,'no camera enumeration before the photo action');
+     await openCamera(page);await cameraDevice(page,'fixture-facetime');
+     assert.equal(await page.evaluate(()=>window.TEST_CAMERA.requests[0].video.deviceId?.exact||window.TEST_CAMERA.defaultDeviceId),'fixture-iphone','masked labels initially use the exposed browser default');
+     assert.equal(await page.evaluate(()=>window.TEST_CAMERA.requests.at(-1).video.deviceId?.exact),'fixture-facetime','revealed built-in webcam is selected precisely');
+     assert.equal(await page.evaluate(()=>window.TEST_CAMERA.streams.slice(0,-1).every(stream=>stream.getTracks().every(track=>track.readyState==='ended'))),true,'automatic preference releases the default iPhone stream');
+     const labels=await page.locator('#member-camera-device option').allTextContents();
+     assert.ok(labels.some(label=>label.includes('FaceTime'))&&labels.some(label=>label.includes('iPhone'))&&labels.some(label=>label.includes('USB')),'available cameras are named');
+     assert.equal(await page.locator('#member-camera-device').evaluate(element=>Boolean(element.getAttribute('aria-label')||element.labels?.length)),true,'camera selector has an accessible label');
+     await page.locator('#member-camera-device').selectOption('fixture-iphone');await cameraDevice(page,'fixture-iphone');
+     await captureCamera(page);
+     await page.locator('#member-camera-retake').click();await cameraDevice(page,'fixture-iphone');
+     await page.locator('#member-camera-close').click();await cameraStopped(page);
+     const beforeReopen=await page.evaluate(()=>window.TEST_CAMERA.requests.length);
+     await openCamera(page);await cameraDevice(page,'fixture-iphone');
+     assert.equal(await page.evaluate(index=>window.TEST_CAMERA.requests[index].video.deviceId?.exact,beforeReopen),'fixture-iphone','an explicit camera choice survives reopening');
+     assert.equal(await page.evaluate(()=>window.TEST_CAMERA.requests.every(request=>request.audio===false)),true,'camera selection never opens the microphone');
+     await page.locator('#member-camera-close').click();await cameraStopped(page);
+     assert.equal(await page.locator('#photo-preview').isVisible(),false,'unconfirmed camera images are not added to the form');
+     assert.deepEqual(writes(events),[]);
+    }else if(scenario==='camera-device-recovery'){
+     await fill(page);const previousPhoto=await page.locator('#photo-preview').getAttribute('src');
+     await openCamera(page);await cameraDevice(page,'fixture-facetime');
+     assert.equal(await page.evaluate(()=>window.TEST_CAMERA.requests[0].video.deviceId?.exact),'fixture-facetime','known integrated camera is preferred before opening the default iPhone');
+     await page.evaluate(()=>{window.TEST_CAMERA.blockedVideoDevices=['fixture-iphone'];});
+     await page.locator('#member-camera-device').selectOption('fixture-iphone');
+     await page.waitForFunction(()=>window.TEST_CAMERA.playPending.length===1);
+     assert.equal(await page.locator('#member-camera-capture').isDisabled(),true,'an iPhone without a video frame cannot take an empty picture');
+     assert.equal(await page.locator('#member-camera-device').isEnabled(),true,'camera selection is available before video.play resolves');
+     await page.locator('#member-camera-device').selectOption('fixture-facetime');await cameraDevice(page,'fixture-facetime');
+     await page.evaluate(()=>window.TEST_CAMERA.playPending[0].resolve());
+     await page.waitForFunction(()=>window.TEST_CAMERA.streams.filter(stream=>stream.getTracks().some(track=>track.readyState==='live')).length===1);
+     await cameraDevice(page,'fixture-facetime');
+     await page.evaluate(()=>{window.TEST_CAMERA.blockedVideoDevices=[];window.TEST_CAMERA.deviceBehaviors['fixture-iphone']='pending';});
+     await page.locator('#member-camera-device').selectOption('fixture-iphone');
+     await page.waitForFunction(()=>window.TEST_CAMERA.pending.length===1);
+     assert.equal(await page.locator('#member-camera-device').isEnabled(),true,'camera selection remains available while getUserMedia is pending');
+     await page.locator('#member-camera-device').selectOption('fixture-usb');await cameraDevice(page,'fixture-usb');
+     await page.evaluate(()=>window.TEST_CAMERA.pending[0].resolve());
+     await page.waitForFunction(()=>window.TEST_CAMERA.streams.at(-1).getTracks().every(track=>track.readyState==='ended'));
+     await cameraDevice(page,'fixture-usb');
+     await page.evaluate(()=>{window.TEST_CAMERA.blockedVideoDevices=[];window.TEST_CAMERA.deviceBehaviors['fixture-iphone']='NotReadableError';});
+     await page.locator('#member-camera-device').selectOption('fixture-iphone');await cameraError(page);
+     assert.equal(await page.locator('#member-camera-device').isEnabled(),true,'an unavailable camera does not remove the selector');
+     await page.locator('#member-camera-device').selectOption('fixture-facetime');await cameraDevice(page,'fixture-facetime');
+     await page.locator('#member-camera-close').click();await cameraStopped(page);
+     assert.equal(await page.locator('#photo-preview').getAttribute('src'),previousPhoto,'camera failures do not discard an accepted portrait');
+     assert.deepEqual(writes(events),[]);
+    }else if(scenario==='camera-framing'){
+     await fill(page,{photo:false});await openCamera(page);
+     const stage=page.locator('#member-camera-stage');
+     let bounds=await stage.boundingBox();assert.ok(Math.abs(bounds.width/bounds.height-.75)<.015,'the visible frame has the exported portrait ratio');
+     await cameraZoom(page,2);await stage.focus();
+     const beforeKeys=await stage.screenshot();
+     for(let n=0;n<4;n++)await page.keyboard.press('ArrowRight');
+     assert.notDeepEqual(await stage.screenshot(),beforeKeys,'keyboard arrows actually change the displayed framing');
+     await page.locator('#member-camera-reset').click();
+     assert.equal(Number(await page.locator('#member-camera-zoom').inputValue()),1,'reset restores the full portrait crop');
+     await cameraZoom(page,2);await dragCameraImage(page,[.85,.15],[.2,.85]);
+     assertFramingColor(await stageSamples(page),'green','live framing selects the green top-right area');
+     await captureCamera(page);
+     assertFramingColor(await stageSamples(page),'green','capturing preserves the visible crop');
+     assert.equal(await page.locator('#photo-preview').isVisible(),false,'framing remains local until confirmation');
+     await useCameraPhoto(page);
+     let portrait=await imageSamples(page,await page.locator('#photo-preview').getAttribute('src'));
+     assert.ok(Math.abs(portrait.width/portrait.height-.75)<.01,'confirmed JPEG has the portrait crop dimensions');
+     assertFramingColor(portrait,'green','exported pixels match the live green framing');
+     await openCamera(page);await captureCamera(page);
+     await cameraZoom(page,2);await dragCameraImage(page,[.15,.85],[.8,.15]);
+     assertFramingColor(await stageSamples(page),'blue','a frozen picture can still be reframed to its blue bottom-left area');
+     await useCameraPhoto(page);
+     const finalPhoto=await page.locator('#photo-preview').getAttribute('src');
+     portrait=await imageSamples(page,finalPhoto);assertFramingColor(portrait,'blue','the final file contains the post-capture framing, not the unframed snapshot');
+     assert.deepEqual(writes(events),[],'zoom and drag do not upload the image');
+     await submitEmail(page,events);await notify(page);await checkout(page,events);
+     assert.equal(writes(events)[0].body.photo,finalPhoto,'only the final cropped JPEG is submitted with the request');
     }else if(scenario==='camera-errors'){
      await fill(page);const previous=await page.locator('#photo-preview').getAttribute('src');
      await page.evaluate(()=>{window.TEST_CAMERA.behavior='NotAllowedError';});
@@ -303,6 +446,29 @@ try{
        assert.ok(bounds.x>=-1&&bounds.x+bounds.width<=width+1,`${id} stays inside the parent width`);
       }
       if(process.env.KM16_SCREENSHOTS&&hiding==='class')await hostPage.screenshot({path:resolve(process.env.KM16_SCREENSHOTS,`member-camera-embed-${engineName}-${width}.png`)});
+      if(width===1280&&hiding==='class'){
+       await hostPage.setViewportSize({width,height:650});
+       await page.waitForFunction(()=>{
+        const dialog=document.querySelector('#member-camera-dialog');
+        return dialog.classList.contains('camera-short')&&parseFloat(dialog.style.getPropertyValue('--camera-height'))<=626;
+       });
+       await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
+       for(const id of ['member-camera-device','member-camera-zoom','member-camera-reset','member-camera-capture']){
+        const control=page.locator('#'+id),bounds=await control.boundingBox();
+        assert.ok(bounds&&bounds.width>0&&bounds.height>0,`${id} is displayed in the short desktop viewport`);
+        assert.ok(bounds.x>=-1&&bounds.x+bounds.width<=width+1&&bounds.y>=-1&&bounds.y+bounds.height<=651,`${id} stays entirely in the 1280×650 parent viewport: ${JSON.stringify(bounds)}`);
+        const clipping=await control.evaluate(element=>{
+         const rect=element.getBoundingClientRect(),body=element.closest('.camera-body');
+         if(!body)return null;
+         const container=body.getBoundingClientRect(),left=container.left+body.clientLeft,top=container.top+body.clientTop;
+         return {inside:rect.left>=left-1&&rect.right<=left+body.clientWidth+1&&rect.top>=top-1&&rect.bottom<=top+body.clientHeight+1,control:{top:rect.top,bottom:rect.bottom,left:rect.left,right:rect.right},body:{top,bottom:top+body.clientHeight,left,right:left+body.clientWidth}};
+        });
+        assert.ok(!clipping||clipping.inside,`${id} is not clipped by the scrollable camera body: ${JSON.stringify(clipping)}`);
+       }
+       if(process.env.KM16_SCREENSHOTS)await hostPage.screenshot({path:resolve(process.env.KM16_SCREENSHOTS,`member-camera-embed-short-${engineName}-${width}.png`)});
+       await hostPage.setViewportSize({width,height:844});
+       await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
+      }
       await hostPage.evaluate(hiding=>{const section=document.getElementById('tarifs');if(hiding==='hidden')section.hidden=true;else section.classList.remove('active');},hiding);
       await cameraStopped(page);
       await hostPage.evaluate(()=>{const section=document.getElementById('tarifs');section.hidden=false;section.classList.add('active');});

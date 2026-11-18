@@ -5,7 +5,9 @@ import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 
 const source=readFileSync(new URL('../supabase/functions/km16-admin-email-alerts/index.ts',import.meta.url),'utf8')
- .replace(/^import \{ createClient \} from .*;\s*/m,'');
+ .replace(/^import \{ createClient \} from .*;\s*/m,'')
+ .replace(/\bvalue: unknown\b/g,'value')
+ .replace(/\bstate: string\b/g,'state');
 const ORIGIN='https://app.km16.fr';
 function harness({user={email:'alexandre.marchat@gmail.com',email_confirmed_at:'2026-01-01',is_anonymous:false},authError=null,rows=[]}={}){
  let handler, reads=0, writes=0;

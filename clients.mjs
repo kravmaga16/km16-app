@@ -378,7 +378,7 @@ async function refreshKm16EmailAlerts(next=false){
   const {data:{session:current}}=await client.auth.getSession();
   if(!current||current.user.id!==session.user.id)throw Error('Session expirée');
   const response=await fetch('https://tlfewpbgbwesdriklxzb.supabase.co/functions/v1/km16-admin-email-alerts',{
-   method:'POST',headers:{Authorization:'Bearer '+current.access_token,'Content-Type':'application/json'},
+   method:'POST',headers:{Authorization:'Bearer '+current.access_token,'apikey':'sb_publishable_OGRSgobOGf54jlfmXGmS8g_04Ftvfsn','Content-Type':'application/json'},
    body:JSON.stringify({page}),cache:'no-store'
   });
   const result=await response.json();

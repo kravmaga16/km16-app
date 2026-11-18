@@ -136,10 +136,13 @@ passed('real server denies member, missing JWT and tampered JWT');
 
 const foreign = await call(admin.token, { page: 0 }, { origin: 'https://foreign.example.invalid' });
 assert.equal(foreign.status, 403);
-assert.equal(foreign.headers.get('access-control-allow-origin'), null);
+assert.deepEqual(foreign.data, { error: 'Origine refusée' }, 'foreign origin must receive only the denial, never alerts');
+// Local CLI Kong enables its CORS plugin on functions-v1, adding '*' even to a
+// handler's denial. The handler-only tests separately check its stricter headers.
+const allowedLocalCors = response => [ORIGIN, '*'].includes(response.headers.get('access-control-allow-origin'));
 const preflight = await request(functionPath, { method: 'OPTIONS', origin: ORIGIN });
 assert.equal(preflight.status, 204);
-assert.equal(preflight.headers.get('access-control-allow-origin'), ORIGIN);
+assert.ok(allowedLocalCors(preflight));
 assert.equal((await request(functionPath, { token: admin.token, method: 'GET', origin: ORIGIN })).status, 405);
 passed('real gateway and function enforce origin, OPTIONS and method restrictions');
 
@@ -149,7 +152,7 @@ assert.equal(initial.data.page, 0);
 assert.equal(initial.data.alerts.length, 200, 'first page must be bounded per source');
 assert.equal(initial.data.has_more, true);
 assert.equal(initial.headers.get('cache-control'), 'no-store');
-assert.equal(initial.headers.get('access-control-allow-origin'), ORIGIN);
+assert.ok(allowedLocalCors(initial));
 assert.ok(Date.parse(initial.data.cursor.observed_at) <= Date.now());
 passed('confirmed administrator reads a bounded page with no-store headers');
 

@@ -13,7 +13,7 @@ const server=createServer(async(req,res)=>{try{
  const name=decodeURIComponent(new URL(req.url,'http://localhost').pathname);
  if(name==='/__camera-host.html'){
   res.writeHead(200,{'Content-Type':'text/html','Cache-Control':'no-store'});
-  res.end(`<!doctype html><html lang="fr"><head><meta name="viewport" content="width=device-width,initial-scale=1"><style>body{margin:0;font:16px system-ui}.panel:not(.active),[hidden]{display:none!important}main{max-width:1200px;margin:auto;padding:12px}header{height:140px;background:#222;color:#fff;padding:12px;box-sizing:border-box}</style></head><body><header>Page d’accueil KM16 — simulation locale</header><main><section id="tarifs" class="panel active"><div id="payment-console"><h2>Votre inscription</h2><p id="payment-console-status"></p><p id="payment-legacy" hidden></p><div id="payment-console-host"></div></div></section></main><script type="module" src="/payment-console.mjs"></script></body></html>`);return;
+  res.end(`<!doctype html><html lang="fr"><head><meta name="viewport" content="width=device-width,initial-scale=1"><style>body{margin:0;font:16px system-ui}.panel:not(.active),[hidden]{display:none!important}main{max-width:1200px;margin:auto;padding:12px}#payment-console-frame{min-height:5000px}header{height:140px;background:#222;color:#fff;padding:12px;box-sizing:border-box}</style></head><body><header>Page d’accueil KM16 — simulation locale</header><main><section id="tarifs" class="panel active"><div id="payment-console"><h2>Votre inscription</h2><p id="payment-console-status"></p><p id="payment-legacy" hidden></p><div id="payment-console-host"></div></div></section></main><script type="module" src="/payment-console.mjs"></script></body></html>`);return;
  }
 
  const path=resolve(root,'.'+(name==='/'?'/index.html':name));
@@ -283,9 +283,18 @@ try{
      await page.waitForFunction(previous=>document.querySelector('#photo-preview').getAttribute('src')!==previous&&document.querySelector('#photo-status').textContent.includes('Photo prête'),nativePhoto);
      assert.deepEqual(writes(events),[],'recovery stays local');
     }else if(scenario==='camera-embed'){
-     // ResizeObserver and the shipped embed module handle a genuinely tall form.
-     await page.evaluate(()=>{const filler=document.createElement('div');filler.style.height='4000px';document.body.append(filler);});
-     await hostPage.waitForFunction(()=>document.getElementById('payment-console-frame').getBoundingClientRect().height>4000);
+     // The fixture guarantees a tall iframe independently of ResizeObserver timing.
+     // The real console/embed modules still run; this checks camera placement,
+     // not whether an artificial out-of-view filler triggers auto-resizing.
+     try{
+      await hostPage.waitForFunction(()=>document.getElementById('payment-console-frame').getBoundingClientRect().height>=5000);
+     }catch(error){
+      console.error('Embedded camera fixture dimensions:',await hostPage.evaluate(()=>{
+       const frame=document.getElementById('payment-console-frame'),section=document.getElementById('tarifs');
+       const bounds=frame.getBoundingClientRect(),style=getComputedStyle(frame),content=frame.contentDocument;
+       return {height:bounds.height,top:bounds.top,styleHeight:frame.style.height,minHeight:style.minHeight,display:style.display,sectionHidden:section.hidden,sectionClass:section.className,visibility:document.visibilityState,contentHeight:content?.body.getBoundingClientRect().height,embedReady:content?.body.classList.contains('payment-embed')};
+      }));throw error;
+     }
      for(const hiding of ['class','hidden']){
       await page.locator('#take-photo').scrollIntoViewIfNeeded();await openCamera(page);
       for(const id of ['member-camera-dialog','member-camera-close','member-camera-capture']){

@@ -14,6 +14,9 @@ jobs:
   syntax:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
+    container:
+      image: mcr.microsoft.com/playwright:v1.56.1-noble
+      options: --ipc=host
     steps:
       - name: Recuperer le code
         uses: actions/checkout@v4
@@ -61,14 +64,19 @@ jobs:
         run: node scripts/check-phase14-rpc-write.mjs
       - name: Tester l'adaptateur RPC de la phase 14
         run: node scripts/check-phase14-review-adapter.mjs
-      - name: Installer navigateurs de test
-        run: |
-          npm install --no-save playwright@1.56.1
-          npx playwright install --with-deps chromium webkit
+      - name: Tester la protection des comptes et des brouillons
+        run: node --test tests/checkout-account.test.mjs
+      - name: Installer Playwright
+        timeout-minutes: 3
+        run: npm install --no-save --no-audit --no-fund playwright@1.56.1
       - name: Tester le parcours client et le remplissage de l'e-mail
         run: node scripts/check-member-email.mjs
+      - name: Tester les achats sans compte préalable
+        run: node scripts/check-purchase-guest.mjs
       - name: Tester le rendu admin dans Chromium et WebKit
         run: node scripts/check-admin-browser.mjs
+      - name: Tester les alertes e-mails et les changements de session
+        run: node --test tests/email-relances-ui.test.mjs
       - name: Tester le composant de suivi phase 14 dans Chromium et WebKit
         run: node scripts/check-phase14-review-ui-browser.mjs
       - name: Preparer un paquet de previsualisation sans publication

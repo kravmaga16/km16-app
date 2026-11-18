@@ -1,46 +1,64 @@
-# KM16 — Relances d'e-mails : spécification de préproduction
+# KM16 — Préparation des relances d’e-mails
 
-Statut : préparation uniquement. Aucun déploiement, aucune modification de la branche main, aucun envoi.
+État : code de préproduction sur la branche dédiée et PR n°26. Aucun déploiement de la fonction serveur, aucun envoi et aucune modification de statut par ce module.
 
-## Périmètre
-Console `clients.html` : futur onglet « Relances d'e-mails », visible uniquement après contrôle serveur d'autorisation administrateur. Ne pas placer de données personnelles dans un fichier public GitHub Pages.
+## Comportement attendu
 
-Sources existantes :
-- `public.km16_admin_purchase_notifications` (achats), clé `id`, référence `event_key`, destinataire `recipient`
-- `public.km16_scheduled_mail_deliveries` (campagnes), clé `id`, référence `campaign_id`, destinataire `email`
+| État | Condition | Action affichée |
+| --- | --- | --- |
+| `failed` | Toutes les notifications en échec | Validation administrative requise |
+| `sending` | `attempted_at` strictement antérieur au seuil de quinze minutes | Blocage à vérifier |
+| `uncertain` | Toutes les notifications de livraison incertaine | Vérification manuelle obligatoire |
 
-## Règles
-- `failed` : signaler « Validation administrative requise ». Aucune relance automatique.
-- `sending` avec `attempted_at < now() - interval '15 minutes'` : signaler « Blocage à vérifier ». Aucun renvoi automatique.
-- `uncertain` : signaler « Vérification manuelle obligatoire ». Aucune relance avant vérification de la livraison auprès du fournisseur.
-- `pending`, `accepted` et `sending` plus récents : exclus.
-- Une tentative `sending` sans `attempted_at` doit être remontée séparément comme anomalie de données lors d'une évolution future.
+`pending`, `accepted`, `sending` récent et `sending` exactement au seuil sont exclus. Un `sending` sans date de tentative est également exclu ; son signalement comme anomalie distincte reste hors de cette étape.
 
-## Sécurité
-- Ne jamais exposer `service_role` dans le navigateur ou GitHub Pages.
-- La fonction SQL de lecture `SECURITY INVOKER` exige des droits SELECT sur les tables ; EXECUTE seul ne suffit pas.
-- Utiliser un endpoint serveur authentifié vérifiant l'identité et les droits administrateur, avec un rôle serveur restreint ; ne pas exposer directement la fonction aux utilisateurs connectés.
-- Aucun bouton d'envoi dans cette phase ; aucune mise à jour des états.
-- Tracer séparément les décisions administratives dans une évolution ultérieure, avec protection anti-doublon et validation explicite.
+Les sources sont `public.km16_admin_purchase_notifications` (achats) et `public.km16_scheduled_mail_deliveries` (e-mails programmés). Les règles sont identiques dans la fonction SQL de préparation et dans le filtre de lecture de la fonction serveur.
 
-## Critères d'acceptation
-1. Affichage des trois catégories, filtres et compteurs, sans action d'envoi.
-2. Aucune donnée visible pour un visiteur non autorisé.
-3. Aucun secret serveur dans HTML ou JavaScript client.
-4. Tests locaux : 14 cas, 6 alertes, 8 exclusions, aucune donnée conservée après ROLLBACK (résultat transmis par l'utilisateur le 18/11/2026).
-5. Vérification du vrai schéma et de la chaîne d'authentification avant toute intégration.
-6. Revue de code et validation explicite avant fusion vers main.
+## Fonction SQL préparée
 
-## Vérification du 18/11/2026
-- Schéma distant `KM16-Videos` inspecté en lecture seule : les colonnes nécessaires existent dans les deux tables.
-- Aucun contenu de notification ni donnée personnelle n'a été extrait pendant ce contrôle.
-- Les tests GitHub Actions « KM16 email alert safety checks » et « Phase 14 PostgreSQL isolé » sont passés ; la suite JavaScript générale doit encore être validée.
-- Déploiement toujours bloqué tant que l'autorisation administrative centralisée, les tests HTTP/CORS et les tests navigateur ne sont pas validés.
-- La fonction est un prototype : aucune relance automatique et aucun statut modifié.
+`supabase/sql/km16_preparer_relances.sql` définit `public.km16_preparer_relances()`, en `LANGUAGE SQL STABLE SECURITY INVOKER`, avec un `search_path` vide. Elle retourne les alertes sans écrire dans les tables. L’exécution est retirée à `PUBLIC`, `anon` et `authenticated`, puis accordée à `service_role`. Ce rôle doit aussi posséder les droits de lecture nécessaires sur les tables : `EXECUTE` seul ne suffit pas.
 
-## État des vérifications CI — 18 novembre 2026
-Sur le commit `fb72fa2bb330c19f7fc7bb7846fb73e04e2d5704`, les workflows GitHub suivants ont terminé avec succès :
-- `KM16 email alert safety checks` — run 44289675942 ;
-- `KM16 - Phase 14 PostgreSQL isolé` — run 44289675926 ;
-- `KM16 - Verification JavaScript` — run 44289675877 (incluant les tests navigateurs existants).
-Ces succès valident le contrat statique et les tests existants, **pas** l'autorisation de bout en bout de la nouvelle Edge Function, non déployée. Les tests HTTP avec identité autorisée/interdite et les scénarios de pagination doivent encore être exécutés en environnement isolé.
+Ce fichier est un livrable de préparation, situé hors de `supabase/migrations` : il n’est pas installé automatiquement. Une éventuelle installation devra s’effectuer dans une seule transaction pour rendre la création et les permissions atomiques.
+
+`tests/email-relances-postgres.sql` est réservé à la base isolée `email_relances_test`. Il prépare des tables et des identités fictives, charge la fonction, vérifie les trois règles, les permissions et l’absence de changement des données, puis annule les objets de test avec `ROLLBACK`. Il ne charge ni planificateur, ni worker d’envoi, ni migration de production.
+
+## Consultation dans l’administration
+
+Le panneau est caché avant la connexion et pour les utilisateurs non administrateurs. Le chargement commence uniquement au clic sur « Consulter les alertes ». Aucun bouton de renvoi n’est fourni.
+
+Les valeurs sont affichées comme texte ; une référence contenant du HTML ne peut pas devenir un élément de la page. Les filtres s’appliquent aux pages déjà chargées ; l’interface indique le nombre affiché, le nombre chargé et l’existence d’une page suivante. Une erreur de rafraîchissement efface les anciennes lignes ; une erreur de page suivante conserve les pages précédentes en indiquant que la lecture est incomplète. Un refus d’accès efface les données, y compris pendant la pagination.
+
+Tout changement de session annule la requête en cours, efface les données et réactive les commandes. Une réponse tardive est ignorée. La déconnexion efface immédiatement les adresses, avant même la fin de l’appel de déconnexion.
+
+## Autorisation et données privées
+
+La fonction serveur `km16-admin-email-alerts` accepte uniquement `POST` depuis l’origine `https://app.km16.fr`, avec un prévol `OPTIONS` dédié. Elle vérifie le jeton auprès de Supabase Auth via `getUser(token)`, puis applique la convention administrateur KM16 actuelle : adresse autorisée confirmée et compte non anonyme. L’adresse affichée dans une session locale ne constitue pas l’autorisation serveur.
+
+La clé `service_role` reste dans l’environnement serveur. Aucune clé secrète n’est placée dans les fichiers clients. Le navigateur reçoit uniquement les colonnes nécessaires à la liste, après autorisation. Les réponses portent `Cache-Control: no-store`. Les erreurs publiques ne renvoient pas les détails du fournisseur.
+
+La fonction serveur lit directement les deux tables via le SDK Supabase ; elle ne dépend pas de l’installation de la fonction SQL de préparation. Les contrôles SQL et ceux du handler restent donc distincts.
+
+Le contrôle de métadonnées réalisé le 18 novembre 2026 sur KM16-Videos a confirmé les colonnes nécessaires, la présence de RLS et les droits SELECT attendus : refus pour `anon`/`authenticated`, autorisation pour `service_role`. Ce contrôle ne lisait pas le contenu des notifications et ne constitue pas un test de la nouvelle fonction déployée.
+
+## Pagination
+
+Chaque réponse contient au maximum 100 alertes de chaque source. Le serveur lit une ligne supplémentaire pour annoncer la page suivante. Il avance à partir du dernier identifiant de chaque source, ce qui évite de sauter la prochaine alerte lorsqu’une ligne déjà lue quitte le filtre. Le navigateur déduplique sur le couple catégorie/identifiant.
+
+Première requête : `{ "page": 0 }`. La réponse contient `alerts`, `page`, `has_more` et un `cursor` formé de `observed_at`, `purchases_after` et `campaigns_after`. Les requêtes suivantes renvoient ce curseur avec le numéro de page suivant. Le seuil temporel reste fixe pendant ce parcours. Les curseurs invalides et les identifiants numériques non représentables exactement sont refusés.
+
+Il s’agit d’une lecture évolutive, pas d’un instantané transactionnel. Une alerte qui apparaît avec un identifiant déjà parcouru sera visible au prochain rafraîchissement. Une ligne déjà affichée peut également changer de statut entre deux lectures. La liste ne doit donc jamais servir seule d’autorisation de renvoi.
+
+## Vérifications reproductibles et limites
+
+- `node --test tests/email-relances-contract.test.mjs tests/email-relances-behavior.test.mjs` : contrat statique et exécution du vrai handler avec Auth/base simulés, couvrant les accès refusés, CORS, les règles et seuils, la pagination lorsque les états changent, les erreurs et l’absence de mutation.
+- `node --test tests/email-relances-ui.test.mjs` : page et modules réels dans Chromium et WebKit, avec comptes et API fictifs et tout trafic externe bloqué. Vérifie notamment les changements de session, les réponses tardives, les erreurs, le filtrage, la déduplication, le texte hostile et l’affichage mobile.
+- `psql -X -P pager=off -v ON_ERROR_STOP=1 -f tests/email-relances-postgres.sql` dans la base isolée : règles SQL, permissions, lecture seule et annulation des objets de test.
+- Les tests navigateur utilisent l’image officielle Playwright versionnée déjà adoptée dans `main`, pour éviter de retélécharger les dépendances système lors de chaque exécution.
+
+Le précédent essai sur le Mac s’est arrêté sur un fichier introuvable ; aucun résultat SQL réussi n’a été fourni dans la conversation. L’ancienne mention de « 14 scénarios conformes transmis par l’utilisateur » était non étayée et a été supprimée. Seuls les résultats des commandes et des exécutions CI effectivement terminées font foi.
+
+Les tests PostgreSQL « Phase 14 » du dépôt concernent un autre module. Ils ne prouvent pas le fonctionnement de ces relances. De même, les tests avec Auth simulé ne remplacent pas un essai de la chaîne Supabase Auth/PostgREST/Edge complète.
+
+## Passage à l’étape suivante
+
+La préparation est livrée pour revue dans la PR n°26. Avant une mise en service, il reste à vérifier la configuration réelle de la fonction dans un environnement de préproduction et sa chaîne d’accès complète, puis à organiser son déploiement. Cette étape ne met en place aucun renvoi. Un futur renvoi nécessitera une nouvelle lecture du statut, une décision administrative tracée et une protection contre les doublons.

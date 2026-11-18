@@ -346,55 +346,88 @@ async function load(){
 }
 
 let km16EmailAlerts=[],km16EmailRequest=0,km16EmailPage=0,km16EmailHasMore=false;
+let km16EmailCursor=null,km16EmailController=null,km16EmailLoaded=false;
+const KM16_EMAIL_ACTIONS={failed:'validation_requise',uncertain:'verification_manuelle',sending:'blocage_a_verifier'};
+const KM16_EMAIL_LABELS={validation_requise:'Validation administrative requise',verification_manuelle:'Vérification manuelle obligatoire',blocage_a_verifier:'Blocage à vérifier'};
+const isKm16EmailAdmin=s=>!!(s?.user?.id&&s.user.email?.toLowerCase()===ADMIN&&s.user.email_confirmed_at&&!s.user.is_anonymous);
+const validKm16EmailCursor=c=>c&&typeof c==='object'&&!Array.isArray(c)&&
+ typeof c.observed_at==='string'&&Number.isFinite(Date.parse(c.observed_at))&&
+ ['purchases_after','campaigns_after'].every(key=>Number.isSafeInteger(c[key])&&c[key]>=0);
 function renderKm16EmailAlerts(){
  const body=$('km16-email-relances-rows'),filter=$('km16-email-relances-filter')?.value||'';
  if(!body)return;
  body.replaceChildren();
- for(const item of km16EmailAlerts.filter(x=>!filter||x.action_requise===filter)){
+ const visible=km16EmailAlerts.filter(x=>!filter||x.action_requise===filter);
+ for(const item of visible){
   const tr=document.createElement('tr');
   const date=item.derniere_tentative?new Date(item.derniere_tentative):null;
-  for(const value of [item.categorie,item.reference,item.destinataire,item.statut,
-    date&&Number.isFinite(date.getTime())?date.toLocaleString('fr-FR'):'—',item.action_requise]){
+  for(const value of [item.categorie==='achats'?'Achats':'E-mails programmés',item.reference,item.destinataire,item.statut,
+    date&&Number.isFinite(date.getTime())?date.toLocaleString('fr-FR'):'—',KM16_EMAIL_LABELS[item.action_requise]]){
    const td=document.createElement('td');td.textContent=String(value??'');tr.append(td);
   }
   body.append(tr);
  }
+ const count=$('km16-email-relances-count');
+ if(count){count.hidden=!km16EmailLoaded;count.textContent=visible.length+' alerte(s) affichée(s) sur '+km16EmailAlerts.length+' chargée(s).'+(km16EmailHasMore?' Le filtre porte sur les pages déjà chargées.':'');}
+ const empty=$('km16-email-relances-empty');
+ if(empty)empty.hidden=!km16EmailLoaded||visible.length>0;
  const more=$('km16-email-relances-more');
  if(more)more.hidden=!km16EmailHasMore;
 }
 function clearKm16EmailAlerts(){
- km16EmailRequest++;km16EmailAlerts=[];km16EmailPage=0;km16EmailHasMore=false;renderKm16EmailAlerts();
+ km16EmailRequest++;km16EmailController?.abort();km16EmailController=null;
+ km16EmailAlerts=[];km16EmailPage=0;km16EmailHasMore=false;km16EmailCursor=null;km16EmailLoaded=false;
+ for(const id of ['km16-email-relances-refresh','km16-email-relances-more'])if($(id))$(id).disabled=false;
+ renderKm16EmailAlerts();
  if($('km16-email-relances-status'))$('km16-email-relances-status').textContent='Aucune notification chargée. Aucun e-mail envoyé.';
 }
 async function refreshKm16EmailAlerts(next=false){
- const request=++km16EmailRequest;
  const statusNode=$('km16-email-relances-status'),button=$('km16-email-relances-refresh'),more=$('km16-email-relances-more');
  if(!statusNode||!button)return;
- if(!session||session.user?.email?.toLowerCase()!==ADMIN){clearKm16EmailAlerts();return;}
+ if(!isKm16EmailAdmin(session)){clearKm16EmailAlerts();return;}
+ if(next&&(!km16EmailHasMore||!km16EmailCursor))return;
+ const request=++km16EmailRequest,userId=session.user.id;
+ km16EmailController?.abort();
+ const requestController=new AbortController();km16EmailController=requestController;
  const page=next?km16EmailPage+1:0;
  button.disabled=true;if(more)more.disabled=true;
  statusNode.textContent='Consultation sécurisée des alertes…';
  try{
   const {data:{session:current}}=await client.auth.getSession();
-  if(!current||current.user.id!==session.user.id)throw Error('Session expirée');
+  if(request!==km16EmailRequest)return;
+  if(!isKm16EmailAdmin(current)||current.user.id!==userId||session?.user?.id!==userId){
+   clearKm16EmailAlerts();statusNode.textContent='Session expirée. Reconnectez-vous pour consulter les alertes.';return;
+  }
   const response=await fetch('https://tlfewpbgbwesdriklxzb.supabase.co/functions/v1/km16-admin-email-alerts',{
    method:'POST',headers:{Authorization:'Bearer '+current.access_token,'apikey':'sb_publishable_OGRSgobOGf54jlfmXGmS8g_04Ftvfsn','Content-Type':'application/json'},
-   body:JSON.stringify({page}),cache:'no-store'
+   body:JSON.stringify(next?{page,cursor:km16EmailCursor}:{page}),cache:'no-store',signal:requestController.signal
   });
   const result=await response.json();
-  if(!response.ok)throw Error(result.error||'Service indisponible');
-  if(!Array.isArray(result.alerts)||result.page!==page||typeof result.has_more!=='boolean')throw Error('Réponse inattendue');
   if(request!==km16EmailRequest)return;
-  const valid=result.alerts.filter(x=>['validation_requise','blocage_a_verifier','verification_manuelle'].includes(x.action_requise));
-  km16EmailAlerts=next?[...km16EmailAlerts,...valid]:valid;
-  km16EmailPage=page;km16EmailHasMore=result.has_more;
+  if(!response.ok){
+   if(response.status===401||response.status===403){clearKm16EmailAlerts();statusNode.textContent='Accès aux alertes refusé. Reconnectez-vous avec le compte administrateur.';return;}
+   throw Error(result?.error||'Service indisponible');
+  }
+  if(!result||!Array.isArray(result.alerts)||result.alerts.length>200||result.page!==page||
+    typeof result.has_more!=='boolean'||!validKm16EmailCursor(result.cursor)||
+    (next&&(result.cursor.observed_at!==km16EmailCursor.observed_at||
+      result.cursor.purchases_after<km16EmailCursor.purchases_after||result.cursor.campaigns_after<km16EmailCursor.campaigns_after)))throw Error('Réponse inattendue');
+  const valid=result.alerts.every(x=>x&&['achats','emails_programmes'].includes(x.categorie)&&
+    Number.isSafeInteger(x.notification_id)&&x.notification_id>0&&typeof x.reference==='string'&&typeof x.destinataire==='string'&&
+    Object.hasOwn(KM16_EMAIL_ACTIONS,x.statut)&&KM16_EMAIL_ACTIONS[x.statut]===x.action_requise&&
+    (x.derniere_tentative===null||(typeof x.derniere_tentative==='string'&&Number.isFinite(Date.parse(x.derniere_tentative)))));
+  if(!valid)throw Error('Réponse inattendue');
+  const unique=new Map((next?km16EmailAlerts:[]).map(x=>[x.categorie+':'+x.notification_id,x]));
+  for(const item of result.alerts)unique.set(item.categorie+':'+item.notification_id,item);
+  km16EmailAlerts=[...unique.values()];
+  km16EmailPage=page;km16EmailHasMore=result.has_more;km16EmailCursor=result.cursor;km16EmailLoaded=true;
   renderKm16EmailAlerts();
-  statusNode.textContent=km16EmailAlerts.length+' alerte(s) chargée(s)'+(km16EmailHasMore?' — autres pages disponibles':'')+'. Aucun e-mail envoyé.';
+  statusNode.textContent=km16EmailAlerts.length+' alerte(s) chargée(s)'+(km16EmailHasMore?' — autres pages disponibles':'')+'. Actualisez pour prendre en compte les changements de statut. Aucun e-mail envoyé.';
  }catch(e){
   if(request!==km16EmailRequest)return;
-  if(!next){km16EmailAlerts=[];km16EmailPage=0;km16EmailHasMore=false;renderKm16EmailAlerts();}
-  statusNode.textContent='Alertes indisponibles : '+(e instanceof Error?e.message:'Erreur inconnue')+'. Aucun e-mail envoyé.';
- }finally{if(request===km16EmailRequest){button.disabled=false;if(more)more.disabled=false;}}
+  if(!next){km16EmailAlerts=[];km16EmailPage=0;km16EmailHasMore=false;km16EmailCursor=null;km16EmailLoaded=false;renderKm16EmailAlerts();}
+  statusNode.textContent=(next?'Page suivante indisponible, les alertes déjà chargées sont conservées : ':'Alertes indisponibles : ')+(e instanceof Error?e.message:'Erreur inconnue')+'. Aucun e-mail envoyé.';
+ }finally{if(request===km16EmailRequest){km16EmailController=null;button.disabled=false;if(more)more.disabled=false;}}
 }
 $('km16-email-relances-refresh')?.addEventListener('click',()=>refreshKm16EmailAlerts(false));
 $('km16-email-relances-more')?.addEventListener('click',()=>refreshKm16EmailAlerts(true));
@@ -404,11 +437,12 @@ async function authState(s){
  generation++;controller?.abort();busy=false;session=s;clear();clearKm16EmailAlerts();communications.reset();
  const admin=s?.user.email?.toLowerCase()===ADMIN;
  $('login').hidden=!!s;$('forbidden').hidden=!s||admin;$('workspace').hidden=!admin;$('stages-panel').hidden=!admin;
+ $('km16-email-relances').hidden=!isKm16EmailAdmin(s);
  $('password').value='';$('test').checked=false;$('test-notice').hidden=true;group='';$('search').value='';
  if(admin){$('identity').textContent=s.user.email;refreshShirtKpi();refreshCourseAlerts();refreshAdminActionProgress();refreshKm16AutoMail();refreshKm16FollowupDashboard();await load();communications.load();}else{km16ActionRequest++;km16ActionState.clear();km16ActionLoaded=false;km16ActionError='';}
 }
 $('login-form').onsubmit=async event=>{event.preventDefault();if(!client)return;const button=$('login-button');button.disabled=true;status('');try{const {error}=await client.auth.signInWithPassword({email:$('email').value.trim(),password:$('password').value});if(error)throw error;}catch(e){status(e.message,true);}finally{button.disabled=false;$('password').value='';}};
-const logout=async()=>{generation++;controller?.abort();clear();await client.auth.signOut();await authState(null);};
+const logout=async()=>{generation++;controller?.abort();clear();clearKm16EmailAlerts();$('km16-email-relances').hidden=true;session=null;await client.auth.signOut();await authState(null);};
 $('logout').onclick=logout;$('other-account').onclick=logout;
 $('season').onchange=()=>{generation++;controller?.abort();busy=false;clear();showSeason();load();};
 $('refresh').onclick=()=>{load();refreshCourseAlerts();};let km16SearchTimer; $('search').oninput=()=>{clearTimeout(km16SearchTimer);km16SearchTimer=setTimeout(render,160);};$('search-clear').onclick=()=>{clearTimeout(km16SearchTimer);$('search').value='';render();$('search').focus();};

@@ -19,12 +19,14 @@ test('server has no mail-sending or database mutations',()=>{
  assert.match(server,/\.select\('id,event_key,recipient,state,attempted_at'\)/);
  assert.match(server,/\.select\('id,campaign_id,email,state,attempted_at'\)/);
 });
-test('three states, 15-minute threshold and page bounds',()=>{
+test('queries retain the alert filter and use independent keyset cursors',()=>{
  assert.match(server,/state\.in\.\(failed,uncertain\)/);
  assert.match(server,/state\.eq\.sending/);
  assert.match(server,/15 \* 60_000/);
  assert.match(server,/Number\.isSafeInteger\(page\)/);
- assert.match(server,/\.range\(from, to\)/);
+ assert.match(server,/\.gt\('id', cursor\.purchases_after\)/);
+ assert.match(server,/\.gt\('id', cursor\.campaigns_after\)/);
+ assert.doesNotMatch(server,/\.range\(/);
 });
 test('client has manual read-only controls and clears on auth change',()=>{
  assert.match(client,/refreshKm16EmailAlerts\(next=false\)/);
@@ -32,6 +34,7 @@ test('client has manual read-only controls and clears on auth change',()=>{
  assert.match(client,/body\.replaceChildren\(\)/);
  assert.match(client,/td\.textContent=/);
  assert.match(html,/id="km16-email-relances-more"/);
+ assert.match(html,/id="km16-email-relances"[^>]*\bhidden\b/);
  assert.match(menu,/clients\.html#km16-email-relances/);
 });
 
@@ -44,7 +47,7 @@ test('request and response security contracts',()=>{
  assert.match(server,/return json\(\{ error: 'Accès refusé' \}, 403\)/);
  assert.match(server,/page < 0 \|\| page > 10000/);
  assert.match(server,/has_more:/);
- assert.match(client,/body:JSON\.stringify\(\{page\}\)/);
+ assert.match(client,/cursor:km16EmailCursor/);
  assert.match(client,/result\.page!==page/);
  assert.match(client,/km16EmailRequest/);
 });

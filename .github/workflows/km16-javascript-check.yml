@@ -61,12 +61,16 @@ jobs:
         run: node scripts/check-phase14-rpc-write.mjs
       - name: Tester l'adaptateur RPC de la phase 14
         run: node scripts/check-phase14-review-adapter.mjs
+      - name: Tester la protection des comptes et des brouillons
+        run: node --test tests/checkout-account.test.mjs
       - name: Installer navigateurs de test
         run: |
           npm install --no-save playwright@1.56.1
           npx playwright install --with-deps chromium webkit
       - name: Tester le parcours client et le remplissage de l'e-mail
         run: node scripts/check-member-email.mjs
+      - name: Tester les achats sans compte préalable
+        run: node scripts/check-purchase-guest.mjs
       - name: Tester le rendu admin dans Chromium et WebKit
         run: node scripts/check-admin-browser.mjs
       - name: Tester le composant de suivi phase 14 dans Chromium et WebKit

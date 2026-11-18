@@ -63,10 +63,12 @@ jobs:
         run: node scripts/check-phase14-review-adapter.mjs
       - name: Tester la protection des comptes et des brouillons
         run: node --test tests/checkout-account.test.mjs
+      - name: Installer Playwright
+        timeout-minutes: 3
+        run: npm install --no-save --no-audit --no-fund playwright@1.56.1
       - name: Installer navigateurs de test
-        run: |
-          npm install --no-save playwright@1.56.1
-          npx playwright install --with-deps chromium webkit
+        timeout-minutes: 6
+        run: npx playwright install --with-deps chromium webkit
       - name: Tester le parcours client et le remplissage de l'e-mail
         run: node scripts/check-member-email.mjs
       - name: Tester les achats sans compte préalable

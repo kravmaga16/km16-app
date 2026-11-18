@@ -7,6 +7,7 @@ on:
       - 'admin-menu.js'
       - 'supabase/functions/km16-admin-email-alerts/**'
       - 'tests/email-relances-contract.test.mjs'
+      - 'tests/email-relances-behavior.test.mjs'
       - '.github/workflows/email-relances-contract.yml'
   workflow_dispatch:
 jobs:
@@ -20,4 +21,4 @@ jobs:
         with:
           node-version: '22'
       - name: Run offline contract tests
-        run: node --test tests/email-relances-contract.test.mjs
+        run: node --test tests/email-relances-contract.test.mjs tests/email-relances-behavior.test.mjs

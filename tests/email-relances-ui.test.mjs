@@ -117,9 +117,18 @@ async function harness(browser){
 async function login(page){await page.evaluate(()=>window.__km16EmailTest.login());await page.waitForFunction(()=>!document.querySelector('#km16-email-relances').hidden);}
 async function rows(page,count){await page.waitForFunction(count=>document.querySelectorAll('#km16-email-relances-rows tr').length===count,count);}
 async function settle(page){await page.evaluate(()=>new Promise(done=>requestAnimationFrame(()=>requestAnimationFrame(done))));}
-async function openReview(page){
+async function openReview(page,checkMobileButton=false){
  await login(page);await page.locator('#km16-email-relances-refresh').click();await rows(page,3);
- await page.locator('#km16-email-relances-rows tr').first().getByRole('button',{name:/Suivi/}).click();
+ const follow=page.locator('#km16-email-relances-rows tr').first().getByRole('button',{name:/Suivi/});
+ if(checkMobileButton){
+  await follow.scrollIntoViewIfNeeded();
+  const fits=await follow.evaluate(button=>{
+   const rect=button.getBoundingClientRect();
+   return innerWidth===390&&button.closest('.table-wrap').scrollLeft===0&&rect.left>=0&&rect.right<=innerWidth&&rect.top>=0&&rect.bottom<=innerHeight;
+  });
+  assert.equal(fits,true,'Suivi is fully visible on 390px without horizontal table scrolling, before clicking');
+ }
+ await follow.click();
  await page.waitForFunction(()=>!document.querySelector('#km16-email-review-save').disabled);
 }
 async function fillReview(page,note='Vérification effectuée auprès du fournisseur'){
@@ -205,7 +214,7 @@ for(const [name,engine] of engines)test('Email alerts: '+name,{timeout:90000},as
   });
   await t.test('journal history, old-attempt marker and explicit save render text safely',async()=>{
    const h=await harness(browser);try{
-    await openReview(h.page);
+    await openReview(h.page,true);
     assert.equal(await h.page.locator('#km16-email-review-history li').count(),2);
     assert.match(await h.page.locator('#km16-email-review-history').textContent(),/<img src=x/);
     assert.equal(await h.page.locator('#km16-email-review-history img').count(),0);

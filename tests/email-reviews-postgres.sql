@@ -133,7 +133,7 @@ SELECT oid, relacl FROM pg_class
 WHERE oid IN ('public.km16_admin_purchase_notifications'::regclass,
               'public.km16_scheduled_mail_deliveries'::regclass);
 
-\ir ../supabase/migrations/20261118133138_email_alert_review_journal.sql
+\ir ../supabase/migrations/20261118134753_email_alert_review_journal.sql
 
 -- Payloads de test réutilisés pour les succès, les replays et les refus.
 CREATE TEMP TABLE km16_review_requests AS

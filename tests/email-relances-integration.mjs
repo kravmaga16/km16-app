@@ -90,7 +90,7 @@ assert.equal(edgeReady?.status, 204, 'local Edge function must become ready');
 await checkMailpit();
 sql(['-v', 'km16_email_integration=1', '-v', 'fixture_observed_at=' + observedAt,
   '-f', fileURLToPath(new URL('./email-relances-integration-fixture.sql', import.meta.url))]);
-sql(['-1', '-f', fileURLToPath(new URL('../supabase/migrations/20261118133138_email_alert_review_journal.sql', import.meta.url))]);
+sql(['-1', '-f', fileURLToPath(new URL('../supabase/migrations/20261118134753_email_alert_review_journal.sql', import.meta.url))]);
 const before = sql(['-c', fingerprintSql]);
 let restReady;
 for (let attempt = 0; attempt < 20; attempt++) {

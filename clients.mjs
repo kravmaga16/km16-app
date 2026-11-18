@@ -367,7 +367,7 @@ function renderKm16EmailAlerts(){
   }
   const actionCell=document.createElement('td'),follow=document.createElement('button');
   follow.type='button';follow.textContent='Suivi';follow.setAttribute('aria-label','Suivi de '+item.reference);
-  follow.addEventListener('click',()=>openKm16EmailReview(item));actionCell.append(follow);tr.append(actionCell);
+  follow.addEventListener('click',()=>openKm16EmailReview(item));actionCell.append(follow);tr.prepend(actionCell);
   body.append(tr);
  }
  const count=$('km16-email-relances-count');

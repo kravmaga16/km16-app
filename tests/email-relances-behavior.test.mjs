@@ -66,7 +66,7 @@ test('invalid page types and excess page numbers are rejected',async()=>{
  const h=harness();
  for(const page of ['1',1.5,10001,null]){
   const r=await h.call({body:{page}});
-  if(page===null){assert.equal(r.status,200);}else{assert.equal(r.status,400);}
+  assert.equal(r.status,400);
  }
 });
 

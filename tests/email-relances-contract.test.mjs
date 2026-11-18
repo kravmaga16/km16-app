@@ -12,6 +12,7 @@ test('server accepts only authenticated admin and POST',()=>{
  assert.match(server,/authClient\.auth\.getUser\(token\)/);
  assert.match(server,/user\.email\?\.toLowerCase\(\) !== ADMIN_EMAIL/);
  assert.match(server,/user\.email_confirmed_at/);
+ assert.match(server,/user\.is_anonymous/);
 });
 test('server has no mail-sending or database mutations',()=>{
  assert.doesNotMatch(server,/\.insert\(|\.update\(|\.delete\(|\.upsert\(|fetch\(\s*['"]https?:/);

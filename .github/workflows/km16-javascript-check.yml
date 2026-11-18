@@ -75,6 +75,8 @@ jobs:
         run: node scripts/check-purchase-guest.mjs
       - name: Tester le rendu admin dans Chromium et WebKit
         run: node scripts/check-admin-browser.mjs
+      - name: Tester les alertes e-mails et les changements de session
+        run: node --test tests/email-relances-ui.test.mjs
       - name: Tester le composant de suivi phase 14 dans Chromium et WebKit
         run: node scripts/check-phase14-review-ui-browser.mjs
       - name: Preparer un paquet de previsualisation sans publication

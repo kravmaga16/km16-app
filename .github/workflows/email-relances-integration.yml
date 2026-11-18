@@ -1,0 +1,76 @@
+name: KM16 email Supabase integration
+on:
+  pull_request:
+    paths:
+      - 'supabase/functions/km16-admin-email-alerts/**'
+      - 'tests/email-relances-integration*'
+      - 'tests/email-relances-stack.toml'
+      - '.github/workflows/email-relances-integration.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: km16-email-integration-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  local-supabase:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: supabase/setup-cli@v1
+        with:
+          version: 3.2.0
+      - name: Prepare an unlinked disposable stack
+        run: |
+          mkdir -p "$RUNNER_TEMP/km16-email-integration/supabase/functions"
+          cp tests/email-relances-stack.toml "$RUNNER_TEMP/km16-email-integration/supabase/config.toml"
+          cp -R supabase/functions/km16-admin-email-alerts "$RUNNER_TEMP/km16-email-integration/supabase/functions/"
+          supabase start --help > /dev/null
+          supabase functions serve --help > /dev/null
+          supabase status --help > /dev/null
+          supabase stop --help > /dev/null
+      - name: Start real Auth, PostgREST and Edge services locally
+        timeout-minutes: 10
+        run: |
+          supabase --workdir "$RUNNER_TEMP/km16-email-integration" start \
+            --exclude realtime,storage-api,imgproxy,postgres-meta,studio,logflare,vector,supavisor \
+            > "$RUNNER_TEMP/km16-email-start.log" 2>&1
+          supabase --workdir "$RUNNER_TEMP/km16-email-integration" status -o json > "$RUNNER_TEMP/km16-email-status.json"
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          status = json.loads((Path(os.environ['RUNNER_TEMP']) / 'km16-email-status.json').read_text())
+          needed = ['API_URL', 'DB_URL', 'ANON_KEY', 'SERVICE_ROLE_KEY', 'MAILPIT_URL']
+          with open(os.environ['GITHUB_ENV'], 'a') as output:
+              for key in needed:
+                  value = status.get(key)
+                  if not isinstance(value, str) or not value or '\n' in value or '\r' in value:
+                      raise SystemExit('Missing local status field: ' + key)
+                  if key.endswith('_KEY') or key == 'DB_URL':
+                      print('::add-mask::' + value)
+                  output.write(key + '=' + value + '\n')
+          PY
+      - name: Serve the exact function source with server-side session verification
+        run: |
+          supabase --workdir "$RUNNER_TEMP/km16-email-integration" functions serve km16-admin-email-alerts \
+            > "$RUNNER_TEMP/km16-email-functions.log" 2>&1 &
+      - name: Test actual sessions, private tables and read-only alerts
+        timeout-minutes: 5
+        run: node tests/email-relances-integration.mjs
+      - name: Show local diagnostics on failure
+        if: failure()
+        run: |
+          docker ps --format '{{.Names}} {{.Status}}'
+          for file in "$RUNNER_TEMP/km16-email-start.log" "$RUNNER_TEMP/km16-email-functions.log"; do
+            if test -f "$file"; then
+              tail -n 60 "$file" | sed -E 's/eyJ[A-Za-z0-9_.-]+/[local-token-redacted]/g; s/sb_(secret|publishable)_[A-Za-z0-9_-]+/[local-key-redacted]/g'
+            fi
+          done
+      - name: Destroy only this disposable local stack
+        if: always()
+        timeout-minutes: 3
+        run: supabase --workdir "$RUNNER_TEMP/km16-email-integration" stop --no-backup

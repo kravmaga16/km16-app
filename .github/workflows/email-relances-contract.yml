@@ -1,0 +1,56 @@
+name: KM16 email alert safety checks
+on:
+  pull_request:
+    paths:
+      - 'clients.html'
+      - 'clients.mjs'
+      - 'admin-menu.js'
+      - 'supabase/functions/km16-admin-email-alerts/**'
+      - 'supabase/sql/km16_preparer_relances.sql'
+      - 'tests/email-relances-contract.test.mjs'
+      - 'tests/email-relances-behavior.test.mjs'
+      - 'tests/email-relances-ui.test.mjs'
+      - 'tests/email-relances-postgres.sql'
+      - '.github/workflows/email-relances-contract.yml'
+  workflow_dispatch:
+jobs:
+  contract:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Run offline contract tests
+        run: node --test tests/email-relances-contract.test.mjs tests/email-relances-behavior.test.mjs
+  email-postgres:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: email-test-only
+          POSTGRES_DB: email_relances_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d email_relances_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      PGHOST: localhost
+      PGPORT: '5432'
+      PGUSER: postgres
+      PGPASSWORD: email-test-only
+      PGDATABASE: email_relances_test
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test read-only SQL, permissions and rollback with fictional data
+        run: psql -X -P pager=off -v ON_ERROR_STOP=1 -f tests/email-relances-postgres.sql

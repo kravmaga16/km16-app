@@ -11,6 +11,7 @@
       ['Dossiers à valider', './clients.html#km16-dossiers', 'M9 11l2 2 4-4 M12 2l8 4v6c0 5-3 8-8 10-5-2-8-5-8-10V6z'],
       ['Ventes de tee-shirts', './tee-shirts.html#admin', 'M4 4l4-2 4 3 4-3 4 2v6l-3 2v12H7V8L4 6z'],
       ['Actualités du club', './news-admin.html#workspace', 'M4 3h16v18H4z M8 7h8 M8 11h8 M8 15h5'],
+      ['Relances d’e-mails', './clients.html#km16-email-relances', 'M4 5h16v14H4z M4 7l8 6 8-6 M12 15v3 M12 20h.01'],
       ['Finances et encaissements', './clients.html#money-summary', 'M3 3h7v7H3z M14 3h7v7h-7z M3 14h7v7H3z M14 14h7v7h-7z'],
       ['Inscriptions aux cours', courseAdmin, 'M12 21H3v-3a5 5 0 0110 0v1 M8 11a4 4 0 100-8 4 4 0 000 8z M15 12l2 2 4-4'],
       ['Horaires des cours', './#planning', 'M12 3a9 9 0 100 18 9 9 0 000-18z M12 7v5l4 2'],
@@ -93,7 +94,7 @@
   }
   function revealTarget() {
     const id = location.hash.slice(1);
-    if (['admin','link-form','workspace','money-summary','stages-panel'].includes(id)) document.getElementById(id)?.scrollIntoView({block:'start'});
+    if (['admin','link-form','workspace','money-summary','stages-panel','km16-email-relances'].includes(id)) document.getElementById(id)?.scrollIntoView({block:'start'});
   }
   function sync() {
     const wasHidden = shell.hidden;

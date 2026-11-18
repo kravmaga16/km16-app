@@ -1,7 +1,7 @@
 import {enhanceBirthDate} from './birth-date-input.mjs?v=1';
 enhanceBirthDate(document.getElementById('birth_date'));
 import {preparePhoto} from './member-photo.mjs?v=1';
-import {createMemberCamera} from './member-camera.mjs?v=1';
+import {createMemberCamera} from './member-camera.mjs?v=2';
 import {parseEuro,eligibleProducts} from './purchase-links.mjs?v=liens1';
 import {splitAmount,ageOn,validateOrder} from './rules.mjs';
 import {createCheckoutAccess,verifiedAccount,normalizeEmail} from './checkout-account.mjs?v=1';

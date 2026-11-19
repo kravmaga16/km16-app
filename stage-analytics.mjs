@@ -4,7 +4,7 @@ const consentLifetime = 180 * 24 * 60 * 60 * 1000;
 const datePattern = /^\d{4}-\d{2}-\d{2}$/;
 const stageIdPattern = /^stage-[a-z0-9-]+$/;
 
-function hasConsent() {
+export function hasStageAnalyticsConsent() {
   try {
     const choice = JSON.parse(localStorage.getItem(consentKey));
     const age = Date.now() - choice?.at;
@@ -16,7 +16,7 @@ function hasConsent() {
 }
 
 export function prepareStageAnalytics() {
-  if (!hasConsent() || window.gtag) return;
+  if (!hasStageAnalyticsConsent() || window.gtag) return;
   const page = new URL('./adhesion.html', location.href).href;
   window.dataLayer = window.dataLayer || [];
   window.gtag = function () { window.dataLayer.push(arguments); };
@@ -34,7 +34,7 @@ export function prepareStageAnalytics() {
 }
 
 export function trackStageSignupClick(stageDate, placement) {
-  if (!hasConsent() || !datePattern.test(stageDate)) return;
+  if (!hasStageAnalyticsConsent() || !datePattern.test(stageDate)) return;
   try {
     window.gtag?.('event', 'km16_stage_signup_click', {
       stage_date: stageDate, placement, send_to: measurementId,
@@ -48,7 +48,7 @@ export function stageReminderSource(value) {
 
 export function trackStageReminderVisit(stage, source) {
   const stageSource = stageReminderSource(source);
-  if (!stageSource || !hasConsent() || stage?.category !== 'Stages'
+  if (!stageSource || !hasStageAnalyticsConsent() || stage?.category !== 'Stages'
     || !stageIdPattern.test(stage.id) || !datePattern.test(stage.event_date)) return;
   try {
     prepareStageAnalytics();
@@ -60,7 +60,7 @@ export function trackStageReminderVisit(stage, source) {
 }
 
 export async function trackStageCheckout(stage, source) {
-  if (stage?.category !== 'Stages' || !hasConsent()
+  if (stage?.category !== 'Stages' || !hasStageAnalyticsConsent()
     || !stageIdPattern.test(stage.id) || !datePattern.test(stage.event_date)) return;
   const stageSource = stageReminderSource(source);
   try {

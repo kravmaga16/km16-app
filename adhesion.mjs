@@ -1,4 +1,4 @@
-import {prepareStageAnalytics, stageReminderSource, trackStageCheckout, trackStageReminderVisit} from './stage-analytics.mjs?v=2';
+import {hasStageAnalyticsConsent, prepareStageAnalytics, stageReminderSource, trackStageCheckout, trackStageReminderVisit} from './stage-analytics.mjs?v=3';
 import {enhanceBirthDate} from './birth-date-input.mjs?v=1';
 enhanceBirthDate(document.getElementById('birth_date'));
 import {preparePhoto} from './member-photo.mjs?v=1';
@@ -17,7 +17,7 @@ const returnedOrder=paymentReturn.get('paid')==='1' && /^[0-9a-f-]{36}$/i.test(p
 const requestedCategory=new URLSearchParams(location.search).get('categorie')||'Tous';
 const requestedProduct=new URLSearchParams(location.search).get('produit')||'';
 let stageCatalogueLoaded=false;
-const reminderSource=stageReminderSource(new URLSearchParams(location.search).get('source_stage'));
+let reminderSource=stageReminderSource(new URLSearchParams(location.search).get('source_stage'));
 const stageDetail=/^stage-[a-z0-9-]+$/.test(requestedProduct)&&!embedded&&!accountView;
 if(stageDetail){
  document.title='Inscription au stage · KM16';
@@ -159,10 +159,11 @@ function resetRegistration(){
 const checkoutAccess=createCheckoutAccess({
  client,kind:'membership',host:$('checkout-access'),emailInput:$('contact_email'),
  returnPath:location.pathname+location.search+location.hash,
- getDraft:()=>({productId:selected.id,requestId,count:Number($('count').value),photo:photoData,fields:Object.fromEntries(draftFields.map(id=>[id,$(id).value])),checks:Object.fromEntries(draftChecks.map(id=>[id,$(id).checked]))}),
+ getDraft:()=>({productId:selected.id,reminderSource:stageDetail&&selected.id===requestedProduct&&hasStageAnalyticsConsent()?reminderSource:undefined,requestId,count:Number($('count').value),photo:photoData,fields:Object.fromEntries(draftFields.map(id=>[id,$(id).value])),checks:Object.fromEntries(draftChecks.map(id=>[id,$(id).checked]))}),
  applyDraft:draft=>{
   const product=specialOffer?.product?.id===draft.productId?specialOffer.product:products.find(p=>p.id===draft.productId&&!p.draft&&(!p.event_date||p.event_date>=today()));
   if(!product)throw Error('Cette formule n’est plus proposée. Choisissez une offre disponible.');
+  if(stageDetail&&product.id===requestedProduct)reminderSource??=stageReminderSource(draft.reminderSource);
   choose(product,{focus:false});
   if(/^[0-9a-f-]{36}$/i.test(draft.requestId||''))requestId=draft.requestId;
   for(const id of draftFields){const value=draft.fields?.[id];if(typeof value==='string')$(id).value=value.slice(0,id==='contact_email'?254:160);}

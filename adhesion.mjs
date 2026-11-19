@@ -225,6 +225,60 @@ function orderGroup(order){
  if(/adulte|ados|enfant|adhésion|cotisation|abonnement/.test(title))return 'Adhésions';
  return 'Autres achats';
 }
+function memberOrderAnchor(order) {
+ return order.id === returnedOrder ? 'returned-order' : 'member-order-' + order.id;
+}
+function renderMemberActions() {
+ if (!accountView) return;
+ const panel = $('member-actions');
+ const list = $('member-actions-list');
+ const items = document.createDocumentFragment();
+ for (const order of myOrderData.orders) {
+  if (order.livemode !== true || order.approval === 'rejected') continue;
+  const payments = myOrderData.payments.filter(p => p.order_id === order.id);
+  const paid = payments.filter(p => p.status === 'paid')
+   .reduce((sum, p) => sum + p.amount_cents - (p.refunded_cents || 0), 0);
+  const actions = [];
+  const unsettled = payments.some(p => p.status === 'disputed' || p.status === 'refunded' || p.refunded_cents > 0);
+  if (unsettled) actions.push('Contacter KM16 au sujet du paiement.');
+  else if (paid < order.total_cents && payments.some(p => p.status === 'failed')) {
+   actions.push('Vérifier le règlement de l’échéance avec KM16.');
+  }
+
+  if (orderGroup(order) === 'Adhésions' && paid > 0 && !unsettled) {
+   if (order.approval === 'pending') actions.push('Vérifier votre licence FEKM. Si elle reste à souscrire, le lien est dans le dossier.');
+   const docs = myOrderData.documents?.find(d => d.order_id === order.id);
+   if (docs?.health_status === 'missing') {
+    actions.push(docs.health_kind === 'attestation' ? 'Présenter l’attestation de santé au club.' : 'Présenter le certificat médical au club.');
+   }
+   if (docs?.school_required && docs.school_status === 'missing') actions.push('Présenter le justificatif Saint-Jean au club.');
+  }
+  if (!actions.length) continue;
+
+  const box = document.createElement('article');
+  box.className = 'summary';
+  const participant = [order.first_name, order.last_name].filter(Boolean).join(' ');
+  text('h3', participant ? participant + ' · ' + order.title : order.title, box);
+  const steps = text('ul', '', box);
+  for (const action of actions) text('li', action, steps);
+  const link = text('a', 'Voir le dossier', box);
+  link.href = '#' + memberOrderAnchor(order);
+  link.onclick = event => {
+   event.preventDefault();
+   if (myOrderGroup !== 'Tous les achats') {
+    myOrderGroup = 'Tous les achats';
+    renderMyOrders();
+   }
+   const target = $(memberOrderAnchor(order));
+   target?.focus();
+   target?.scrollIntoView({block: 'start'});
+  };
+  items.append(box);
+ }
+ if (!items.childNodes.length) text('p', 'Aucune démarche à faire pour le moment.', items);
+ list.replaceChildren(items);
+ panel.hidden = false;
+}
 function renderMyOrders(){
  const all=myOrderData.orders.filter(o=>o.livemode===true);
  const groups=['Tous les achats',...orderGroupNames.filter(g=>all.some(o=>orderGroup(o)===g))];
@@ -240,7 +294,7 @@ function renderMyOrders(){
  const visible=all.filter(o=>myOrderGroup==='Tous les achats'||orderGroup(o)===myOrderGroup).sort((a,b)=>Number(b.id===returningOrder)-Number(a.id===returningOrder));
  $('orders').replaceChildren();
  for(const o of visible){
-  const box=document.createElement('div');box.className='summary';if(o.id===returnedOrder){box.id='returned-order';box.tabIndex=-1;}text('strong',o.title,box);
+  const box=document.createElement('div');box.className='summary';box.id=memberOrderAnchor(o);box.tabIndex=-1;text('strong',o.title,box);
   const payments=myOrderData.payments.filter(p=>p.order_id===o.id);
   const paid=payments.filter(p=>p.status==='paid').reduce((s,p)=>s+p.amount_cents-p.refunded_cents,0);
   text('div',money(paid)+' encaissés sur '+money(o.total_cents)+' · Dossier : '+({pending:'en attente de validation',approved:'validé',rejected:'refusé'}[o.approval]),box);
@@ -301,7 +355,7 @@ async function orders(){
  try{
   const next=await api({action:'orders'});
   if(gen!==generation)return;
-  myOrderData=next;renderMyOrders();renderKm16Reuse();
+  myOrderData=next;renderMyOrders();renderMemberActions();renderKm16Reuse();
   const order=next.orders.find(o=>o.id===returnedOrder&&o.livemode===true);
   showPaymentReturn(order,next.payments.filter(p=>p.order_id===returnedOrder));
  }catch(e){if(gen===generation){if(returnedOrder)showPaymentReturn(null,[],true);else note(e.message,true);}}
@@ -431,6 +485,7 @@ async function authState(s){
  const isAdmin=s?.user.email==='alexandre.marchat@gmail.com';$('admin').hidden=!isAdmin||embedded||accountView;buttonState();
  if(!s){
   clearTimeout(paymentCheckTimer);showPaymentReturn();
+  $('member-actions').hidden=true;$('member-actions-list').replaceChildren();
   myOrderGroup='Tous les achats';myOrderData={orders:[],payments:[],documents:[]};$('km16-reuse-member').hidden=true;$('order-filters').replaceChildren();$('orders').replaceChildren();$('admin-orders').replaceChildren();$('links-list').replaceChildren();$('link-result').hidden=true;$('link-url').value='';$('link-email').value='';
   return;
  }

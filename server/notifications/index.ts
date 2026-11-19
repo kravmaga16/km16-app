@@ -29,7 +29,7 @@ Deno.serve(async req=>{
   async function sendBatch(id:string){
    if(!publicKey||!privateKey)throw Error('Configuration Web Push manquante');
   phase='lecture-actualite';
-  const news=check(await db.from('km16_news').select('id,title,body,published_at,category,expires_on,expires_at').eq('id',id).single());
+  const news=check(await db.from('km16_news').select('id,title,body,published_at,category,expires_on,expires_at,push_to_all,stage_product_id').eq('id',id).single());
   if(!news?.published_at||new Date(news.published_at)>new Date())throw Error('Actualité non publiée');
   if(news.expires_at&&Date.parse(news.expires_at)<=Date.now())throw Error('Actualité expirée');
   phase='preparation-file';
@@ -46,10 +46,10 @@ Deno.serve(async req=>{
    await Promise.all(batch.slice(i,i+5).map(async(d:any)=>{
     let status='accepted';
     const current=check(await db.from('km16_push_subscriptions').select('categories,subscription').eq('token_hash',d.token_hash).maybeSingle());
-    if(!current?.categories.includes(news.category)||current.subscription.endpoint!==d.subscription.endpoint){
+    if(!current || (!news.push_to_all && !current.categories.includes(news.category)) || current.subscription.endpoint!==d.subscription.endpoint){
      check(await db.from('km16_push_deliveries').delete().eq('news_id',id).eq('token_hash',d.token_hash));return;
     }
-    try{await webpush.sendNotification(d.subscription,JSON.stringify({title:news.title,body:news.body.slice(0,180),id:news.id}),{TTL:86400,timeout:7000});}
+    try{await webpush.sendNotification(d.subscription,JSON.stringify({title:news.title,body:news.body.slice(0,180),id:news.id,stageProduct:news.stage_product_id}),{TTL:86400,timeout:7000});}
     catch(e){status='failed';if([404,410].includes((e as any).statusCode))check(await db.from('km16_push_subscriptions').delete().eq('token_hash',d.token_hash).eq('subscription->>endpoint',d.subscription.endpoint));}
     check(await db.from('km16_push_deliveries').update({status}).eq('news_id',id).eq('token_hash',d.token_hash));
    }));

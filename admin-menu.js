@@ -15,6 +15,7 @@
       ['Finances et encaissements', './clients.html#money-summary', 'M3 3h7v7H3z M14 3h7v7h-7z M3 14h7v7H3z M14 14h7v7h-7z'],
       ['Inscriptions aux cours', courseAdmin, 'M12 21H3v-3a5 5 0 0110 0v1 M8 11a4 4 0 100-8 4 4 0 000 8z M15 12l2 2 4-4'],
       ['Horaires des cours', './#planning', 'M12 3a9 9 0 100 18 9 9 0 000-18z M12 7v5l4 2'],
+      ['Rappels de stages', './clients.html#km16-stage-reminders', 'M4 5h16v14H4z M4 7l8 6 8-6'],
       ['Ventes de stages', './clients.html#stages-panel', 'M8 3h8v6a4 4 0 01-8 0z M8 5H4v3a4 4 0 004 4 M16 5h4v3a4 4 0 01-4 4 M12 13v7 M8 21h8'],
     ]],
     ['Adhérents et paiements', [
@@ -94,7 +95,7 @@
   }
   function revealTarget() {
     const id = location.hash.slice(1);
-    if (['admin','link-form','workspace','money-summary','stages-panel','km16-email-relances'].includes(id)) document.getElementById(id)?.scrollIntoView({block:'start'});
+    if (['admin','link-form','workspace','money-summary','stages-panel','km16-stage-reminders','km16-email-relances'].includes(id)) document.getElementById(id)?.scrollIntoView({block:'start'});
   }
   function sync() {
     const wasHidden = shell.hidden;

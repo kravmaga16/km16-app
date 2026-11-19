@@ -234,20 +234,42 @@ async function loadCourseAlertQueue(){
  }finally{alertQueueLoading=false;refresh.disabled=false;}
 }
 $('course-alert-refresh').onclick=loadCourseAlertQueue;
-let mailSession=null,mailRequest=0;
+let mailSession=null,mailRequest=0,mailCancelled=false;
 function syncSessionMail(focused){
  const panel=$('session-mail-panel');
  panel.hidden=!focused;
- if(mailSession===focused?.id)return;
- mailSession=focused?.id;
+ if(mailSession===focused?.id&&mailCancelled===(focused?.enabled===false))return;
+ mailSession=focused?.id;mailCancelled=focused?.enabled===false;
+ $('replacement-tracking').hidden=true;$('replacement-status').textContent='';$('replacement-destinations').replaceChildren();
  mailRequest++;
  $('session-mail-results').replaceChildren();
  $('session-mail-status').textContent='';
  if(mailSession)void loadSessionMail();
 }
+async function loadReplacements(id,revision){
+ const panel=$('replacement-tracking'),feedback=$('replacement-status'),list=$('replacement-destinations');
+ panel.hidden=false;
+ if(!feedback.textContent)feedback.textContent='Chargement des remplacements…';
+ try{
+  const {data,error}=await supa.rpc('km16_admin_course_replacements',{p_session:id});
+  if(revision!==mailRequest)return;
+  if(error)throw error;
+  list.replaceChildren();
+  if(!data){feedback.textContent='Le suivi détaillé commence avec les nouvelles annulations.';return;}
+  feedback.textContent=data.total+' réservation(s) au moment de l’annulation · '+data.moved+' déplacée(s) · '+data.waiting+' sans nouveau créneau · '+data.withdrawn+' retirée(s).';
+  for(const slot of data.destinations){
+   const item=document.createElement('li');
+   item.textContent=dateFr(slot.session_date)+' · '+slot.start_time.slice(0,5)+' · '+slot.venue+' · '+slot.reservations+' réservation(s)';
+   list.append(item);
+  }
+ }catch{
+  if(revision===mailRequest){list.replaceChildren();feedback.textContent='Suivi des remplacements indisponible. Réessayez en actualisant les envois.';}
+ }
+}
 async function loadSessionMail(){
  if(!mailSession||!session)return;
  const request=++mailRequest;
+ if(mailCancelled)void loadReplacements(mailSession,request);
  const trigger=$('session-mail-refresh');
  const statusNode=$('session-mail-status');
  const target=$('session-mail-results');

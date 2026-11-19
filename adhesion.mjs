@@ -1,4 +1,4 @@
-import {downloadCourseCalendar} from './course-calendar-export.mjs?v=1';
+import {downloadCalendar, downloadCourseCalendar, stageCalendarFile} from './course-calendar-export.mjs?v=2';
 import {hasStageAnalyticsConsent, prepareStageAnalytics, stageReminderSource, trackStageCheckout, trackStageReminderVisit} from './stage-analytics.mjs?v=3';
 import {enhanceBirthDate} from './birth-date-input.mjs?v=1';
 enhanceBirthDate(document.getElementById('birth_date'));
@@ -350,7 +350,14 @@ function renderUpcomingStages(){
   text('strong',order.title,card);
   const participant=[order.first_name,order.last_name].filter(Boolean).join(' ');
   text('p',[participant,upcomingDate(stage.event_date),stage.note].filter(Boolean).join(' · '),card);
-  appendDojoDirections(card,stage.note?.split('·').at(-1));
+  const actions=text('div','',card,'row');
+  const calendar=stageCalendarFile(stage,order);
+  if(calendar){
+   const save=text('button','Ajouter à mon calendrier',actions);
+   save.type='button';
+   save.onclick=()=>downloadCalendar(calendar,'KM16-stage-'+stage.event_date+'.ics');
+  }
+  appendDojoDirections(actions,stage.note?.split('·').at(-1));
  }
  if(!stages.length)text('p','Aucun stage confirmé à venir.',list);
 }

@@ -31,29 +31,55 @@ function fold(line) {
   return result;
 }
 
-export function courseCalendarFile(course) {
+function calendarFile({id, date, start, end, title, venue, details}) {
   return [
-    'BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//KM16//Réservations de cours//FR',
+    'BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//KM16//Agenda KM16//FR',
     'BEGIN:VEVENT',
-    'UID:' + escape(course.id) + '@app.km16.fr',
+    'UID:' + escape(id) + '@app.km16.fr',
     'DTSTAMP:' + stamp(Date.now()),
-    'DTSTART:' + stamp(parisTimestamp(course.session_date, course.start_time)),
-    'DTEND:' + stamp(parisTimestamp(course.session_date, course.end_time)),
-    'SUMMARY:' + escape('Cours KM16 · ' + course.category),
-    'LOCATION:' + escape(course.venue),
-    'URL:https://app.km16.fr/course-operations.html',
+    'DTSTART:' + stamp(parisTimestamp(date, start)),
+    'DTEND:' + stamp(parisTimestamp(date, end)),
+    'SUMMARY:' + escape(title),
+    'LOCATION:' + escape(venue || ''),
+    'URL:' + details,
     'END:VEVENT', 'END:VCALENDAR', '',
   ].map(fold).join('\r\n');
 }
 
-export function downloadCourseCalendar(course) {
-  const file = new Blob([courseCalendarFile(course)], {type: 'text/calendar;charset=utf-8'});
+export function courseCalendarFile(course) {
+  return calendarFile({
+    id: course.id, date: course.session_date, start: course.start_time, end: course.end_time,
+    title: 'Cours KM16 · ' + course.category, venue: course.venue,
+    details: 'https://app.km16.fr/course-operations.html',
+  });
+}
+
+export function stageCalendarFile(stage, order) {
+  const [slot, venue] = String(stage.note || '').split('·').map(part => part.trim());
+  const hours = /^(\d{1,2})\s*h\s*([0-5]\d)?\s*[-–—]\s*(\d{1,2})\s*h\s*([0-5]\d)?$/i.exec(slot);
+  if (!hours) return null;
+  const [, from, fromMinute = '00', to, toMinute = '00'] = hours;
+  const start = from.padStart(2, '0') + ':' + fromMinute;
+  const end = to.padStart(2, '0') + ':' + toMinute;
+  if (Number(from) > 23 || Number(to) > 23 || end <= start) return null;
+  return calendarFile({
+    id: 'stage-' + order.id, date: stage.event_date, start, end, title: 'KM16 · ' + order.title,
+    venue, details: 'https://app.km16.fr/adhesion.html?espace=1',
+  });
+}
+
+export function downloadCalendar(contents, filename) {
+  const file = new Blob([contents], {type: 'text/calendar;charset=utf-8'});
   const url = URL.createObjectURL(file);
   const link = document.createElement('a');
   link.href = url;
-  link.download = 'KM16-cours-' + course.session_date + '.ics';
+  link.download = filename;
   document.body.append(link);
   link.click();
   link.remove();
   setTimeout(() => URL.revokeObjectURL(url), 30000);
+}
+
+export function downloadCourseCalendar(course) {
+  downloadCalendar(courseCalendarFile(course), 'KM16-cours-' + course.session_date + '.ics');
 }

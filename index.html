@@ -236,6 +236,7 @@ window.KM16_receive=function(data){
        paymentUrl.searchParams.set('categorie','Stages');
        if(card.dataset.stageDate)paymentUrl.searchParams.set('stage_date',card.dataset.stageDate);
        signup.href=paymentUrl.href;
+       signup.dataset.stageSignup=card.dataset.stageDate;
        card.appendChild(signup);target.appendChild(card);
      }
      continue;
@@ -585,6 +586,15 @@ function decide(value){const wasLoaded=loaded;choice=value;window['ga-disable-'+
 document.getElementById('km16-cookie-accept').onclick=()=>decide('accepted');document.getElementById('km16-cookie-refuse').onclick=()=>decide('refused');manage.onclick=show;
 window.addEventListener('storage',e=>{if(e.key===KEY)location.reload();});
 if(choice==='accepted')start();else clearAnalytics();if(!choice)box.hidden=false;
-})();</script><script type="module" src="./news-public.mjs?v=focus-20261115"></script><script type="module" src="./notifications.mjs?v=trials1"></script>
+})();</script><script type="module">
+import {trackStageSignupClick} from './stage-analytics.mjs?v=1';
+function trackStageLink(event) {
+ const link = event.target.closest('a[data-stage-signup]');
+ if (!link) return;
+ trackStageSignupClick(link.dataset.stageSignup, link.closest('#home-stage-preview') ? 'accueil' : 'stages');
+}
+document.addEventListener('click', trackStageLink);
+document.addEventListener('auxclick', event => { if (event.button === 1) trackStageLink(event); });
+</script><script type="module" src="./news-public.mjs?v=focus-20261115"></script><script type="module" src="./notifications.mjs?v=trials1"></script>
 <script type="module" src="./trial-notifications.mjs?v=1"></script>
 <script type="module" src="./payment-console.mjs?v=2"></script><script type="module" src="./app-navigation.mjs?v=aria-20261115"></script><script type="module" src="./next-course.mjs?v=1"></script><script src="./course-calendar-public.js?v=20261115-button3" defer></script></body></html>

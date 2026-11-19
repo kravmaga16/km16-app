@@ -1,3 +1,4 @@
+import {prepareStageAnalytics, trackStageCheckout} from './stage-analytics.mjs?v=1';
 import {enhanceBirthDate} from './birth-date-input.mjs?v=1';
 enhanceBirthDate(document.getElementById('birth_date'));
 import {preparePhoto} from './member-photo.mjs?v=1';
@@ -117,7 +118,7 @@ function render(){
  $('filters').replaceChildren();for(const c of ['Tous',...new Set(offered.map(p=>p.category))]){const b=text('button',c,$('filters'));b.type='button';b.setAttribute('aria-pressed',String(c===category));b.onclick=()=>{category=c;render();};}
  $('catalogue').replaceChildren();for(const p of offered.filter(p=>category==='Tous'||p.category===category)){const a=document.createElement('article');a.className='card';text('span',p.draft?'En préparation':p.category,a,'tag');text('h3',p.title,a);text('span',p.amount?money(p.amount)+(p.kind==='monthly'?' / mois':''):'Gratuit',a,'price');text('p',p.note,a);const b=text('button',p.draft?'Bientôt disponible':'Choisir cette formule',a);b.disabled=!!p.draft;b.onclick=()=>choose(p);$('catalogue').append(a);}
 }
-function choose(p,{focus=true}={}){if(busy)return;selected=p;requestId=crypto.randomUUID();$('chosen').textContent=p.title;syncAccountForm();$('count').value=String(specialOffer?.count||1);$('count').disabled=!!specialOffer;for(const o of $('count').options)o.disabled=p.kind!=='annual'&&o.value!=='1';$('eligibility-wrap').hidden=!p.review;$('eligibility').required=p.review;updateSchedule();if(focus){$('selection').scrollIntoView({behavior:'smooth',block:'start'});$('first_name').focus({preventScroll:true});}}
+function choose(p,{focus=true}={}){if(busy)return;selected=p;if(p.category==='Stages'&&!linkToken&&!embedded)prepareStageAnalytics();requestId=crypto.randomUUID();$('chosen').textContent=p.title;syncAccountForm();$('count').value=String(specialOffer?.count||1);$('count').disabled=!!specialOffer;for(const o of $('count').options)o.disabled=p.kind!=='annual'&&o.value!=='1';$('eligibility-wrap').hidden=!p.review;$('eligibility').required=p.review;updateSchedule();if(focus){$('selection').scrollIntoView({behavior:'smooth',block:'start'});$('first_name').focus({preventScroll:true});}}
 function updateSchedule(){if(!selected)return;const n=Number($('count').value),a=splitAmount(selected.amount,n);$('schedule').replaceChildren();text('strong','Total cotisation : '+money(selected.amount),$('schedule'));text('div',n===1?'À régler : '+money(a[0]):'Aujourd’hui : '+money(a[0])+' · Puis '+(n-1)+' mensualités de '+money(a[1]),$('schedule'));if(selected.kind==='annual'||selected.kind==='monthly')text('div','Sans supplément · Licence non comprise',$('schedule'));$('installments-wrap').hidden=n===1;$('installments').required=n>1;buttonState();}
 $('count').onchange=()=>{requestId=crypto.randomUUID();updateSchedule();};
 $('birth_date').onchange=()=>{let minor=true;try{minor=ageOn($('birth_date').value,today())<18;}catch{}$('guardian').hidden=!minor;$('guardian_name').required=minor;};
@@ -198,7 +199,7 @@ $('order').onsubmit=async e=>{
   await api({action:'photo-upload',request_id:payload.request_id,photo:photoToUpload},verified.user);
   const r=await api(payload,verified.user);
   if(r.free){await checkoutAccess.clear();note('Votre demande gratuite a été enregistrée dans votre espace KM16. Le club doit la valider.');requestId=crypto.randomUUID();await orders();}
-  else{const u=new URL(r.url);if(u.protocol!=='https:'||u.hostname!=='checkout.stripe.com')throw Error('Adresse de paiement invalide');await checkoutAccess.clear();(embedded?window.top:window).location.assign(u.href);}
+  else{const u=new URL(r.url);if(u.protocol!=='https:'||u.hostname!=='checkout.stripe.com')throw Error('Adresse de paiement invalide');await checkoutAccess.clear();if(!linkToken&&!embedded)await trackStageCheckout(selected);(embedded?window.top:window).location.assign(u.href);}
  }catch(error){note(error.message,true);}finally{for(const {element,disabled} of controls)element.disabled=disabled;busy=false;buttonState();}
 };
 let myOrderGroup='Tous les achats',myOrderData={orders:[],payments:[],documents:[]};

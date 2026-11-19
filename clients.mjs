@@ -308,10 +308,56 @@ function profileLine(parent,label,value){const p=document.createElement('p');con
 function profileBlock(parent,title){const block=document.createElement('div');block.className='km16-profile-block';const h=document.createElement('h3');h.textContent=title;block.append(h);parent.append(block);return block;}
 $('km16-quick-member-go').onclick=()=>{const query=$('km16-quick-member-input').value.trim();if(!query){$('km16-quick-member-status').textContent='Saisissez un nom, prénom ou e-mail.';return;}group='';for(const b of document.querySelectorAll('[data-group]'))b.setAttribute('aria-pressed','false');$('search').value=query;render();$('km16-quick-member-status').textContent='Recherche appliquée au fichier de la saison sélectionnée.';$('search').scrollIntoView({behavior:'smooth',block:'center'});};
 $('km16-quick-member-input').addEventListener('keydown',e=>{if(e.key==='Enter'){$('km16-quick-member-go').click();}});
-function openMemberProfile(c){if(!all.includes(c))return;selectedMember=c;const panel=$('member-profile'),body=$('member-profile-content');body.replaceChildren();$('member-profile-title').textContent='Fiche · '+[c.first_name,c.last_name].filter(Boolean).join(' ');$('member-profile-scope').textContent='Saison '+$('season').value+' · '+(c.group||'Groupe à vérifier')+($('test').checked?' · ENVIRONNEMENT TEST':'');const grid=document.createElement('div');grid.className='km16-profile-grid';body.append(grid);
- const info=profileBlock(grid,'Identité et contact');profileLine(info,'Prénom',c.first_name);profileLine(info,'Nom',c.last_name);profileLine(info,'Groupe',c.group);profileLine(info,'E-mail',c.email);profileLine(info,'Téléphone',c.phone);profileLine(info,'Représentant légal',c.guardian_name);profileLine(info,'Adresse',Array.isArray(c.address)?c.address.join(', '):'');
+function createProfileTabs(body){
+ const tabList=document.createElement('div');
+ tabList.className='km16-profile-tabs';
+ tabList.setAttribute('role','tablist');
+ tabList.setAttribute('aria-label','Rubriques de la fiche adhérent');
+ body.append(tabList);
+ const tabs=[];
+ const panels={};
+ function activate(index,focus=false){
+  tabs.forEach(({button,panel},position)=>{
+   const active=position===index;
+   button.setAttribute('aria-selected',String(active));
+   button.tabIndex=active?0:-1;
+   panel.hidden=!active;
+  });
+  if(focus)tabs[index].button.focus();
+ }
+ for(const [key,label] of [['identity','Civilité'],['subscription','Abonnement'],['billing','Factures'],['file','Dossier'],['attendance','Présences']]){
+  const button=document.createElement('button');
+  const panel=document.createElement('div');
+  const index=tabs.length;
+  button.type='button';
+  button.id='profile-tab-'+key;
+  button.textContent=label;
+  button.setAttribute('role','tab');
+  button.setAttribute('aria-controls','profile-panel-'+key);
+  panel.id='profile-panel-'+key;
+  panel.className='km16-profile-grid';
+  panel.setAttribute('role','tabpanel');
+  panel.setAttribute('aria-labelledby',button.id);
+  panel.tabIndex=0;
+  button.onclick=()=>activate(index);
+  button.onkeydown=event=>{
+   const next={ArrowRight:(index+1)%tabs.length,ArrowLeft:(index+tabs.length-1)%tabs.length,Home:0,End:tabs.length-1}[event.key];
+   if(next===undefined)return;
+   event.preventDefault();
+   activate(next,true);
+  };
+  tabs.push({button,panel});
+  panels[key]=panel;
+  tabList.append(button);
+  body.append(panel);
+ }
+ activate(0);
+ return panels;
+}
+function openMemberProfile(c){if(!all.includes(c))return;selectedMember=c;const panel=$('member-profile'),body=$('member-profile-content');body.replaceChildren();$('member-profile-title').textContent='Fiche · '+[c.first_name,c.last_name].filter(Boolean).join(' ');$('member-profile-scope').textContent='Saison '+$('season').value+' · '+(c.group||'Groupe à vérifier')+($('test').checked?' · ENVIRONNEMENT TEST':'');const {identity,subscription,billing,file,attendance}=createProfileTabs(body);
+ const info=profileBlock(identity,'Identité et contact');profileLine(info,'Civilité',c.civility||c.civilite);profileLine(info,'Date de naissance',typeof c.birth_date==='string'?c.birth_date.split('-').reverse().join('/'):null);profileLine(info,'Prénom',c.first_name);profileLine(info,'Nom',c.last_name);profileLine(info,'Groupe',c.group);profileLine(info,'E-mail',c.email);profileLine(info,'Téléphone',c.phone);profileLine(info,'Représentant légal',c.guardian_name);profileLine(info,'Adresse',Array.isArray(c.address)?c.address.join(', '):'');
  if(c.external_only&&typeof c.id==='string'&&c.id.startsWith('import:')){
-  const edit=profileBlock(grid,'Corriger cette fiche (import externe)');const form=document.createElement('form');form.className='km16-profile-edit';
+  const edit=profileBlock(identity,'Corriger cette fiche (import externe)');const form=document.createElement('form');form.className='km16-profile-edit';
   const fields=[['first_name','Prénom'],['last_name','Nom'],['birth_date','Date de naissance (AAAA-MM-JJ)'],['email','E-mail'],['phone','Téléphone']];const inputs={};
   for(const [key,label] of fields){const wrap=document.createElement('label');wrap.textContent=label;wrap.style.display='block';wrap.style.marginBottom='8px';const input=document.createElement('input');input.type='text';input.value=String(c[key]||'');input.maxLength=160;input.style.display='block';input.style.width='100%';wrap.append(input);form.append(wrap);inputs[key]=input;}
   const save=document.createElement('button');save.type='submit';save.className='primary';save.textContent='Enregistrer les corrections';const msg=document.createElement('p');msg.className='muted';msg.setAttribute('role','status');form.append(save,msg);edit.append(form);
@@ -324,7 +370,7 @@ function openMemberProfile(c){if(!all.includes(c))return;selectedMember=c;const 
   };
  }
  if(c.external_only&&typeof c.id==='string'&&c.id.startsWith('import:')){
-  const management=profileBlock(grid,'Doublons (fusion et archivage sécurisés)');const msg=document.createElement('p');msg.className='muted';msg.textContent='Réservé aux fiches importées. Aucune suppression définitive. Les achats et réservations sont conservés.';management.append(msg);
+  const management=profileBlock(file,'Doublons (fusion et archivage sécurisés)');const msg=document.createElement('p');msg.className='muted';msg.textContent='Réservé aux fiches importées. Aucune suppression définitive. Les achats et réservations sont conservés.';management.append(msg);
   const targetLabel=document.createElement('label');targetLabel.textContent='Fiche principale à conserver (fusion)';targetLabel.style.display='block';const select=document.createElement('select');select.style.display='block';select.style.maxWidth='100%';const placeholder=document.createElement('option');placeholder.value='';placeholder.textContent='Sélectionner une autre fiche';select.append(placeholder);
   for(const other of all.filter(x=>x!==c&&x.external_only&&typeof x.id==='string'&&x.id.startsWith('import:'))){const option=document.createElement('option');option.value=other.id.slice(7);option.textContent=[other.first_name,other.last_name,other.birth_date||'date inconnue',other.id.slice(7)].join(' · ');select.append(option);}targetLabel.append(select);management.append(targetLabel);
   const reasonLabel=document.createElement('label');reasonLabel.textContent='Motif (obligatoire)';reasonLabel.style.display='block';const reason=document.createElement('input');reason.type='text';reason.maxLength=500;reason.placeholder='Ex. double saisie confirmée';reason.style.display='block';reason.style.width='100%';reasonLabel.append(reason);management.append(reasonLabel);
@@ -333,12 +379,20 @@ function openMemberProfile(c){if(!all.includes(c))return;selectedMember=c;const 
    merge.disabled=true;archive.disabled=true;feedback.textContent='Traitement en cours…';try{const fn=kind==='merge'?'km16_admin_merge_external_clients':'km16_admin_archive_external_client';const args=kind==='merge'?{p_source:c.id.slice(7),p_target:select.value,p_season:$('season').value,p_reason:why}:{p_external_id:c.id.slice(7),p_season:$('season').value,p_reason:why};const {error}=await client.rpc(fn,args);if(error)throw error;feedback.textContent='Opération enregistrée. Actualisation du fichier…';closeMemberProfile();await load();}catch(e){feedback.textContent='Opération refusée : '+e.message;merge.disabled=false;archive.disabled=false;}}
   merge.onclick=()=>act('merge');archive.onclick=()=>act('archive');
  }
- const individual=profileBlock(grid,'Communiquer directement avec cet adhérent');const address=String(c.email||'').trim();const validAddress=/^[^\\s@<>;,]+@[^\\s@<>;,]+\\.[^\\s@<>;,]+$/.test(address)&&address.length<=254;if(validAddress){const mail=document.createElement('a');mail.href='mailto:'+encodeURIComponent(address)+'?subject='+encodeURIComponent('KM16 · Information concernant votre dossier');mail.textContent='Rédiger un e-mail à '+address;individual.append(mail);const note=document.createElement('p');note.className='muted';note.textContent='Ouvre votre messagerie pour rédiger et confirmer l’envoi. Aucun message n’est envoyé automatiquement depuis cette fiche.';individual.append(note);}else{profileLine(individual,'E-mail','Adresse absente ou à vérifier : corriger la fiche avant de contacter l’adhérent.');}
- const shortcuts=profileBlock(grid,'Actions rapides');const links=[['Voir les réservations et présences','./course-admin.html'],['Vérifier les adhésions','./adhesion.html#admin'],['Communiquer avec cet adhérent','#comm-title']];for(const [label,url] of links){const a=document.createElement('a');a.href=url;a.textContent=label;a.style.display='inline-block';a.style.margin='4px 12px 4px 0';shortcuts.append(a);}const help=document.createElement('p');help.className='muted';help.textContent='Les achats et montants ci-dessous proviennent du fichier clients. Les réservations et justificatifs détaillés restent accessibles dans leurs modules.';shortcuts.append(help);
- const products=profileBlock(grid,'Achats et inscriptions connus');if(!c.products?.length){profileLine(products,'Produits','Aucun produit enregistré dans ce fichier');}else{const ul=document.createElement('ul');ul.className='km16-profile-products';for(const p of c.products){const li=document.createElement('li');li.textContent=[p.title,p.state,p.external?'Montant non intégré':Number.isFinite(p.total_cents)?euro(p.total_cents):'Montant non renseigné'].filter(Boolean).join(' · ');ul.append(li);}products.append(ul);}
- const money=profileBlock(grid,'Situation financière · fichier clients');if(c.external_only){profileLine(money,'Statut','Import externe : montants non intégrés');}else{for(const [key,label] of moneyFields.slice(0,8)){profileLine(money,label,c.forecast_unknown&&['future_cents','planned_cents','overdue_cents','cancelled_cents'].includes(key)?'À vérifier':euro(c.amounts?.[key]||0));}if(c.forecast_unknown)profileLine(money,'Prévision','Échéancier incomplet');}
- const notes=profileBlock(grid,'Suivi du dossier');profileLine(notes,'Source',c.source||'KM16');profileLine(notes,'Notes import',c.import_notes);profileLine(notes,'Justificatif tarif',c.saint_jean?'Tarif Saint-Jean : justificatif non validé par ce marquage':'Non applicable');profileLine(notes,'État',!Array.isArray(c.address)||!c.address.length||c.group==='À vérifier'?'Informations à vérifier':'Informations du fichier disponibles');
- const history=profileBlock(grid,'Réservations et présences · dossiers KM16 associés');const historyText=document.createElement('p');historyText.className='muted';historyText.textContent='Chargement de l’historique…';history.append(historyText);
+ const individual=profileBlock(identity,'Communiquer directement avec cet adhérent');const address=String(c.email||'').trim();const validAddress=/^[^\\s@<>;,]+@[^\\s@<>;,]+\\.[^\\s@<>;,]+$/.test(address)&&address.length<=254;if(validAddress){const mail=document.createElement('a');mail.href='mailto:'+encodeURIComponent(address)+'?subject='+encodeURIComponent('KM16 · Information concernant votre dossier');mail.textContent='Rédiger un e-mail à '+address;individual.append(mail);const note=document.createElement('p');note.className='muted';note.textContent='Ouvre votre messagerie pour rédiger et confirmer l’envoi. Aucun message n’est envoyé automatiquement depuis cette fiche.';individual.append(note);}else{profileLine(individual,'E-mail','Adresse absente ou à vérifier : corriger la fiche avant de contacter l’adhérent.');}
+ const dossierLink=document.createElement('a');dossierLink.href='./adhesion.html#admin';dossierLink.textContent='Ouvrir la gestion des adhésions et des justificatifs';profileBlock(file,'Validation administrative').append(dossierLink);
+ const courseLink=document.createElement('a');courseLink.href='./course-admin.html';courseLink.textContent='Ouvrir la console des cours';profileBlock(attendance,'Gestion des cours').append(courseLink);
+ const plan=profileBlock(subscription,'Saison et groupe');profileLine(plan,'Saison',$('season').value);profileLine(plan,'Groupe',c.group);
+ const invoice=profileBlock(billing,'Factures KM16');
+ const invoiceNote=document.createElement('p');
+ invoiceNote.className='muted';
+ invoiceNote.textContent='Les factures KM16 sont envoyées par e-mail au payeur après encaissement. Les PDF ne sont pas disponibles depuis cette fiche.';
+ invoice.append(invoiceNote);
+ profileLine(invoice,'Adresse de facturation',Array.isArray(c.address)?c.address.join(', '):'');
+ const products=profileBlock(subscription,'Achats et inscriptions connus');if(!c.products?.length){profileLine(products,'Produits','Aucun produit enregistré dans ce fichier');}else{const ul=document.createElement('ul');ul.className='km16-profile-products';for(const p of c.products){const li=document.createElement('li');li.textContent=[p.title,p.state,p.external?'Montant non intégré':Number.isFinite(p.total_cents)?euro(p.total_cents):'Montant non renseigné'].filter(Boolean).join(' · ');ul.append(li);}products.append(ul);}
+ const money=profileBlock(billing,'Situation financière · fichier clients');if(c.external_only){profileLine(money,'Statut','Import externe : montants non intégrés');}else{for(const [key,label] of moneyFields.slice(0,8)){profileLine(money,label,c.forecast_unknown&&['future_cents','planned_cents','overdue_cents','cancelled_cents'].includes(key)?'À vérifier':euro(c.amounts?.[key]||0));}if(c.forecast_unknown)profileLine(money,'Prévision','Échéancier incomplet');}
+ const notes=profileBlock(file,'Suivi du dossier');profileLine(notes,'Source',c.source||'KM16');profileLine(notes,'Notes import',c.import_notes);profileLine(notes,'Justificatif tarif',c.saint_jean?'Tarif Saint-Jean : justificatif non validé par ce marquage':'Non applicable');profileLine(notes,'État',!Array.isArray(c.address)||!c.address.length||c.group==='À vérifier'?'Informations à vérifier':'Informations du fichier disponibles');
+ const history=profileBlock(attendance,'Réservations et présences · dossiers KM16 associés');const historyText=document.createElement('p');historyText.className='muted';historyText.textContent='Chargement de l’historique…';history.append(historyText);
  const ids=[...new Set((c.products||[]).map(p=>p.order_id).filter(id=>typeof id==='string'&&/^[0-9a-f]{8}-[0-9a-f-]{27,}$/i.test(id)))];
  const historyRequest=c.external_only&&typeof c.id==='string'&&c.id.startsWith('import:')?client.rpc('km16_admin_external_attendance',{p_external_id:c.id.slice(7),p_season:$('season').value}):ids.length?client.rpc('km16_admin_member_attendance',{p_order_ids:ids}):null;
  if(!historyRequest){historyText.textContent='Aucun identifiant de dossier exploitable. Les réservations non associées restent dans la console des cours.';}

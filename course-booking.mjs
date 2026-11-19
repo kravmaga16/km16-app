@@ -5,11 +5,39 @@ async function accountSession(){
  const s=result?.data?.session;
  return s?.user?.email_confirmed_at&&!s.user.is_anonymous?s:null;
 }
-void accountSession().then(s=>{
- if(!s)return;
- $('email').value=s.user.email;
- $('email').readOnly=true;
-}).catch(()=>{});
+let participants = [];
+let participantOwner;
+function chooseParticipant() {
+ const participant = participants[$('participant').value];
+ const useSavedName = Boolean(participant);
+ $('first').value = participant?.first_name ?? '';
+ $('last').value = participant?.last_name ?? '';
+ $('first-label').hidden = $('last-label').hidden = useSavedName;
+}
+$('participant').onchange = chooseParticipant;
+
+void accountSession().then(async session => {
+ if (!session) return;
+ $('email').value = session.user.email;
+ $('email').readOnly = true;
+ const {data, error} = await account.rpc('km16_my_course_bookings', {p_cancel: null});
+ if (error || !Array.isArray(data)) return;
+
+ const distinct = new Map();
+ for (const {first_name, last_name} of data) {
+  if (!first_name || !last_name) continue;
+  const key = JSON.stringify([first_name.trim(), last_name.trim()]).toLocaleLowerCase('fr');
+  distinct.set(key, {first_name, last_name});
+ }
+ participants = [...distinct.values()];
+ participantOwner = session.user.id;
+ if (!participants.length) return;
+ const options = participants.map(({first_name, last_name}, index) =>
+  new Option(first_name + ' ' + last_name, String(index)));
+ $('participant').replaceChildren(new Option('Choisir un participant', ''), ...options,
+  new Option('Saisir un autre participant', 'manual'));
+ $('participant-choice').hidden = false;
+}).catch(() => {});
 
 const endpoint='https://tlfewpbgbwesdriklxzb.supabase.co/functions/v1/km16-course-bookings';
 async function call(action,params={},token=''){
@@ -79,7 +107,7 @@ if(group){
   refreshSessionChoices();
  }
 }
-const param=params.get('session');if(param&&availableSessions.some(s=>s.id===param))$('session').value=param;else if(params.has('jour')&&params.has('debut')&&params.has('categorie')&&params.has('lieu')){const dayNames=['dimanche','lundi','mardi','mercredi','jeudi','vendredi','samedi'];const normal=v=>String(v||'').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\s+/g,' ');const time=v=>{const m=String(v||'').match(/^(\d{1,2})[:hH](\d{2})$/);return m?String(Number(m[1])).padStart(2,'0')+':'+m[2]:String(v||'').slice(0,5)};const desired=normal(params.get('jour'));const match=availableSessions.find(s=>normal(dayNames[new Date(s.session_date+'T12:00:00Z').getUTCDay()])===desired&&time(s.start_time)===time(params.get('debut'))&&normal(s.category)===normal(params.get('categorie'))&&normal(s.venue)===normal(params.get('lieu')));if(match)$('session').value=match.id;else $('status').textContent='Aucune prochaine séance disponible pour ce créneau. Vous pouvez choisir une autre séance.';}$('submit').disabled=!$('session').value;if(!data.sessions.length)$('status').textContent='Aucune séance ouverte actuellement. Revenez prochainement.'; if(!data.sessions.length)$('status').textContent='Aucune séance ouverte actuellement. Revenez prochainement.';
+const param=params.get('session');if(param&&availableSessions.some(s=>s.id===param))$('session').value=param;else if(params.has('jour')&&params.has('debut')&&params.has('categorie')&&params.has('lieu')){const dayNames=['dimanche','lundi','mardi','mercredi','jeudi','vendredi','samedi'];const normal=v=>String(v||'').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\s+/g,' ');const time=v=>{const m=String(v||'').match(/^(\d{1,2})[:hH](\d{2})$/);return m?String(Number(m[1])).padStart(2,'0')+':'+m[2]:String(v||'').slice(0,5)};const desired=normal(params.get('jour'));const match=availableSessions.find(s=>normal(dayNames[new Date(s.session_date+'T12:00:00Z').getUTCDay()])===desired&&time(s.start_time)===time(params.get('debut'))&&normal(s.category)===normal(params.get('categorie'))&&normal(s.venue)===normal(params.get('lieu')));if(match)$('session').value=match.id;else $('status').textContent='Aucune prochaine séance disponible pour ce créneau. Vous pouvez choisir une autre séance.';}$('submit').disabled=!$('session').value;if(!data.sessions.length)$('status').textContent='Aucune séance ouverte actuellement. Revenez prochainement.';
  else if($('status').textContent==='Chargement des séances disponibles…')$('status').textContent='';
  }catch(e){$('status').className='error';$('status').textContent='Impossible de charger les séances. Vérifiez votre connexion et réessayez.';$('retry-load').hidden=false;}
  finally{loadingSessions=false;$('session').disabled=false;}
@@ -92,19 +120,45 @@ $('book-form').onsubmit=async e=>{
  try{
   const selected=availableSessions.find(s=>s.id===$('session').value);
   if(!selected)throw Error('Veuillez choisir une séance avant de confirmer.');
-  const activeAccount=await accountSession();
-  const j=await call('book',{session_id:$('session').value,first_name:$('first').value,last_name:$('last').value,email:$('email').value,website:$('website').value},activeAccount?.access_token);
+  const participant = participants[$('participant').value];
+  const booking = {session_id:selected.id, first_name:$('first').value,
+   last_name:$('last').value, email:$('email').value, website:$('website').value};
+  const activeAccount = await accountSession();
+  if (participant && activeAccount?.user.id !== participantOwner) {
+   participants = [];
+   $('participant-choice').hidden = true;
+   $('participant').value = '';
+   chooseParticipant();
+   $('email').value = activeAccount?.user.email ?? '';
+   $('email').readOnly = Boolean(activeAccount);
+   throw Error('Votre compte a changé. Renseignez le participant puis réessayez.');
+  }
+  const j=await call('book',booking,activeAccount?.access_token);
   const url=cancellationUrl(j.cancellation_token);
   $('booking-summary').textContent=selected?iso(selected.session_date)+' · '+selected.start_time.slice(0,5)+'–'+selected.end_time.slice(0,5)+' · '+selected.category+' · '+selected.venue:'';
   $('status').textContent='Votre place est réservée ! '+(j.account_booking?'Retrouvez la séance dans Mes réservations.':'Conservez votre lien d’annulation ci-dessous.');
   $('cancel-link').href=url;$('token').value=j.cancellation_token;$('confirmation').hidden=false;
+  $('new-booking').textContent = participants.length ? 'Inscrire une autre personne à cette séance' : 'Réserver une autre séance';
   sessionStorage.setItem('km16-last-cancel-link',url);
   $('book-form').hidden=true;
   $('confirmation').scrollIntoView({behavior:scrollBehavior(),block:'start'});
  }catch(err){$('status').textContent=err.message;$('status').className='error';}
  finally{$('submit').disabled=!$('session').value||$('book-form').hidden;}
 };
-$('new-booking').onclick=()=>{$('confirmation').hidden=true;$('book-form').hidden=false;$('session').value='';refreshSessionChoices();$('status').textContent='';$('copy-status').textContent='';$('session').focus();};
+$('new-booking').onclick = () => {
+ $('confirmation').hidden = true;
+ $('book-form').hidden = false;
+ if (participants.length) {
+  $('participant').value = '';
+  chooseParticipant();
+ } else {
+  $('session').value = '';
+ }
+ refreshSessionChoices();
+ $('status').textContent = '';
+ $('copy-status').textContent = '';
+ $(participants.length ? 'participant' : 'session').focus();
+};
 $('copy-link').onclick=async()=>{
  const url=$('cancel-link').href;
  try{await navigator.clipboard.writeText(url);$('copy-status').textContent='Lien copié. Conservez-le dans un endroit privé.';}

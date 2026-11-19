@@ -1,3 +1,4 @@
+import {downloadCourseCalendar} from './course-calendar-export.mjs?v=1';
 import {hasStageAnalyticsConsent, prepareStageAnalytics, stageReminderSource, trackStageCheckout, trackStageReminderVisit} from './stage-analytics.mjs?v=3';
 import {enhanceBirthDate} from './birth-date-input.mjs?v=1';
 enhanceBirthDate(document.getElementById('birth_date'));
@@ -298,7 +299,11 @@ async function loadUpcomingCourses(){
    const card=text('article','',list,'summary');
    text('strong',[course.first_name,course.last_name].filter(Boolean).join(' '),card);
    text('p',[upcomingDate(course.session_date),course.start_time.slice(0,5)+'–'+course.end_time.slice(0,5),course.venue,course.category].join(' · '),card);
-   const link=text('a','Gérer ou annuler cette réservation',card);
+   const actions=text('div','',card,'row');
+   const save=text('button','Ajouter à mon calendrier',actions);
+   save.type='button';
+   save.onclick=()=>downloadCourseCalendar(course);
+   const link=text('a','Gérer ou annuler cette réservation',actions);
    link.href='./course-operations.html#booking-'+encodeURIComponent(course.id);
   }
   if(!list.childNodes.length)text('p','Aucun cours réservé à venir.',list);

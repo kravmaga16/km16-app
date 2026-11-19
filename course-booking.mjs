@@ -1,10 +1,22 @@
 const $=id=>document.getElementById(id);
+const account=window.supabase?.createClient('https://tlfewpbgbwesdriklxzb.supabase.co','sb_publishable_OGRSgobOGf54jlfmXGmS8g_04Ftvfsn',{auth:{storageKey:'km16-video-auth',detectSessionInUrl:false,flowType:'implicit'}});
+async function accountSession(){
+ const result=await account?.auth.getSession();
+ const s=result?.data?.session;
+ return s?.user?.email_confirmed_at&&!s.user.is_anonymous?s:null;
+}
+void accountSession().then(s=>{
+ if(!s)return;
+ $('email').value=s.user.email;
+ $('email').readOnly=true;
+}).catch(()=>{});
+
 const endpoint='https://tlfewpbgbwesdriklxzb.supabase.co/functions/v1/km16-course-bookings';
-async function call(action,params={}){
+async function call(action,params={},token=''){
  const controller=action==='sessions'?new AbortController():null;
  const timeout=controller?setTimeout(()=>controller.abort(),15000):null;
  try{
-  const r=await fetch(endpoint,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action,...params}),signal:controller?.signal});
+  const r=await fetch(endpoint,{method:'POST',headers:{'Content-Type':'application/json',...(token?{Authorization:'Bearer '+token}:{})},body:JSON.stringify({action,...params}),signal:controller?.signal});
   const j=await r.json();
   if(!r.ok)throw Error(j.error||'Service indisponible');
   return j;
@@ -80,10 +92,11 @@ $('book-form').onsubmit=async e=>{
  try{
   const selected=availableSessions.find(s=>s.id===$('session').value);
   if(!selected)throw Error('Veuillez choisir une séance avant de confirmer.');
-  const j=await call('book',{session_id:$('session').value,first_name:$('first').value,last_name:$('last').value,email:$('email').value,website:$('website').value});
+  const activeAccount=await accountSession();
+  const j=await call('book',{session_id:$('session').value,first_name:$('first').value,last_name:$('last').value,email:$('email').value,website:$('website').value},activeAccount?.access_token);
   const url=cancellationUrl(j.cancellation_token);
   $('booking-summary').textContent=selected?iso(selected.session_date)+' · '+selected.start_time.slice(0,5)+'–'+selected.end_time.slice(0,5)+' · '+selected.category+' · '+selected.venue:'';
-  $('status').textContent='Votre place est réservée ! Conservez votre lien d’annulation ci-dessous.';
+  $('status').textContent='Votre place est réservée ! '+(j.account_booking?'Retrouvez la séance dans Mes réservations.':'Conservez votre lien d’annulation ci-dessous.');
   $('cancel-link').href=url;$('token').value=j.cancellation_token;$('confirmation').hidden=false;
   sessionStorage.setItem('km16-last-cancel-link',url);
   $('book-form').hidden=true;

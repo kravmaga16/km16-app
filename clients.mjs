@@ -191,8 +191,8 @@ function renderProcessingItems(){
   const payment=item.kind==='payment';
   rows.push({
    label:item.label, detail:item.detail,
-   href:payment?'#external-payment-overview':'#km16-email-relances',
-   action:payment?'Ouvrir les encaissements':'Ouvrir le suivi des e-mails',
+   href:payment?'./course-operations.html?vue=paiements&saison='+encodeURIComponent($('season').value):'#km16-email-relances',
+   action:payment?'Rapprocher les paiements':'Ouvrir le suivi des e-mails',
   });
  }
  for(const row of rows){

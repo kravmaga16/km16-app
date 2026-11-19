@@ -340,12 +340,15 @@ $('purchase-profile').onchange=()=>{
  resetRegistration();
  if(profile){
   $('purchase-profile').value=profile.id;
-  if(profile.birth_date)fillMemberDetails(profile);
-  else{
-   $('first_name').value=profile.first_name||'';
-   $('last_name').value=profile.last_name||'';
-   updateCheckoutSummary();
-  }
+  queueMicrotask(()=>{
+   if($('purchase-profile').value!==profile.id)return;
+   if(profile.birth_date)fillMemberDetails(profile);
+   else{
+    $('first_name').value=profile.first_name||'';
+    $('last_name').value=profile.last_name||'';
+    updateCheckoutSummary();
+   }
+  });
  }
 };
 async function loadHouseholdProfiles(){

@@ -18,7 +18,7 @@ Contrôles après publication : accueil, planning, page Clients, connexion admin
 
 ## Supabase
 
-Le site utilise le projet `tlfewpbgbwesdriklxzb`. Le dépôt du site seul ne permet pas encore de reconstruire un projet Supabase vierge. Au 19 novembre 2026, l’historique en ligne contient 66 migrations et le dépôt en contient 14. Le projet exécute aussi 19 fonctions Edge actives. Les sources présentes dans `server/` et `supabase/functions/` ne constituent pas un inventaire exhaustif des versions actives.
+Le site utilise le projet `tlfewpbgbwesdriklxzb`. Le dépôt du site seul ne permet pas encore de reconstruire un projet Supabase vierge. Au 19 novembre 2026, l’historique en ligne contient 66 migrations et le dépôt en contient 17. Le projet exécute aussi 19 fonctions Edge actives. Les sources présentes dans `server/` et `supabase/functions/` ne constituent pas un inventaire exhaustif des versions actives.
 
 Avant d’appliquer une évolution SQL ou de republier une fonction :
 
@@ -26,6 +26,6 @@ Avant d’appliquer une évolution SQL ou de republier une fonction :
 2. Examiner la version déployée de la fonction concernée et conserver ses paramètres de déploiement, notamment `verify_jwt`. Vérifier les secrets nécessaires dans le tableau de bord sans enregistrer leurs valeurs dans Git.
 3. Tester sur un projet de préproduction ou avec des données fictives. Appliquer uniquement la migration ou la fonction vérifiée à la production, puis contrôler son résultat. Un `db push` global avant réconciliation de l’historique risquerait d’appliquer des changements incompatibles.
 
-La migration `20261119142144_km16_club_registration_links.sql` correspond à la version enregistrée en production. Elle requiert notamment `public.km16_ops_is_admin()`.
+Les quatre migrations des règlements au club reprennent l’historique de production. Les migrations `20261119140107`, `20261119140226` et `20261119140504` créent successivement le registre, sa politique d’accès administrateur et le calcul des totaux. La migration `20261119142144` ajoute le rattachement à la fiche client. Le registre dépend de `public.km16_ops_is_admin()`, défini dans `20261119065900`.
 
 L’avis Auth `auth_leaked_password_protection` signale la protection désactivée le 19 novembre 2026. Le réglage se trouve dans **Authentication → Sign In / Providers → Email**. La protection des mots de passe compromis exige un forfait Supabase Pro ou supérieur. Après activation, relancer Security Advisor pour confirmer la disparition de l’avis.

@@ -292,11 +292,12 @@ function orderGroup(order){
 function memberOrderAnchor(order) {
  return order.id === returnedOrder ? 'returned-order' : 'member-order-' + order.id;
 }
-let memberCourses=null, memberPerson='', firstCourseSessions=null, firstCourseRequest=null;
+let householdProfiles=[], memberCourses=null, memberPerson='', firstCourseSessions=null, firstCourseRequest=null;
 function participantName(entry){
  return [entry.first_name,entry.last_name].filter(Boolean).join(' ').trim();
 }
 function participantKey(entry){
+ if(entry.household_id)return 'profil:'+entry.household_id;
  return participantName(entry).normalize('NFC').toLocaleLowerCase('fr').replace(/\s+/g,' ');
 }
 function matchesParticipant(entry){
@@ -304,23 +305,75 @@ function matchesParticipant(entry){
 }
 function renderMemberFamily(){
  if(!accountView)return;
- const people=new Map();
+ const people=new Map(householdProfiles.map(profile=>['profil:'+profile.id,profile.label]));
  for(const entry of [...myOrderData.orders.filter(order=>order.livemode===true),...(memberCourses||[])]){
   const key=participantKey(entry);
-  if(key)people.set(key,participantName(entry));
+  if(key&&!entry.household_id)people.set(key,participantName(entry));
  }
  if(!people.has(memberPerson))memberPerson='';
  const select=$('member-person');
  select.replaceChildren(new Option('Tout le foyer',''));
  for(const [key,name] of [...people].sort((a,b)=>a[1].localeCompare(b[1],'fr')))select.add(new Option(name,key));
  select.value=memberPerson;
- $('member-family').hidden=people.size<2;
+ $('member-family').hidden=!session;
 }
 $('member-person').onchange=()=>{
  memberPerson=$('member-person').value;
  renderMyOrders();renderMemberActions();renderUpcomingStages();renderUpcomingCourses();renderFirstCourse();
 };
 
+async function householdRpc(args={}){
+ const {data,error}=await client.rpc('km16_household',args);
+ if(error)throw Error(error.message);
+ if(!Array.isArray(data))throw Error('Profils indisponibles.');
+ return data;
+}
+async function loadHouseholdProfiles(){
+ const gen=generation;
+ try{const profiles=await householdRpc();if(gen!==generation)return;householdProfiles=profiles;renderMemberFamily();renderMyOrders();renderUpcomingCourses();}
+ catch{if(gen===generation)$('household-status').textContent='Les profils du foyer sont temporairement indisponibles.';}
+}
+$('household-form').onsubmit=async event=>{
+ event.preventDefault();
+ const input=$('household-label'),button=event.submitter,gen=generation;
+ if(!session||!input.value.trim())return;
+ button.disabled=true;
+ try{
+  const profiles=await householdRpc({p_label:input.value.trim()});
+  if(gen!==generation)return;
+  householdProfiles=profiles;input.value='';
+  $('household-status').textContent='Profil créé. Vous pouvez lui rattacher un dossier ou un cours.';
+  renderMemberFamily();renderMyOrders();renderUpcomingCourses();
+ }catch(error){if(gen===generation)$('household-status').textContent=error.message;}
+ finally{button.disabled=false;}
+};
+function appendHouseholdLink(parent,record,kind){
+ if(!accountView||!householdProfiles.length)return;
+ const details=text('details','',parent);
+ text('summary','Profil du pratiquant',details);
+ const label=text('label','Rattacher à un profil',details);
+ const select=document.createElement('select');
+ select.add(new Option('Aucun profil',''));
+ for(const p of householdProfiles)select.add(new Option(p.label,p.id));
+ select.value=record.household_id||'';
+ label.append(select);
+ const button=text('button','Enregistrer le profil',details);
+ button.type='button';
+ const feedback=text('p','',details);feedback.setAttribute('role','status');
+ button.onclick=async()=>{
+  const profile=select.value||null,gen=generation;
+  button.disabled=true;
+  try{
+   await householdRpc({p_kind:kind,p_record:record.id,p_profile:profile});
+   if(gen!==generation)return;
+   record.household_id=profile;
+   memberPerson='';
+   $('household-status').textContent='Rattachement enregistré.';
+   renderMemberFamily();renderMyOrders();renderMemberActions();renderUpcomingCourses();renderUpcomingStages();renderFirstCourse();
+  }catch(error){if(gen===generation)feedback.textContent=error.message;}
+  finally{button.disabled=false;}
+ };
+}
 function firstCourseCategory(product){
  if(product.category==='Enfants')return /^enfants/i;
  if(product.category==='Ados')return /^adolescents/i;
@@ -510,9 +563,10 @@ function renderUpcomingCourses(){
    const save=text('button','Ajouter à mon calendrier',actions);
    save.type='button';
    save.onclick=()=>downloadCourseCalendar(course);
-   const link=text('a','Gérer ou annuler cette réservation',actions);
+   const link=text('a','Déplacer ou annuler cette réservation',actions);
    link.href='./course-operations.html#booking-'+encodeURIComponent(course.id);
    appendDojoDirections(actions,course.venue);
+   appendHouseholdLink(card,course,'course');
   }
   if(!list.childNodes.length)text('p','Aucun cours réservé à venir.',list);
  }else{
@@ -579,7 +633,7 @@ function renderMyOrders(){
    link.href='./adhesion.html?renouveler='+encodeURIComponent(o.id);
   }
   const payments=myOrderData.payments.filter(p=>p.order_id===o.id);
-  const paid=payments.filter(p=>p.status==='paid').reduce((s,p)=>s+p.amount_cents-p.refunded_cents,0);
+  const paid=payments.filter(p=>p.status==='paid').reduce((s,p)=>s+p.amount_cents-(p.refunded_cents||0),0);
   text('div',money(paid)+' encaissés sur '+money(o.total_cents)+' · Dossier : '+({pending:'en attente de validation',approved:'validé',rejected:'refusé'}[o.approval]),box);
   if(o.approval!=='rejected'&&o.total_cents>0&&o.stripe_session_id&&!payments.some(p=>['paid','refunded','disputed'].includes(p.status))){
    const resume=text('button','Reprendre le paiement',box);
@@ -614,6 +668,23 @@ function renderMyOrders(){
    const step=document.createElement('div');step.className='notice';text('strong','Étape obligatoire : votre licence FEKM',step);text('p','Votre règlement KM16 ne comprend pas la licence. Souscrivez-la directement auprès de la FEKM, puis présentez votre justificatif à KM16 pour validation du dossier. L’ouverture du site ne prouve pas le paiement de la licence.',step);const a=text('a','Acheter ma licence sur le site FEKM ↗',step);a.href='https://www.krav-maga.net/connexion/';a.target='_blank';a.rel='noopener noreferrer';box.append(step);
   }
   documentSummary(box,(myOrderData.documents||[]).find(d=>d.order_id===o.id));
+  appendHouseholdLink(box,o,'order');
+  if(o.count>1){
+   const schedule=text('details','',box);
+   text('summary','Voir mon échéancier',schedule);
+   text('p','Encaissé : '+money(paid)+' · Reste à régler : '+money(Math.max(0,o.total_cents-paid)),schedule);
+   if(o.schedule_id&&paid<o.total_cents){
+    const next=text('p','',schedule);next.setAttribute('role','status');
+    schedule.addEventListener('toggle',async()=>{
+     if(!schedule.open||next.textContent)return;
+     next.textContent='Vérification de la prochaine échéance…';
+     try{
+      const r=await api({action:'member-schedule',order_id:o.id},session?.user);
+      next.textContent=r.next_at?'Prochain prélèvement prévu : '+memberEventDate.format(new Date(r.next_at)):'Aucune prochaine date confirmée par Stripe.';
+     }catch{next.textContent='Date momentanément indisponible. Actualisez le dossier pour réessayer.';}
+    });
+   }
+  }
   appendOrderHelp(box,o);$('orders').append(box);
  }
  if(focusedCard)$(focusedCard)?.focus({preventScroll:true});
@@ -790,7 +861,7 @@ async function admin(loadMore=false){if(km16AdminLoading)return;if(!km16ConfirmD
 }catch(e){if(gen===generation){note(e.message,true);$('km16-followup-status').textContent='Actualisation impossible : '+e.message;}}finally{if(gen===generation){if(refreshButton)refreshButton.disabled=false;if(followupRefresh)followupRefresh.disabled=false;if(moreButton){moreButton.disabled=false;moreButton.textContent='Charger 25 dossiers supplémentaires';}}km16AdminLoading=false;}}
 function clearMemberFirstCourse(){
  firstCourseRequest?.abort();firstCourseRequest=null;firstCourseSessions=null;
- memberCourses=null;memberPerson='';
+ memberCourses=null;memberPerson='';householdProfiles=[];
  $('member-first-course').hidden=true;$('member-first-course-list').replaceChildren();
  $('member-family').hidden=true;$('member-person').replaceChildren(new Option('Tout le foyer',''));
 }
@@ -817,7 +888,7 @@ async function authState(s){
  if(accountView){
   $('member-upcoming').hidden=false;
   if(!$('member-upcoming-stages').childNodes.length)text('p','Chargement des stages…',$('member-upcoming-stages'));
-  void loadUpcomingCourses();
+  void loadUpcomingCourses();void loadHouseholdProfiles();
  }
  if(!catalogueReady&&!accountView)return;await orders();if(isAdmin&&!embedded&&!accountView){initLinks();await Promise.all([admin(),listLinks()]);}
 }

@@ -24,6 +24,24 @@ function button(parent,label,action){
  b.onclick=async()=>{b.disabled=true;try{await action();}catch(e){status.textContent=e.message;}finally{b.disabled=false;}};
  return b;
 }
+function appendMoveCourse(item,entry){
+ button(item,'Déplacer ce cours',async()=>{
+  const existing=item.querySelector('.move-course');
+  if(existing){existing.remove();return;}
+  const alternatives=await rpc('km16_move_course_booking',{p_booking:entry.id});
+  const panel=make(item,'div');panel.className='move-course';
+  if(!alternatives.length){make(panel,'p','Aucun autre créneau compatible disponible.');return;}
+  const label=make(panel,'label','Nouveau créneau');
+  const select=make(label,'select');
+  for(const course of alternatives){const option=make(select,'option',sessionLabel(course));option.value=course.id;}
+  button(panel,'Confirmer le déplacement',async()=>{
+   if(!window.confirm('Remplacer votre réservation par le créneau sélectionné ?'))return;
+   await rpc('km16_move_course_booking',{p_booking:entry.id,p_target:select.value});
+   await reservations();
+   status.textContent='Votre réservation a été déplacée.';
+  });
+ });
+}
 async function reservations(cancel=null){
  const list=await rpc('km16_my_course_bookings',{p_cancel:cancel});rows.replaceChildren();
  status.textContent=list.length?'Séances à venir et réservations des 30 derniers jours.':'Aucune réservation associée à ce compte.';
@@ -33,6 +51,7 @@ async function reservations(cancel=null){
   make(item,'h2',[entry.first_name,entry.last_name].join(' '));
   make(item,'p',sessionLabel(entry));
   make(item,'p',entry.status);
+  if(entry.cancellable)appendMoveCourse(item,entry);
   if(entry.cancellable)button(item,'Annuler cette réservation',async()=>{
    if(window.confirm('Annuler la réservation de '+entry.first_name+' pour cette séance ?'))await reservations(entry.id);
   });

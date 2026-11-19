@@ -167,8 +167,24 @@ Deno.serve(async req=>{
    const {first_name,last_name,birth_date,phone,guardian_name,product_id}=order;
    return reply({first_name,last_name,birth_date,phone,guardian_name,product_id});
   }
+  if(data.action==='member-schedule'){
+   const id=String(data.order_id||'');
+   if(!/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(id))return reply({error:'Dossier invalide'},400);
+   const order=(await db('km16_membership_orders?id=eq.'+id+'&user_id=eq.'+user.id+'&livemode=eq.true&select=schedule_id,customer_id,count'))[0];
+   if(!order||order.count<=1||!order.schedule_id||!live())return reply({next_at:null});
+   const schedule=await stripe.subscriptionSchedules.retrieve(order.schedule_id,{expand:['subscription']});
+   if(schedule.customer!==order.customer_id||!schedule.livemode)return reply({next_at:null});
+   const subscription=schedule.subscription;
+   let next=null;
+   if(schedule.status==='not_started'&&schedule.phases[0]?.collection_method!=='send_invoice')next=schedule.phases[0]?.start_date;
+   if(schedule.status==='active'&&subscription?.status==='active'&&subscription.collection_method==='charge_automatically'&&!subscription.pause_collection&&!subscription.cancel_at_period_end){
+    const period=subscription.items.data[0]?.current_period_end;
+    if(period&&period<(subscription.cancel_at||Infinity)&&period<schedule.phases.at(-1)?.end_date)next=period;
+   }
+   return reply({next_at:next>Math.floor(Date.now()/1000)?new Date(next*1000).toISOString():null});
+  }
   if(data.action==='orders'){
-   const orders=await db('km16_membership_orders?user_id=eq.'+user.id+'&select=id,product_id,title,first_name,last_name,livemode,total_cents,count,amounts,approval,created_at,stripe_session_id,schedule_id&order=created_at.desc');
+   const orders=await db('km16_membership_orders?user_id=eq.'+user.id+'&select=id,product_id,title,first_name,last_name,household_id,livemode,total_cents,count,amounts,approval,created_at,stripe_session_id,schedule_id&order=created_at.desc');
    const ids=orders.map(o=>o.id);
    const today=parisToday();
    const trials=orders.filter(o=>o.livemode&&['essai','essai-saint-jean'].includes(o.product_id)&&o.approval!=='rejected').map(o=>o.id);

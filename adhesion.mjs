@@ -279,6 +279,58 @@ function renderMemberActions() {
  list.replaceChildren(items);
  panel.hidden = false;
 }
+const memberEventDate = new Intl.DateTimeFormat('fr-FR', {dateStyle:'full',timeZone:'Europe/Paris'});
+function upcomingDate(date){
+ return memberEventDate.format(new Date(date+'T12:00:00Z'));
+}
+async function loadUpcomingCourses(){
+ const gen=generation;
+ const list=$('member-upcoming-courses');
+ list.replaceChildren();
+ text('p','Chargement des réservations…',list);
+ try{
+  const {data,error}=await client.rpc('km16_my_course_bookings',{p_cancel:null});
+  if(gen!==generation)return;
+  if(error||!Array.isArray(data))throw Error('Réservations indisponibles');
+  list.replaceChildren();
+  for(const course of data.filter(row=>row.status==='Inscrit'&&row.cancellable)){
+   const card=text('article','',list,'summary');
+   text('strong',[course.first_name,course.last_name].filter(Boolean).join(' '),card);
+   text('p',[upcomingDate(course.session_date),course.start_time.slice(0,5)+'–'+course.end_time.slice(0,5),course.venue,course.category].join(' · '),card);
+   const link=text('a','Gérer ou annuler cette réservation',card);
+   link.href='./course-operations.html#booking-'+encodeURIComponent(course.id);
+  }
+  if(!list.childNodes.length)text('p','Aucun cours réservé à venir.',list);
+ }catch{
+  if(gen!==generation)return;
+  list.replaceChildren();
+  const link=text('a','Consulter mes réservations de cours',list);
+  link.href='./course-operations.html';
+ }
+}
+function renderUpcomingStages(){
+ if(!accountView)return;
+ const list=$('member-upcoming-stages');
+ list.replaceChildren();
+ const stages=[];
+ for(const order of myOrderData.orders){
+  if(order.livemode!==true||order.approval==='rejected')continue;
+  const stage=products.find(p=>p.id===order.product_id&&p.category==='Stages'&&p.event_date>=today());
+  if(!stage)continue;
+  const payments=myOrderData.payments.filter(p=>p.order_id===order.id);
+  if(payments.some(p=>p.status==='disputed'))continue;
+  const paid=payments.filter(p=>p.status==='paid').reduce((sum,p)=>sum+p.amount_cents-(p.refunded_cents||0),0);
+  if(order.total_cents===0 ? order.approval!=='approved' : paid<order.total_cents)continue;
+  stages.push({stage,order});
+ }
+ for(const {stage,order} of stages.sort((a,b)=>a.stage.event_date.localeCompare(b.stage.event_date))){
+  const card=text('article','',list,'summary');
+  text('strong',order.title,card);
+  const participant=[order.first_name,order.last_name].filter(Boolean).join(' ');
+  text('p',[participant,upcomingDate(stage.event_date),stage.note].filter(Boolean).join(' · '),card);
+ }
+ if(!stages.length)text('p','Aucun stage confirmé à venir.',list);
+}
 function renderMyOrders(){
  const all=myOrderData.orders.filter(o=>o.livemode===true);
  const groups=['Tous les achats',...orderGroupNames.filter(g=>all.some(o=>orderGroup(o)===g))];
@@ -355,10 +407,13 @@ async function orders(){
  try{
   const next=await api({action:'orders'});
   if(gen!==generation)return;
-  myOrderData=next;renderMyOrders();renderMemberActions();renderKm16Reuse();
+  myOrderData=next;renderMyOrders();renderMemberActions();renderUpcomingStages();renderKm16Reuse();
   const order=next.orders.find(o=>o.id===returnedOrder&&o.livemode===true);
   showPaymentReturn(order,next.payments.filter(p=>p.order_id===returnedOrder));
- }catch(e){if(gen===generation){if(returnedOrder)showPaymentReturn(null,[],true);else note(e.message,true);}}
+ }catch(e){if(gen===generation){
+  if(accountView)$('member-upcoming-stages').textContent='Stages temporairement indisponibles. Utilisez Actualiser pour réessayer.';
+  if(returnedOrder)showPaymentReturn(null,[],true);else note(e.message,true);
+ }}
 }
 
 const docStatus={missing:'Manquant',received:'Reçu — à vérifier',validated:'Validé',not_required:'Non demandé'};
@@ -485,15 +540,21 @@ async function authState(s){
  const isAdmin=s?.user.email==='alexandre.marchat@gmail.com';$('admin').hidden=!isAdmin||embedded||accountView;buttonState();
  if(!s){
   clearTimeout(paymentCheckTimer);showPaymentReturn();
+  $('member-upcoming').hidden=true;$('member-upcoming-courses').replaceChildren();$('member-upcoming-stages').replaceChildren();
   $('member-actions').hidden=true;$('member-actions-list').replaceChildren();
   myOrderGroup='Tous les achats';myOrderData={orders:[],payments:[],documents:[]};$('km16-reuse-member').hidden=true;$('order-filters').replaceChildren();$('orders').replaceChildren();$('admin-orders').replaceChildren();$('links-list').replaceChildren();$('link-result').hidden=true;$('link-url').value='';$('link-email').value='';
   return;
+ }
+ if(accountView){
+  $('member-upcoming').hidden=false;
+  if(!$('member-upcoming-stages').childNodes.length)text('p','Chargement des stages…',$('member-upcoming-stages'));
+  void loadUpcomingCourses();
  }
  if(!catalogueReady&&!accountView)return;await orders();if(isAdmin&&!embedded&&!accountView){initLinks();await Promise.all([admin(),listLinks()]);}
 }
 $('payment-return-refresh').onclick=orders;
 $('payment-return-orders').onclick=()=>{if(myOrderGroup!=='Tous les achats'){myOrderGroup='Tous les achats';renderMyOrders();}};
-$('refresh').onclick=orders;$('admin-refresh').onclick=()=>admin(false);
+$('refresh').onclick=()=>{if(accountView&&session)void loadUpcomingCourses();return orders();};$('admin-refresh').onclick=()=>admin(false);
 
 function initLinks(){
  const current=$('link-category').value;

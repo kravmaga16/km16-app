@@ -29,12 +29,18 @@ async function reservations(cancel=null){
  status.textContent=list.length?'Séances à venir et réservations des 30 derniers jours.':'Aucune réservation associée à ce compte.';
  for(const entry of list){
   const item=row();
+  item.id='booking-'+entry.id;item.tabIndex=-1;
   make(item,'h2',[entry.first_name,entry.last_name].join(' '));
   make(item,'p',sessionLabel(entry));
   make(item,'p',entry.status);
   if(entry.cancellable)button(item,'Annuler cette réservation',async()=>{
    if(window.confirm('Annuler la réservation de '+entry.first_name+' pour cette séance ?'))await reservations(entry.id);
   });
+ }
+ if(!cancel&&location.hash.startsWith('#booking-')){
+  const target=$(location.hash.slice(1));
+  target?.focus({preventScroll:true});
+  target?.scrollIntoView({block:'start'});
  }
 }
 async function instructors(){

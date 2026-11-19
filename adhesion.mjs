@@ -14,6 +14,13 @@ const requestedCategory=new URLSearchParams(location.search).get('categorie')||'
 const requestedProduct=new URLSearchParams(location.search).get('produit')||'';
 let stageCatalogueLoaded=false;
 const stageDetail=/^stage-[a-z0-9-]+$/.test(requestedProduct)&&!embedded&&!accountView;
+if(stageDetail){
+ document.title='Inscription au stage · KM16';
+ $('registration-title').textContent='Inscription au stage';
+ $('registration-intro').textContent='Retrouvez les informations du stage et inscrivez-vous en ligne.';
+ $('license-note').hidden=true;
+ $('chosen').textContent='Sélectionnez « S’inscrire » pour continuer.';
+}
 const requestedStageDate=new URLSearchParams(location.search).get('stage_date')||'';
 const categoryFor=value=>{const s=String(value).toLowerCase();return s.includes('adulte')?'Adultes':s.includes('enfant')?'Enfants':s.includes('ado')?'Ados':['Tous','Stages','Découverte','Équipement'].includes(value)?value:'Tous';};
 let products=[],selected=null,session=null,enabled=false,category='Tous',busy=false,requestId=crypto.randomUUID(),generation=0;
@@ -97,6 +104,8 @@ function render(){
   const card=document.createElement('article');card.className='card';host.append(card);
   if(!stageCatalogueLoaded)text('p','Chargement du stage…',card);
   else if(stage){
+   const number=/^stage-([1-9])$/.exec(stage.id)?.[1]||(stage.id==='stage-combat'?'8':'');
+   if(number)text('span','Stage '+number+'/9',card,'tag');
    text('h2',stage.title,card);
    if(stage.note)text('p',stage.note,card);
    text('p',stage.amount?money(stage.amount):'Gratuit',card,'price');

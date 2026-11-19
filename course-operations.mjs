@@ -98,22 +98,44 @@ async function payments(){
    const existing=item.querySelector('section');if(existing){existing.remove();return;}
    const panel=make(item,'section');
    const label=make(panel,'label','Rechercher par nom ou e-mail');const input=make(label,'input');input.value=tx.payer_last_name||'';
-   const results=make(panel,'div');
-   async function search(){
-    const matches=await rpc('km16_admin_payment_matches',{p_season:season,p_transaction:tx.id,p_search:input.value.trim()});
+   const suggestion = make(panel, 'div');
+   const results = make(panel, 'div');
+   function renderMatch(parent, match) {
+    const description = [match.first_name, match.last_name, match.email].filter(Boolean).join(' · ');
+    const entry = make(parent, 'p', description + ' ');
+    button(entry, 'Confirmer le rapprochement', async () => {
+     if (!window.confirm('Associer ' + money.format(tx.amount_cents / 100) + ' à ' + description + ' ?')) return;
+     await rpc('km16_admin_payment_matches', {p_season: season, p_transaction: tx.id, p_external: match.external_id});
+     await payments();
+     status.textContent = 'Rapprochement enregistré. ' + status.textContent;
+    });
+   }
+   async function search() {
+    const matches = await rpc('km16_admin_payment_matches', {p_season: season, p_transaction: tx.id, p_search: input.value.trim()});
     results.replaceChildren();
-    if(!matches.length)make(results,'p','Aucune fiche active trouvée.');
-    for(const match of matches){
-     const description=[match.first_name,match.last_name,match.email].filter(Boolean).join(' · ');
-     const entry=make(results,'p',description+' ');
-     button(entry,'Confirmer le rapprochement',async()=>{
-      if(!window.confirm('Associer '+money.format(tx.amount_cents/100)+' à '+description+' ?'))return;
-      await rpc('km16_admin_payment_matches',{p_season:season,p_transaction:tx.id,p_external:match.external_id});
-      await payments();status.textContent='Rapprochement enregistré. '+status.textContent;
-     });
+    if (!matches.length) make(results, 'p', 'Aucune fiche active trouvée.');
+    for (const match of matches) renderMatch(results, match);
+   }
+   const submit = button(panel, 'Rechercher', search);
+   panel.insertBefore(submit, results);
+   if (/^(fighty|sportigo)$/i.test(tx.source?.trim())) {
+    try {
+     const {status: matchStatus, candidate} = await rpc('km16_payment_match_suggestion', {p_season: season, p_transaction: tx.id});
+     if (matchStatus === 'unique') {
+      make(suggestion, 'h3', 'Fiche suggérée');
+      make(suggestion, 'p', 'Le prénom et le nom du payeur correspondent à une seule fiche active de cette saison.');
+      if (candidate.shared_email) make(suggestion, 'p', 'Cet e-mail est partagé par plusieurs fiches. Vérifie le membre du foyer avant de confirmer.');
+      renderMatch(suggestion, candidate);
+      return;
+     }
+     if (matchStatus === 'ambiguous') {
+      make(suggestion, 'p', 'Plusieurs fiches ont le même prénom et le même nom. Vérifie la fiche manuellement.');
+     }
+    } catch {
+     make(suggestion, 'p', 'Suggestion indisponible. La recherche manuelle reste accessible.');
     }
    }
-   const submit=button(panel,'Rechercher',search);panel.insertBefore(submit,results);await search();
+   await search();
   });
  }
 }

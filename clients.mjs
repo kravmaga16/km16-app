@@ -845,9 +845,10 @@ $('test').onchange=()=>{generation++;controller?.abort();busy=false;clear();load
 $('export').onclick=()=>{try{const rows=all.filter(matches);if(!rows.length||($('club-registration-form')&&!clubPaymentTotals))return;const bytes=clientsWorkbook(rows,all);const url=URL.createObjectURL(new Blob([bytes],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}));const a=document.createElement('a');a.href=url;a.download=($('test').checked?'TEST-':'')+'KM16-Clients-'+$('season').value.replace('/','-')+'-'+new Date().toISOString().slice(0,10)+'.xlsx';document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),30000);status('Export créé : Enfants, Ados, Adultes, Synthèse et Stages par mois.');}catch(e){status(e.message,true);}};
 function resetClubClientChoice() {
  const select = $('club-client-id');
- if (!select?.value) return;
+ if (!select) return;
+ const hadSelection = Boolean(select.value);
  select.replaceChildren(new Option('Nouvelle fiche', ''));
- select.onchange?.();
+ if (hadSelection) select.onchange?.();
 }
 
 function updateClubClientChoices() {
@@ -898,6 +899,7 @@ async function refreshClubRegistrations() {
  }
 }
 
+const clubRegistrationForm = $('club-registration-form');
 if (clubRegistrationForm) {
  const date = clubRegistrationForm.elements.received_on;
  const select = $('club-client-id');
@@ -968,5 +970,3 @@ if(!client)status('Connexion indisponible : rechargez la page',true);
 else{client.auth.onAuthStateChange((_event,s)=>{setTimeout(()=>authState(s),0);});const {data}=await client.auth.getSession();await authState(data.session);}
 // Avoid redundant background reloads; manual refresh remains available.
 setInterval(()=>{if(!document.hidden&&!busy&&session?.user?.email?.toLowerCase()===ADMIN)load();},120000);
-
-const clubRegistrationForm = $('club-registration-form');

@@ -301,7 +301,7 @@ async function refreshExternalPayments(){
 }
 const moneyFields=[['total_cents','Achats'],['gross_cents','Encaissé brut'],['refunded_cents','Remboursements'],['net_cents','Encaissé net'],['future_cents','Échéances futures'],['planned_cents','CA planifié · net + futur'],['overdue_cents','Échues impayées'],['cancelled_cents','Échéances annulées'],['disputed_cents','Montants contestés inclus dans le net']];
 const status=(text,error=false)=>{$('status').textContent=text;$('status').className=error?'status error':'status';};
-function clear(){processingRequest++;stageReminderRequest++;processingItems=[];processingStatus='';$('km16-stage-reminders-rows').replaceChildren();externalPaymentRequest++;if($('external-payment-summary'))$('external-payment-summary').replaceChildren();if($('external-payment-status'))$('external-payment-status').textContent='En attente de connexion.';closeMemberProfile();overviewLoaded=false;renderOverview();shirtRefresh++;courseAlertRequest++;$('kpi-course-unlinked').textContent='—';$('kpi-course-attendance').textContent='—';$('kpi-course-status').textContent='Suivi des cours en attente de connexion.';putShirts('—','En attente de connexion');all=[];$('stage-rows').replaceChildren();$('money-summary').replaceChildren();$('money-breakdown').replaceChildren();$('money-alerts').replaceChildren();$('money-alerts').hidden=true;$('rows').replaceChildren();$('data-status').textContent='';$('imports-note').textContent='';$('export').disabled=true;for(const g of ['enfants','ados','adultes'])$('split-'+g).textContent='';for(const id of ['count-enfants','count-ados','count-adultes'])$(id).textContent='0';}
+function clear(){clubPaymentTotals=null;clubPaymentTotalsError=false;processingRequest++;stageReminderRequest++;processingItems=[];processingStatus='';$('km16-stage-reminders-rows').replaceChildren();externalPaymentRequest++;if($('external-payment-summary'))$('external-payment-summary').replaceChildren();if($('external-payment-status'))$('external-payment-status').textContent='En attente de connexion.';closeMemberProfile();overviewLoaded=false;renderOverview();shirtRefresh++;courseAlertRequest++;$('kpi-course-unlinked').textContent='—';$('kpi-course-attendance').textContent='—';$('kpi-course-status').textContent='Suivi des cours en attente de connexion.';putShirts('—','En attente de connexion');all=[];$('stage-rows').replaceChildren();$('money-summary').replaceChildren();$('money-breakdown').replaceChildren();$('money-alerts').replaceChildren();$('money-alerts').hidden=true;$('rows').replaceChildren();$('data-status').textContent='';$('imports-note').textContent='';$('export').disabled=true;for(const g of ['enfants','ados','adultes'])$('split-'+g).textContent='';for(const id of ['count-enfants','count-ados','count-adultes'])$(id).textContent='0';}
 let selectedMember=null;
 function closeMemberProfile(){selectedMember=null;$('member-profile').hidden=true;$('member-profile-content').replaceChildren();}
 function profileLine(parent,label,value){const p=document.createElement('p');const strong=document.createElement('strong');strong.textContent=label+' : ';p.append(strong,document.createTextNode(value===null||value===undefined||value===''?'Non renseigné':String(value)));parent.append(p);}
@@ -477,10 +477,17 @@ function openMemberProfile(c){if(!all.includes(c))return;selectedMember=c;const 
 $('member-profile-close').onclick=closeMemberProfile;
 const matches=c=>{const q=$('search').value.normalize('NFKC').toLocaleLowerCase('fr-FR').trim();return !q||[c.last_name,c.first_name,c.email,c.phone,c.guardian_name,...c.address,c.import_email,c.import_phone,c.additional_addresses,...c.products.map(p=>p.title)].join(' ').normalize('NFKC').toLocaleLowerCase('fr-FR').includes(q);};
 function cell(row,text){const td=document.createElement('td');td.textContent=text;row.appendChild(td);return td;}
+let clubPaymentTotals = null;
+let clubPaymentTotalsError = false;
+
 function renderMoneySummary(){
  const totals=Object.fromEntries(moneyFields.map(([key])=>[key,0]));
  let partial=false;
  for(const c of all){if(c.forecast_unknown)partial=true;for(const key of Object.keys(totals))totals[key]+=c.amounts?.[key]||0;}
+ const includeClubPayments = Boolean($('club-registration-form'));
+ const clubTotal = clubPaymentTotals ? clubPaymentTotals.cheque + clubPaymentTotals.cash : 0;
+ for (const key of ['gross_cents','net_cents','planned_cents']) totals[key] += clubTotal;
+ const clubPartial = includeClubPayments && !clubPaymentTotals;
  const forecastKeys=['future_cents','planned_cents','overdue_cents','cancelled_cents'];
  const primary=[['net_cents','Encaissé','Après remboursements'],['future_cents','À venir','Échéances futures vérifiées'],['planned_cents','Total prévu','Encaissé + échéances à venir']];
  $('money-scope').textContent=($('test').checked?'TEST · ':'')+'Saison '+$('season').value+' · Tous les groupes · Hors filtres de recherche';
@@ -490,21 +497,33 @@ function renderMoneySummary(){
   const title=document.createElement('div');title.className='money-label';title.textContent=label;
   const value=document.createElement('strong');value.className='money-value';value.textContent=euro(totals[key]);
   const help=document.createElement('p');help.className='muted';help.textContent=hint;card.append(title,value,help);
-  if(partial&&forecastKeys.includes(key)){const badge=document.createElement('span');badge.className='money-badge';badge.textContent='Montant partiel';card.append(badge);}
+  if((partial&&forecastKeys.includes(key))||(clubPartial&&['net_cents','planned_cents'].includes(key))){const badge=document.createElement('span');badge.className='money-badge';badge.textContent='Montant partiel';card.append(badge);}
   $('money-summary').append(card);
  }
  const alerts=$('money-alerts');alerts.replaceChildren();
  const messages=[];
  if($('test').checked)messages.push('TEST : aucun de ces montants ne correspond à un encaissement réel.');
+ if (clubPartial) messages.push(clubPaymentTotalsError
+  ? 'Règlements au club indisponibles. Actualise pour charger les montants.'
+  : 'Chargement des règlements au club…');
  if(totals.overdue_cents)messages.push('Impayés échus : '+euro(totals.overdue_cents)+(partial?' · montant partiel':'')+'.');
  if(totals.disputed_cents)messages.push('Paiements contestés : '+euro(totals.disputed_cents)+' — inclus dans l’encaissé.');
  if(partial)messages.push('Prévision incomplète : certains échéanciers restent à vérifier.');
  for(const message of messages){const p=document.createElement('p');p.textContent=message;alerts.append(p);}alerts.hidden=!messages.length;
  $('money-breakdown').replaceChildren();
+ if (clubPaymentTotals) {
+  for (const [method, label] of [['cheque','Encaissé par chèque au club'],['cash','Encaissé en espèces au club']]) {
+   const term = document.createElement('dt');
+   const value = document.createElement('dd');
+   term.textContent = label;
+   value.textContent = euro(clubPaymentTotals[method]);
+   $('money-breakdown').append(term,value);
+  }
+ }
  for(const [key,label] of moneyFields.filter(([key])=>!primary.some(([k])=>k===key))){
   const term=document.createElement('dt');term.textContent=label;
   const value=document.createElement('dd');value.textContent=euro(totals[key]);
-  if(partial&&forecastKeys.includes(key)){const badge=document.createElement('span');badge.className='money-badge';badge.textContent='Partiel';value.append(badge);}
+  if((partial&&forecastKeys.includes(key))||(clubPartial&&key==='gross_cents')){const badge=document.createElement('span');badge.className='money-badge';badge.textContent='Partiel';value.append(badge);}
   $('money-breakdown').append(term,value);
  }
 }
@@ -839,10 +858,20 @@ async function refreshClubRegistrations() {
  if (session?.user.email?.toLowerCase() !== ADMIN) return;
  const scope = clubRegistrationScope();
  $('club-registration-scope').textContent = 'Saison ' + scope.season_id + (scope.test ? ' · MODE TEST' : '');
- const {data, error} = await client.from(clubRegistrationTable)
-  .select('id,first_name,last_name,method,amount_cents,received_on')
-  .match(scope).order('created_at', {ascending:false}).limit(100);
+ const [history, totals] = await Promise.all([
+  client.from(clubRegistrationTable)
+   .select('id,first_name,last_name,method,amount_cents,received_on')
+   .match(scope).order('created_at', {ascending:false}).limit(100),
+  client.rpc('km16_club_payment_totals', {p_season:scope.season_id,p_test:scope.test})
+ ]);
+ const {data, error} = history;
  if (request !== clubRegistrationRequest || session?.user.email?.toLowerCase() !== ADMIN) return;
+ clubPaymentTotalsError = Boolean(totals.error);
+ clubPaymentTotals = totals.error ? null : {cheque:0,cash:0};
+ for (const row of totals.data || []) {
+  clubPaymentTotals[row.method] = Number(row.total_cents);
+ }
+ renderMoneySummary();
  if (error || !data.length) {
   const item = document.createElement('li');
   item.textContent = error ? 'Historique indisponible.' : 'Aucun règlement au club pour cette saison.';

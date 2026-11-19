@@ -173,7 +173,7 @@ Deno.serve(async req=>{
    const today=parisToday();
    const trials=orders.filter(o=>o.livemode&&['essai','essai-saint-jean'].includes(o.product_id)&&o.approval!=='rejected').map(o=>o.id);
    const attended=trials.length?await db('km16_trial_attendance?order_id=in.('+trials.join(',')+')&attended_on=lte.'+today+'&select=order_id'):[];
-   return reply({orders,trial_attended_ids:attended.map(t=>t.order_id),renewal_window:renewalWindow(config,today),payments:await db('km16_membership_payments?user_id=eq.'+user.id+'&select=order_id,reference,amount_cents,refunded_cents,status,created_at&order=created_at.desc'),documents:ids.length?await db('km16_membership_documents?order_id=in.('+ids.join(',')+')&select=order_id,health_kind,health_status,school_required,school_status,paid_at,updated_at'):[]});
+   return reply({orders,season_end:config.season_end,trial_attended_ids:attended.map(t=>t.order_id),renewal_window:renewalWindow(config,today),payments:await db('km16_membership_payments?user_id=eq.'+user.id+'&select=order_id,reference,amount_cents,refunded_cents,status,created_at&order=created_at.desc'),documents:ids.length?await db('km16_membership_documents?order_id=in.('+ids.join(',')+')&select=order_id,health_kind,health_status,school_required,school_status,paid_at,updated_at'):[]});
   }
   if(data.action==='admin'){
    if(!admin)return reply({error:'Accès privé'},403);

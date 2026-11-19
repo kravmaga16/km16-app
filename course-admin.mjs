@@ -344,27 +344,81 @@ $('session-edit').onclick=()=>{
  editingSession=course.id;
  for(const [id,value] of [['session-date',course.session_date],['session-category',course.category],['session-start',course.start_time.slice(0,5)],['session-end',course.end_time.slice(0,5)],['session-venue',course.venue]])$(id).value=value;
  $('session-category').readOnly=true;
- $('session-submit').textContent='Enregistrer et prévenir les inscrits';$('session-exit-edit').hidden=false;
+ $('session-submit').textContent='Voir l’aperçu du changement';$('session-exit-edit').hidden=false;
  $('session-date').focus();
 };
-$('session-cancel').onclick=async()=>{
+const changeDialog=$('course-change-preview');
+let previewRevision=0,changeSaving=false;
+changeDialog.addEventListener('cancel',event=>{if(changeSaving)event.preventDefault();});
+changeDialog.addEventListener('close',()=>{previewRevision++;});
+$('course-change-close').onclick=()=>{if(!changeSaving)changeDialog.close();};
+async function previewCourseChange(args){
+ const revision=++previewRevision;
+ const details=$('course-change-details'),feedback=$('course-change-status');
+ const confirm=$('course-change-confirm'),close=$('course-change-close');
+ function write(tag,value){
+  const node=document.createElement(tag);node.textContent=value;details.append(node);return node;
+ }
+ details.replaceChildren();confirm.hidden=true;
+ feedback.textContent='Calcul de l’impact…';
+ if(!changeDialog.open)changeDialog.showModal();
+ try{
+  const {data,error}=await supa.rpc('km16_admin_course_change',args);
+  if(error)throw error;
+  if(revision!==previewRevision||!changeDialog.open)return;
+  write('p','Créneau actuel : '+data.old_label);
+  write('p','Changement prévu : '+data.new_label);
+  write('p',data.bookings+' inscription(s) active(s) · '+data.recipients+' adresse(s) à prévenir.');
+  feedback.textContent='';
+  if(!data.changed){feedback.textContent='Aucun changement à enregistrer.';return;}
+  if(data.body){
+   write('h3',data.subject);
+   const body=write('pre',data.body);body.style.whiteSpace='pre-wrap';body.style.overflowWrap='anywhere';
+   if(data.direct_count>0)write('p',data.direct_count+' destinataire(s) recevront un lien de remplacement personnalisé.');
+   if(data.direct_body){
+    const variant=write('details','');
+    const title=document.createElement('summary');title.textContent='Voir la version avec lien personnalisé';variant.append(title);
+    const message=document.createElement('pre');message.textContent=data.direct_body;
+    message.style.whiteSpace='pre-wrap';message.style.overflowWrap='anywhere';variant.append(message);
+   }
+  }
+  confirm.hidden=false;
+  confirm.textContent=args.p_cancel?'Confirmer l’annulation':'Confirmer la modification';
+  confirm.onclick=async()=>{
+   if(changeSaving)return;
+   changeSaving=true;confirm.disabled=true;close.disabled=true;
+   try{
+    const result=await supa.rpc('km16_admin_course_change',{...args,p_confirmation:data.confirmation});
+    if(result.error)throw result.error;
+    changeDialog.close();
+    endSessionEdit();
+    await load();
+    status('Changement enregistré. '+result.data.recipients+' e-mail(s) mis en file.');
+    void loadSessionMail();
+   }catch(error){
+    feedback.textContent=error.message;
+    confirm.hidden=true;
+   }finally{changeSaving=false;confirm.disabled=false;close.disabled=false;}
+  };
+ }catch(error){if(revision===previewRevision&&changeDialog.open)feedback.textContent=error.message;}
+}
+$('session-cancel').onclick=()=>{
  const course=sessions.find(s=>s.id===selectedSessionId);
- if(!course?.enabled||!window.confirm('Annuler cette séance et prévenir les inscrits par e-mail ?'))return;
- $('session-cancel').disabled=true;
- try{await call('admin_change_session',{session_id:course.id,cancel:true});endSessionEdit();await load();status('Séance annulée. Les e-mails sont mis en file.');void loadSessionMail();}
- catch(error){status(error.message,true);render();}
+ if(course?.enabled)void previewCourseChange({p_session:course.id,p_cancel:true});
 };
 $('session-form').onsubmit=async e=>{
  e.preventDefault();
  const date=$('session-date').value,category=$('session-category').value.trim(),start=$('session-start').value,end=$('session-end').value,venue=$('session-venue').value.trim();
  const editing=editingSession;
+ if(editing){
+  await previewCourseChange({p_session:editing,p_date:date,p_start:start,p_end:end,p_venue:venue});
+  return;
+ }
  $('session-submit').disabled=true;
  try{
   const values={session_date:date,start_time:start,end_time:end,venue};
-  if(editing)await call('admin_change_session',{...values,session_id:editing});
-  else await call('admin_session',{...values,course_key:JSON.stringify([category,start,end,venue]),category});
-  endSessionEdit();await load();status(editing?'Séance mise à jour. Les inscrits seront prévenus si le créneau a changé.':'Séance ajoutée.');
-  if(editing)void loadSessionMail();
+  await call('admin_session',{...values,course_key:JSON.stringify([category,start,end,venue]),category});
+  endSessionEdit();await load();status('Séance ajoutée.');
  }catch(error){status(error.message,true);}
  finally{$('session-submit').disabled=false;}
 };

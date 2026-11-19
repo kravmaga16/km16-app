@@ -354,6 +354,80 @@ function createProfileTabs(body){
  activate(0);
  return panels;
 }
+function addInvoiceResend(block,member){
+ const test=$('test').checked;
+ const orders=[...new Set((member.products||[]).filter(product=>!product.external)
+  .map(product=>product.order_id).filter(id=>typeof id==='string'&&/^[0-9a-f-]{36}$/i.test(id)))];
+ const status=document.createElement('p');
+ status.className='muted';
+ status.setAttribute('role','status');
+ block.append(status);
+ if(!orders.length){
+  status.textContent='Aucun dossier de facturation KM16 associé.';
+  return;
+ }
+ async function request(body){
+  const {data,error}=await client.functions.invoke('km16-invoice-resend',{body:{...body,test}});
+  if(error){
+   const result=await error.context?.json?.().catch(()=>null);
+   throw Error(result?.error||'Service de facturation indisponible.');
+  }
+  return data;
+ }
+ const load=document.createElement('button');
+ load.type='button';
+ load.textContent='Afficher les factures';
+ block.append(load);
+ load.onclick=async()=>{
+  load.disabled=true;
+  status.textContent='Recherche des factures…';
+  try{
+   const invoices=[];
+   for(let start=0;start<orders.length;start+=50){
+    const result=await request({action:'list',order_ids:orders.slice(start,start+50)});
+    invoices.push(...result.invoices);
+   }
+   if(!invoices.length){
+    status.textContent='Aucune facture PDF enregistrée pour ces dossiers.';
+    return;
+   }
+   const list=document.createElement('ul');
+   list.className='km16-profile-products';
+   for(const invoice of invoices){
+    const item=document.createElement('li');
+    const button=document.createElement('button');
+    button.type='button';
+    button.textContent='Renvoyer la facture';
+    button.setAttribute('aria-label','Renvoyer la facture '+invoice.number);
+    button.disabled=!invoice.recipient;
+    const feedback=document.createElement('p');
+    feedback.setAttribute('role','status');
+    item.append(document.createTextNode(invoice.number+' · '+new Date(invoice.issued_at).toLocaleDateString('fr-FR',{timeZone:'Europe/Paris'})+' · '+(invoice.recipient||'Adresse indisponible')+' '),button,feedback);
+    button.onclick=async()=>{
+     if(selectedMember!==member||!confirm('Renvoyer la facture '+invoice.number+' à '+invoice.recipient+' ?'))return;
+     button.disabled=true;
+     feedback.textContent='Envoi en cours…';
+     try{
+      const result=await request({action:'resend',number:invoice.number,recipient:invoice.recipient});
+      if(!result?.sent)throw Error('Envoi non confirmé.');
+      feedback.textContent='Facture renvoyée à '+invoice.recipient+'.';
+     }catch(error){
+      feedback.textContent=error.message;
+     }finally{
+      button.disabled=false;
+     }
+    };
+    list.append(item);
+   }
+   load.replaceWith(list);
+   status.textContent='';
+  }catch(error){
+   status.textContent=error.message;
+  }finally{
+   load.disabled=false;
+  }
+ };
+}
 function openMemberProfile(c){if(!all.includes(c))return;selectedMember=c;const panel=$('member-profile'),body=$('member-profile-content');body.replaceChildren();$('member-profile-title').textContent='Fiche · '+[c.first_name,c.last_name].filter(Boolean).join(' ');$('member-profile-scope').textContent='Saison '+$('season').value+' · '+(c.group||'Groupe à vérifier')+($('test').checked?' · ENVIRONNEMENT TEST':'');const {identity,subscription,billing,file,attendance}=createProfileTabs(body);
  const info=profileBlock(identity,'Identité et contact');profileLine(info,'Civilité',c.civility||c.civilite);profileLine(info,'Date de naissance',typeof c.birth_date==='string'?c.birth_date.split('-').reverse().join('/'):null);profileLine(info,'Prénom',c.first_name);profileLine(info,'Nom',c.last_name);profileLine(info,'Groupe',c.group);profileLine(info,'E-mail',c.email);profileLine(info,'Téléphone',c.phone);profileLine(info,'Représentant légal',c.guardian_name);profileLine(info,'Adresse',Array.isArray(c.address)?c.address.join(', '):'');
  if(c.external_only&&typeof c.id==='string'&&c.id.startsWith('import:')){
@@ -384,10 +458,7 @@ function openMemberProfile(c){if(!all.includes(c))return;selectedMember=c;const 
  const courseLink=document.createElement('a');courseLink.href='./course-admin.html';courseLink.textContent='Ouvrir la console des cours';profileBlock(attendance,'Gestion des cours').append(courseLink);
  const plan=profileBlock(subscription,'Saison et groupe');profileLine(plan,'Saison',$('season').value);profileLine(plan,'Groupe',c.group);
  const invoice=profileBlock(billing,'Factures KM16');
- const invoiceNote=document.createElement('p');
- invoiceNote.className='muted';
- invoiceNote.textContent='Les factures KM16 sont envoyées par e-mail au payeur après encaissement. Les PDF ne sont pas disponibles depuis cette fiche.';
- invoice.append(invoiceNote);
+ addInvoiceResend(invoice,c);
  profileLine(invoice,'Adresse de facturation',Array.isArray(c.address)?c.address.join(', '):'');
  const products=profileBlock(subscription,'Achats et inscriptions connus');if(!c.products?.length){profileLine(products,'Produits','Aucun produit enregistré dans ce fichier');}else{const ul=document.createElement('ul');ul.className='km16-profile-products';for(const p of c.products){const li=document.createElement('li');li.textContent=[p.title,p.state,p.external?'Montant non intégré':Number.isFinite(p.total_cents)?euro(p.total_cents):'Montant non renseigné'].filter(Boolean).join(' · ');ul.append(li);}products.append(ul);}
  const money=profileBlock(billing,'Situation financière · fichier clients');if(c.external_only){profileLine(money,'Statut','Import externe : montants non intégrés');}else{for(const [key,label] of moneyFields.slice(0,8)){profileLine(money,label,c.forecast_unknown&&['future_cents','planned_cents','overdue_cents','cancelled_cents'].includes(key)?'À vérifier':euro(c.amounts?.[key]||0));}if(c.forecast_unknown)profileLine(money,'Prévision','Échéancier incomplet');}

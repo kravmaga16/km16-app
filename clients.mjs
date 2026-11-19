@@ -256,6 +256,11 @@ async function refreshStageReminders(){
  }
 }
 $('km16-stage-reminders-refresh').onclick=refreshStageReminders;
+window.addEventListener('hashchange',()=>{
+ if(session?.user?.email?.toLowerCase()!==ADMIN)return;
+ if(location.hash==='#km16-stage-reminders')void refreshStageReminders();
+ if(['#km16-daily-dashboard','#km16-to-process','#workspace',''].includes(location.hash))void refreshProcessingItems();
+});
 
 function renderOverview(){renderApprovalDossiers();renderProcessingItems();const put=(id,v)=>{$(id).textContent=v;};if(!overviewLoaded){for(const id of ['kpi-members','kpi-net','kpi-review'])put(id,'—');renderPriorities();return;}const pendingOrders=new Set();for(const c of all){for(const p of c.products||[]){if(!p.external&&p.approval==='pending'&&p.order_id)pendingOrders.add(p.order_id);}}const review=pendingOrders.size;put('kpi-members',String(all.length));put('kpi-net',euro(all.reduce((sum,c)=>sum+(c.amounts?.net_cents||0),0)));put('kpi-review',String(review));$('kpi-members-note').textContent='Fiches du fichier · saison '+$('season').value;$('kpi-net-note').textContent=($('test').checked?'Mode TEST · ':'')+'Hors imports Sportigo/Fighty et boutique';$('kpi-review-note').textContent='Validations administratives en attente · '+($('test').checked?'mode test':'achats réels');$('kpi-updated').textContent='Données du fichier actualisées à '+new Date().toLocaleTimeString('fr-FR');renderPriorities();}
 async function refreshShirtKpi(){if(session?.user.email?.toLowerCase()!==ADMIN)return;const ticket=++shirtRefresh;putShirts('…','Consultation des commandes réelles…');try{const {data:{session:current}}=await client.auth.getSession();if(!current)throw Error('Session expirée');const r=await fetch('https://tlfewpbgbwesdriklxzb.supabase.co/functions/v1/km16-shirts',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+current.access_token},body:JSON.stringify({action:'list'})});const data=await r.json();if(!r.ok||!Array.isArray(data.orders))throw Error(data.error||'Commandes indisponibles');if(ticket!==shirtRefresh)return;const pending=data.orders.filter(o=>o.livemode===true&&o.status==='paid'&&!o.collected_at).length;putShirts(String(pending),'Commandes réelles payées · non retirées');}catch(e){if(ticket===shirtRefresh)putShirts('—','Données indisponibles · ouvrir la boutique');}}
@@ -419,8 +424,10 @@ function render(){
 async function load(){
  if(busy||session?.user.email?.toLowerCase()!==ADMIN)return;
  refreshExternalPayments();
- void refreshProcessingItems();
- void refreshStageReminders();
+ if(location.hash!=='#km16-email-relances'){
+  void refreshProcessingItems();
+  void refreshStageReminders();
+ }
  busy=true;render();const gen=generation,test=$('test').checked,season=$('season').value;showSeason();controller=new AbortController();
  $('data-status').textContent='Chargement du fichier clients…';
  try{

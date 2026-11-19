@@ -151,6 +151,20 @@ Deno.serve(async req=>{
    await db('km16_membership_orders?id=eq.'+data.order_id,'PATCH',{approval:data.approval});
    return reply({ok:true});
   }
+  if(data.action==='resume-checkout'){
+   if(!/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(data.order_id||''))return reply({error:'Dossier invalide'},400);
+   const order=(await db('km16_membership_orders?id=eq.'+data.order_id+'&user_id=eq.'+user.id+'&select=id,approval,total_cents,stripe_session_id,livemode'))[0];
+   if(!order)return reply({error:'Dossier introuvable dans votre espace'},404);
+   if(!config.enabled||!order.livemode||!live()||Deno.env.get('KM16_ADHESIONS_ALLOW_LIVE')!=='true'||order.approval==='rejected'||!order.stripe_session_id||order.total_cents<=0)
+    return reply({status:'unavailable'});
+   const activity=await db('km16_membership_payments?order_id=eq.'+order.id+'&status=in.(paid,refunded,disputed)&select=order_id&limit=1');
+   const checkout=await stripe.checkout.sessions.retrieve(order.stripe_session_id);
+   if(activity.length||checkout.status==='complete'||checkout.payment_status==='paid')return reply({status:'processed'});
+   if(checkout.status==='expired'||checkout.expires_at<=Math.floor(Date.now()/1000))return reply({status:'expired'});
+   if(checkout.status==='open'&&checkout.mode==='payment'&&checkout.payment_status==='unpaid'
+    &&checkout.livemode&&checkout.metadata?.km16_order===order.id&&checkout.url)return reply({status:'open',url:checkout.url});
+   return reply({status:'unavailable'});
+  }
   if(data.action!=='checkout')return reply({error:'Action inconnue'},400);
   // Aucun paiement tant que l’installation et les textes n’ont pas été validés.
   if(!config.enabled||!config.terms_url||!config.privacy_url)return reply({error:'Les inscriptions en ligne ouvriront prochainement'},409);
@@ -197,7 +211,7 @@ Deno.serve(async req=>{
   const customer=await stripe.customers.create({email:user.email,preferred_locales:['fr'],metadata:{km16_order:id}},{idempotencyKey:'km16-member-customer-'+id});
   const metadata={km16_source:'km16-membership-v1',km16_order:id};
   const consent=valid.count>1?'Cotisation totale '+(product.amount/100).toFixed(2)+' EUR, sans frais supplémentaires. Première échéance aujourd’hui, puis '+(valid.count-1)+' prélèvements mensuels de '+(valid.amounts[1]/100).toFixed(2)+' EUR. Vous autorisez KM16 à réutiliser cette carte pour ces échéances uniquement.':'';
-  const session=await stripe.checkout.sessions.create({mode:'payment',customer:customer.id,billing_address_collection:'required',customer_update:{name:'auto',address:'auto'},payment_method_types:['card'],line_items:[{price_data:{currency:'eur',unit_amount:valid.amounts[0],product_data:{name:product.title+' · '+(valid.count>1?'Échéance 1/'+valid.count:'Paiement intégral'),description:'Licence payée séparément. '+(valid.count>1?'Total cotisation : '+(product.amount/100).toFixed(2)+' EUR.':'')}},quantity:1}],metadata,payment_intent_data:{metadata,receipt_email:user.email,...(valid.count>1?{setup_future_usage:'off_session'}:{})},consent_collection:{terms_of_service:'required'},custom_text:{terms_of_service_acceptance:{message:'J’accepte les [conditions KM16]('+config.terms_url+').'},...(consent?{submit:{message:consent}}:{})},success_url:SITE+'/adhesion.html?espace=1&paid=1&order='+id,cancel_url:SITE+'/adhesion.html?cancel=1',locale:'fr',expires_at:Math.floor(Date.now()/1000)+1800},{idempotencyKey:'km16-member-checkout-'+id});
+  const session=await stripe.checkout.sessions.create({mode:'payment',customer:customer.id,billing_address_collection:'required',customer_update:{name:'auto',address:'auto'},payment_method_types:['card'],line_items:[{price_data:{currency:'eur',unit_amount:valid.amounts[0],product_data:{name:product.title+' · '+(valid.count>1?'Échéance 1/'+valid.count:'Paiement intégral'),description:'Licence payée séparément. '+(valid.count>1?'Total cotisation : '+(product.amount/100).toFixed(2)+' EUR.':'')}},quantity:1}],metadata,payment_intent_data:{metadata,receipt_email:user.email,...(valid.count>1?{setup_future_usage:'off_session'}:{})},consent_collection:{terms_of_service:'required'},custom_text:{terms_of_service_acceptance:{message:'J’accepte les [conditions KM16]('+config.terms_url+').'},...(consent?{submit:{message:consent}}:{})},success_url:SITE+'/adhesion.html?espace=1&paid=1&order='+id,cancel_url:SITE+'/adhesion.html?espace=1&cancel=1&order='+id,locale:'fr',expires_at:Math.floor(Date.now()/1000)+1800},{idempotencyKey:'km16-member-checkout-'+id});
   await db('km16_membership_orders?id=eq.'+id,'PATCH',{stripe_session_id:session.id,customer_id:customer.id});
   return reply({url:session.url});
  }catch(e){console.error('KM16 adhésions',e?.type||e?.name);return reply({error:'Demande non aboutie. Contactez contact@km16.fr avant de recommencer si vous avez été débité'},500);}

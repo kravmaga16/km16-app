@@ -150,6 +150,24 @@ export async function getPendingCheckout(session) {
   return {kind: record.kind, url: record.url};
 }
 
+const ORDER_RETURN_KEY = 'km16-order-login-return';
+export function saveOrderLoginReturn(order, email) {
+  try {
+    localStorage.setItem(ORDER_RETURN_KEY, JSON.stringify({order, email: normalizeEmail(email), expires: Date.now() + TTL}));
+  } catch {}
+}
+export function takeOrderLoginReturn(session) {
+  const verified = verifiedAccount(session);
+  if (!verified) return null;
+  try {
+    const value = JSON.parse(localStorage.getItem(ORDER_RETURN_KEY));
+    if (!value || value.email !== normalizeEmail(verified.user.email)) return null;
+    localStorage.removeItem(ORDER_RETURN_KEY);
+    if (value.expires <= Date.now() || !/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(value.order)) return null;
+    return '/adhesion.html?espace=1&order=' + value.order;
+  } catch { return null; }
+}
+
 function timeout(promise) {
   let timer;
   return Promise.race([promise, new Promise((_, reject) => {

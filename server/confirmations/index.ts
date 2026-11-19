@@ -28,7 +28,7 @@ function confirmationMail(snapshot,charge,schedule,archive,test=false) {
  '',`Version des documents : ${snapshot.terms_version}`,`Acceptation enregistrée le ${new Date(snapshot.consented_at).toLocaleString('fr-FR',{timeZone:'Europe/Paris'})}.`,
  'Vous trouverez ci-joints les conditions acceptées, la politique de confidentialité et le règlement intérieur. Conservez ce message et ses pièces jointes.',
  'Les montants ci-dessus constituent l’échéancier initial. Un remboursement ou une modification ultérieure doit faire l’objet d’un récapitulatif distinct.',
- '', 'Votre dossier : https://app.km16.fr/adhesion.html','Contact : contact@km16.fr','','Alexandre Marchat','Président de KM16'].join('\n');
+ '', 'Votre dossier : https://app.km16.fr/adhesion.html?espace=1&order='+encodeURIComponent(snapshot.id),'Contact : contact@km16.fr','','Alexandre Marchat','Président de KM16'].join('\n');
  return {subject:(test?'[TEST KM16] ':'')+'KM16 · Confirmation de votre commande',text,
  attachments:[['conditions-adhesion.html','conditions_html'],['confidentialite.html','privacy_html'],['reglement-interieur.html','rules_html']].map(([filename,key])=>({filename,content:archive[key],contentType:'text/html; charset=utf-8'}))};
 }

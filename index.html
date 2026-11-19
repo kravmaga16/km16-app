@@ -322,7 +322,7 @@ document.addEventListener('visibilitychange',()=>{if(!document.hidden)km16Update
 </script><script>
 (function(){const box=document.querySelector('.club-news');const btn=box&&box.querySelector('.club-news-toggle');if(!btn)return;btn.addEventListener('click',function(){const paused=box.classList.toggle('is-paused');btn.setAttribute('aria-pressed',String(paused));btn.setAttribute('aria-label',paused?'Reprendre le défilement':'Mettre le défilement en pause');btn.textContent=paused?'▶':'Ⅱ';});})();
 </script><script type="module">
-import {createCheckoutAccess, verifiedAccount, normalizeEmail, getPendingCheckout} from './checkout-account.mjs?v=20261118';
+import {createCheckoutAccess, verifiedAccount, normalizeEmail, getPendingCheckout, takeOrderLoginReturn} from './checkout-account.mjs?v=dossier-20261119';
 (async function () {
   'use strict';
   const BASE = 'https://tlfewpbgbwesdriklxzb.supabase.co';
@@ -509,7 +509,7 @@ import {createCheckoutAccess, verifiedAccount, normalizeEmail, getPendingCheckou
       else confirmedReturn=!recovery;
     }
     const {data}=await client.auth.getSession(); account(data.session);
-    if(confirmedReturn){const pending=await getPendingCheckout(session);if(pending&&pending.kind!=='video'){location.replace(pending.url);return;}}
+    if(confirmedReturn){const target=takeOrderLoginReturn(session);if(target){location.replace(target);return;}const pending=await getPendingCheckout(session);if(pending&&pending.kind!=='video'){location.replace(pending.url);return;}}
     el('kv-auth-submit').disabled=false;el('kv-access-submit').disabled=false;
     el('kv-email-access').onsubmit=async event=>{
       event.preventDefault();const button=el('kv-access-submit');if(button.disabled)return;button.disabled=true;

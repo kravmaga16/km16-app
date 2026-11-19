@@ -9,10 +9,10 @@ const uuid=s=>typeof s==='string'&&/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f
 const email=s=>typeof s==='string'&&s.length<=254&&/^[^\s@<>;,]+@[^\s@<>;,]+\.[^\s@<>;,]+$/.test(s);
 const date=s=>typeof s==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(s)&&Number.isFinite(Date.parse(s))&&new Date(s).toISOString().slice(0,10)===s;
 const today=()=>new Intl.DateTimeFormat('sv-SE',{timeZone:'Europe/Paris',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
-export function trialMessage(day,stopUrl){return {
+export function trialMessage(day,stopUrl,joinUrl=SITE+'/adhesion.html?apres_essai=1'){return {
  subject:day===3?'KM16 – Et si vous poursuiviez après votre cours d’essai ?':'KM16 – Un dernier rappel après votre cours d’essai',
  text:['Bonjour,','',day===3?'Nous espérons que votre cours d’essai chez KM16 vous a plu !':'Nous espérons que votre cours d’essai vous a donné envie de poursuivre l’entraînement avec KM16.','',
- 'Pour continuer à progresser avec nous, retrouvez les formules d’abonnement dans l’application :','https://app.km16.fr/adhesion.html','',
+ 'Pour continuer à progresser avec nous, retrouvez les formules d’abonnement dans l’application :',joinUrl,'',
  'Une question sur les cours, les horaires ou votre inscription ? Répondez à cet e-mail : nous serons ravis de vous aider.',
  '',day===3?'Un dernier rappel est prévu sept jours après votre essai si vous n’avez pas pris d’abonnement.':'Ceci est notre dernier rappel automatique après votre essai.',
  '', 'À bientôt sur les tatamis !','','L’équipe KRAV MAGA 16','contact@km16.fr','', 'Ne plus recevoir ces rappels : '+stopUrl].join('\n')
@@ -37,7 +37,13 @@ export function createHandler(env,fetcher=fetch,mail=nodemailer,push=webpush){re
      if(!t||!await db('rpc/km16_trial_eligible','POST',{p_trial:job.trial_id})){state='skipped';error_code='no_longer_eligible';}
      else if(job.channel==='email'){
       if(!env('KM16_DOCUMENTS_SMTP_PASSWORD'))throw Error('smtp_configuration');
-      const stopUrl=SITE+'/trial-stop.html#'+t.id+'.'+await signature(t),message=trialMessage(job.day,stopUrl);message.text=message.text.replace('Bonjour,\n\n','Bonjour,\n\nPratiquant : '+t.first_name+' '+t.last_name+'\n\n');
+      let join=SITE+'/adhesion.html?apres_essai=1';
+      if(date(t.birth_date)){
+       const now=today();const age=Number(now.slice(0,4))-Number(t.birth_date.slice(0,4))-Number(now.slice(5)<t.birth_date.slice(5));
+       join+='&categorie='+(age>=15?'Adultes':age>=10?'Ados':'Enfants');
+      }
+      if(uuid(t.order_id))join+='&essai='+t.order_id;
+      const stopUrl=SITE+'/trial-stop.html#'+t.id+'.'+await signature(t),message=trialMessage(job.day,stopUrl,join);message.text=message.text.replace('Bonjour,\n\n','Bonjour,\n\nPratiquant : '+t.first_name+' '+t.last_name+'\n\n');
       const transport=mail.createTransport({host:'smtp.mail.ovh.net',port:465,secure:true,auth:{user:'contact@km16.fr',pass:env('KM16_DOCUMENTS_SMTP_PASSWORD')},connectionTimeout:10000,greetingTimeout:10000,socketTimeout:15000,logger:false,debug:false,tls:{rejectUnauthorized:true}});
       try{if(!await db('rpc/km16_trial_eligible','POST',{p_trial:job.trial_id})){state='skipped';error_code='no_longer_eligible';}else{started=true;const result=await transport.sendMail({from:'KM16 <contact@km16.fr>',replyTo:'contact@km16.fr',to:t.email,subject:message.subject,text:message.text,messageId:'<km16-trial-'+job.id+'@km16.fr>',disableFileAccess:true,disableUrlAccess:true});state=result.accepted?.length?'accepted':'failed';}}finally{transport.close();}
      }else{

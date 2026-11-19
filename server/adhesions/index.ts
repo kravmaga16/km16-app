@@ -39,7 +39,23 @@ async function db(path,method='GET',body=undefined,prefer=''){
  const r=await fetch(base+'/rest/v1/'+path,{method,headers:{apikey:key,Authorization:'Bearer '+key,'Content-Type':'application/json',...(prefer?{Prefer:prefer}:{})},...(body!==undefined?{body:JSON.stringify(body)}:{})});
  if(!r.ok)throw Error('Base indisponible');const t=await r.text();return t?JSON.parse(t):null;
 }
+const parisToday=()=>new Intl.DateTimeFormat('en-CA',{timeZone:'Europe/Paris',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
+function renewalWindow(config,today){
+ const start=Number(String(config.season_end).slice(0,4))-1;
+ const opens=start+'-06-01';
+ return config.enabled&&start>=2027&&today>=opens&&today<=config.season_end
+  ?{opens,previous:(start-1)+'-06-01'}:null;
+}
+async function participantKeyFor(userId,seasonEnd,order){
+ return digest([live()?'live':'test',userId,seasonEnd,order.first_name.trim().toLowerCase(),order.last_name.trim().toLowerCase(),order.birth_date].join('|'));
+}
 const live=()=>Deno.env.get('KM16_ADHESIONS_STRIPE_SECRET_KEY')?.startsWith('sk_live_')===true;
+function createMembershipCheckout(order,config,customerId,email,idempotencyKey,expiry){
+  const id=order.id;
+  const metadata={km16_source:'km16-membership-v1',km16_order:id};
+  const consent=order.count>1?'Cotisation totale '+(order.total_cents/100).toFixed(2)+' EUR, sans frais supplémentaires. Première échéance aujourd’hui, puis '+(order.count-1)+' prélèvements mensuels de '+(order.amounts[1]/100).toFixed(2)+' EUR. Vous autorisez KM16 à réutiliser cette carte pour ces échéances uniquement.':'';
+  return stripe.checkout.sessions.create({mode:'payment',customer:customerId,billing_address_collection:'required',customer_update:{name:'auto',address:'auto'},payment_method_types:['card'],line_items:[{price_data:{currency:'eur',unit_amount:order.amounts[0],product_data:{name:order.title+' · '+(order.count>1?'Échéance 1/'+order.count:'Paiement intégral'),description:'Licence payée séparément. '+(order.count>1?'Total cotisation : '+(order.total_cents/100).toFixed(2)+' EUR.':'')}},quantity:1}],metadata,payment_intent_data:{metadata,receipt_email:email,...(order.count>1?{setup_future_usage:'off_session'}:{})},consent_collection:{terms_of_service:'required'},custom_text:{terms_of_service_acceptance:{message:'J’accepte les [conditions KM16]('+config.terms_url+').'},...(consent?{submit:{message:consent}}:{})},success_url:SITE+'/adhesion.html?espace=1&paid=1&order='+id,cancel_url:SITE+'/adhesion.html?espace=1&cancel=1&order='+id,locale:'fr',...(expiry?{expires_at:expiry}:{})},{idempotencyKey});
+}
 const digest=async value=>Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(value)))).map(x=>x.toString(16).padStart(2,'0')).join('');
 async function offerFor(token){
  if(!/^[a-f0-9]{64}$/.test(token||''))return null;
@@ -129,10 +145,35 @@ Deno.serve(async req=>{
    const ok=await db('rpc/km16_revoke_purchase_link','POST',{p_id:data.id});
    return ok?reply({ok:true}):reply({error:'Lien déjà utilisé ou indisponible. Vérifiez le dossier dans Stripe.'},409);
   }
+  if(data.action==='membership-reuse'){
+   const id=String(data.order_id||'');
+   if(!/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(id))return reply({error:'Dossier invalide'},400);
+   const order=(await db('km16_membership_orders?id=eq.'+id+'&user_id=eq.'+user.id+'&livemode=eq.true&select=id,product_id,first_name,last_name,birth_date,phone,guardian_name,approval,created_at'))[0];
+   if(!order||order.approval==='rejected')return reply({error:'Dossier indisponible dans votre espace'},404);
+   const today=parisToday();
+   if(data.kind==='trial'){
+    if(!(await db('km16_trial_attendance?order_id=eq.'+id+'&attended_on=lte.'+today+'&select=order_id&limit=1')).length)
+     return reply({error:'La présence au cours d’essai n’est pas encore enregistrée'},409);
+   }else if(data.kind==='renewal'){
+    const window=renewalWindow(config,today);
+    const product=(await db('km16_membership_products?id=eq.'+encodeURIComponent(order.product_id)+'&select=kind'))[0];
+    const date=order.created_at.slice(0,10);
+    if(!window||product?.kind!=='annual'||order.approval!=='approved'||date<window.previous||date>=window.opens)
+     return reply({error:'Ce dossier n’est pas éligible au renouvellement en ligne'},409);
+    const key=await participantKeyFor(user.id,config.season_end,order);
+    if((await db('km16_membership_orders?participant_key=eq.'+key+'&select=id&limit=1')).length)
+     return reply({error:'Une inscription existe déjà pour ce pratiquant pour la nouvelle saison'},409);
+   }else return reply({error:'Parcours invalide'},400);
+   const {first_name,last_name,birth_date,phone,guardian_name,product_id}=order;
+   return reply({first_name,last_name,birth_date,phone,guardian_name,product_id});
+  }
   if(data.action==='orders'){
    const orders=await db('km16_membership_orders?user_id=eq.'+user.id+'&select=id,product_id,title,first_name,last_name,livemode,total_cents,count,amounts,approval,created_at,stripe_session_id,schedule_id&order=created_at.desc');
    const ids=orders.map(o=>o.id);
-   return reply({orders,payments:await db('km16_membership_payments?user_id=eq.'+user.id+'&select=order_id,reference,amount_cents,refunded_cents,status,created_at&order=created_at.desc'),documents:ids.length?await db('km16_membership_documents?order_id=in.('+ids.join(',')+')&select=order_id,health_kind,health_status,school_required,school_status,paid_at,updated_at'):[]});
+   const today=parisToday();
+   const trials=orders.filter(o=>o.livemode&&['essai','essai-saint-jean'].includes(o.product_id)&&o.approval!=='rejected').map(o=>o.id);
+   const attended=trials.length?await db('km16_trial_attendance?order_id=in.('+trials.join(',')+')&attended_on=lte.'+today+'&select=order_id'):[];
+   return reply({orders,trial_attended_ids:attended.map(t=>t.order_id),renewal_window:renewalWindow(config,today),payments:await db('km16_membership_payments?user_id=eq.'+user.id+'&select=order_id,reference,amount_cents,refunded_cents,status,created_at&order=created_at.desc'),documents:ids.length?await db('km16_membership_documents?order_id=in.('+ids.join(',')+')&select=order_id,health_kind,health_status,school_required,school_status,paid_at,updated_at'):[]});
   }
   if(data.action==='admin'){
    if(!admin)return reply({error:'Accès privé'},403);
@@ -153,17 +194,40 @@ Deno.serve(async req=>{
   }
   if(data.action==='resume-checkout'){
    if(!/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(data.order_id||''))return reply({error:'Dossier invalide'},400);
-   const order=(await db('km16_membership_orders?id=eq.'+data.order_id+'&user_id=eq.'+user.id+'&select=id,approval,total_cents,stripe_session_id,livemode'))[0];
+   const order=(await db('km16_membership_orders?id=eq.'+data.order_id+'&user_id=eq.'+user.id+'&select=id,approval,total_cents,stripe_session_id,livemode,customer_id,product_id,count,amounts,title,terms_version,participant_key,first_name,last_name,birth_date,purchase_link_id'))[0];
    if(!order)return reply({error:'Dossier introuvable dans votre espace'},404);
    if(!config.enabled||!order.livemode||!live()||Deno.env.get('KM16_ADHESIONS_ALLOW_LIVE')!=='true'||order.approval==='rejected'||!order.stripe_session_id||order.total_cents<=0)
     return reply({status:'unavailable'});
    const activity=await db('km16_membership_payments?order_id=eq.'+order.id+'&status=in.(paid,refunded,disputed)&select=order_id&limit=1');
    const checkout=await stripe.checkout.sessions.retrieve(order.stripe_session_id);
    if(activity.length||checkout.status==='complete'||checkout.payment_status==='paid')return reply({status:'processed'});
-   if(checkout.status==='expired'||checkout.expires_at<=Math.floor(Date.now()/1000))return reply({status:'expired'});
-   if(checkout.status==='open'&&checkout.mode==='payment'&&checkout.payment_status==='unpaid'
-    &&checkout.livemode&&checkout.metadata?.km16_order===order.id&&checkout.url)return reply({status:'open',url:checkout.url});
-   return reply({status:'unavailable'});
+   if(checkout.mode!=='payment'||checkout.payment_status!=='unpaid'||!checkout.livemode||checkout.metadata?.km16_order!==order.id)
+    return reply({status:'unavailable'});
+   if(checkout.status==='open'&&checkout.url&&checkout.expires_at>Math.floor(Date.now()/1000))return reply({status:'open',url:checkout.url});
+   if(checkout.status!=='expired')return reply({status:'unavailable'});
+   if(!order.customer_id||order.terms_version!==config.terms_version||!config.terms_url||!config.privacy_url)
+    return reply({status:'expired'});
+   const product=(await db('km16_membership_products?id=eq.'+encodeURIComponent(order.product_id)))[0];
+   const today=parisToday();
+   if(!product||product.draft||product.kind==='monthly'||product.event_date&&product.event_date<today||
+    product.kind==='annual'&&(today>config.season_end||order.participant_key!==await participantKeyFor(user.id,config.season_end,order)))
+    return reply({status:'expired'});
+   if(order.purchase_link_id){
+    const offer=(await db('km16_purchase_links?id=eq.'+order.purchase_link_id+'&select=order_id,revoked_at,expires_at,total_cents'))[0];
+    if(!offer||offer.order_id!==order.id||offer.revoked_at||Date.parse(offer.expires_at)<=Date.now()||offer.total_cents!==order.total_cents)
+     return reply({status:'expired'});
+   }else if(product.amount!==order.total_cents)return reply({status:'expired'});
+   const previous=await stripe.checkout.sessions.list({customer:order.customer_id,limit:100});
+   const related=previous.data.filter(s=>s.metadata?.km16_order===order.id);
+   if(previous.has_more)return reply({status:'expired'});
+   if(related.some(s=>s.status==='complete'||s.payment_status==='paid'))return reply({status:'processed'});
+   const existing=related.find(s=>s.status==='open'&&s.payment_status==='unpaid'&&s.expires_at>Math.floor(Date.now()/1000)&&s.url);
+   const anchor=related.find(s=>s.status==='expired')||checkout;
+   const candidate=existing||await createMembershipCheckout(order,config,order.customer_id,user.email,'km16-reopen-'+anchor.id);
+   const replacement=existing||await stripe.checkout.sessions.retrieve(candidate.id);
+   if(replacement.status!=='open'||!replacement.url)return reply({status:'unavailable'});
+   await db('km16_membership_orders?id=eq.'+order.id+'&stripe_session_id=eq.'+encodeURIComponent(checkout.id),'PATCH',{stripe_session_id:replacement.id});
+   return reply({status:'open',url:replacement.url});
   }
   if(data.action!=='checkout')return reply({error:'Action inconnue'},400);
   // Aucun paiement tant que l’installation et les textes n’ont pas été validés.
@@ -209,9 +273,7 @@ Deno.serve(async req=>{
   }else await db('km16_membership_orders','POST',order);
   if(product.amount===0)return reply({free:true});
   const customer=await stripe.customers.create({email:user.email,preferred_locales:['fr'],metadata:{km16_order:id}},{idempotencyKey:'km16-member-customer-'+id});
-  const metadata={km16_source:'km16-membership-v1',km16_order:id};
-  const consent=valid.count>1?'Cotisation totale '+(product.amount/100).toFixed(2)+' EUR, sans frais supplémentaires. Première échéance aujourd’hui, puis '+(valid.count-1)+' prélèvements mensuels de '+(valid.amounts[1]/100).toFixed(2)+' EUR. Vous autorisez KM16 à réutiliser cette carte pour ces échéances uniquement.':'';
-  const session=await stripe.checkout.sessions.create({mode:'payment',customer:customer.id,billing_address_collection:'required',customer_update:{name:'auto',address:'auto'},payment_method_types:['card'],line_items:[{price_data:{currency:'eur',unit_amount:valid.amounts[0],product_data:{name:product.title+' · '+(valid.count>1?'Échéance 1/'+valid.count:'Paiement intégral'),description:'Licence payée séparément. '+(valid.count>1?'Total cotisation : '+(product.amount/100).toFixed(2)+' EUR.':'')}},quantity:1}],metadata,payment_intent_data:{metadata,receipt_email:user.email,...(valid.count>1?{setup_future_usage:'off_session'}:{})},consent_collection:{terms_of_service:'required'},custom_text:{terms_of_service_acceptance:{message:'J’accepte les [conditions KM16]('+config.terms_url+').'},...(consent?{submit:{message:consent}}:{})},success_url:SITE+'/adhesion.html?espace=1&paid=1&order='+id,cancel_url:SITE+'/adhesion.html?espace=1&cancel=1&order='+id,locale:'fr',expires_at:Math.floor(Date.now()/1000)+1800},{idempotencyKey:'km16-member-checkout-'+id});
+  const session=await createMembershipCheckout(order,config,customer.id,user.email,'km16-member-checkout-'+id,Math.floor(Date.now()/1000)+1800);
   await db('km16_membership_orders?id=eq.'+id,'PATCH',{stripe_session_id:session.id,customer_id:customer.id});
   return reply({url:session.url});
  }catch(e){console.error('KM16 adhésions',e?.type||e?.name);return reply({error:'Demande non aboutie. Contactez contact@km16.fr avant de recommencer si vous avez été débité'},500);}

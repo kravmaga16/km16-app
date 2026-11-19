@@ -151,9 +151,9 @@ export async function getPendingCheckout(session) {
 }
 
 const ORDER_RETURN_KEY = 'km16-order-login-return';
-export function saveOrderLoginReturn(order, email) {
+export function saveOrderLoginReturn(order, email, journey) {
   try {
-    localStorage.setItem(ORDER_RETURN_KEY, JSON.stringify({order, email: normalizeEmail(email), expires: Date.now() + TTL}));
+    localStorage.setItem(ORDER_RETURN_KEY, JSON.stringify({order, journey, email: normalizeEmail(email), expires: Date.now() + TTL}));
   } catch {}
 }
 export function takeOrderLoginReturn(session) {
@@ -164,6 +164,8 @@ export function takeOrderLoginReturn(session) {
     if (!value || value.email !== normalizeEmail(verified.user.email)) return null;
     localStorage.removeItem(ORDER_RETURN_KEY);
     if (value.expires <= Date.now() || !/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(value.order)) return null;
+    if (value.journey === 'trial') return '/adhesion.html?apres_essai=1&essai=' + value.order;
+    if (value.journey === 'renewal') return '/adhesion.html?renouveler=' + value.order;
     return '/adhesion.html?espace=1&order=' + value.order;
   } catch { return null; }
 }

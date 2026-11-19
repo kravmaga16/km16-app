@@ -43,8 +43,13 @@ async function instructors(){
  status.textContent=result.sessions.length?'Sélectionnez une séance.':'Aucune séance attribuée à ce compte.';
  if(!result.sessions.length)return;
  for(const s of result.sessions){const o=make(select,'option',sessionLabel(s));o.value=s.id;}
- const now=clock.format(new Date()).replace(' ','T');
- select.value=(result.sessions.find(s=>s.session_date+'T'+s.start_time.slice(0,5)>=now)??result.sessions.at(-1)).id;
+ const [today, time] = clock.format(new Date()).split(' ');
+ const todaySessions = result.sessions.filter(session => session.session_date === today);
+ const ongoing = todaySessions.find(session =>
+  session.start_time.slice(0, 5) <= time && session.end_time.slice(0, 5) > time);
+ const laterToday = todaySessions.find(session => session.start_time.slice(0, 5) > time);
+ const future = result.sessions.find(session => session.session_date > today);
+ select.value = (ongoing ?? laterToday ?? todaySessions.at(-1) ?? future ?? result.sessions.at(-1)).id;
  let revision=0;
  async function show(args={}){
   const ticket=++revision;
@@ -52,12 +57,21 @@ async function instructors(){
   const payload=await rpc('km16_instructor_courses',{p_session:id,...args});
   if(ticket!==revision)return;
   rows.replaceChildren();
-  status.textContent=payload.bookings.length+' inscription(s) active(s) pour cette séance.';
-  for(const entry of payload.bookings){
-   const item=row();make(item,'h2',[entry.first_name,entry.last_name].join(' '));
-   const actions=make(item,'div');actions.className='actions';
-   button(actions,'Présent',()=>show({p_booking:entry.id,p_present:true})).setAttribute('aria-pressed',String(entry.present===true));
-   button(actions,'Absent',()=>show({p_booking:entry.id,p_present:false})).setAttribute('aria-pressed',String(entry.present===false));
+  const pending = payload.bookings.filter(entry => entry.present == null).length;
+  const present = payload.bookings.filter(entry => entry.present === true).length;
+  const absent = payload.bookings.length - pending - present;
+  status.textContent = payload.bookings.length
+   ? `${pending} à pointer · ${present} présent(s) · ${absent} absent(s)`
+   : 'Aucune inscription active pour cette séance.';
+  for (const entry of payload.bookings) {
+   const item = row();
+   make(item, 'h2', [entry.first_name, entry.last_name].join(' '));
+   const actions = make(item, 'div');
+   actions.className = 'actions';
+   for (const [label, value] of [['Présent', true], ['Absent', false]]) {
+    const control = button(actions, label, () => show({p_booking: entry.id, p_present: value}));
+    control.setAttribute('aria-pressed', String(entry.present === value));
+   }
   }
   if(result.admin){
    const item=row();make(item,'h2','Accès instructeurs à cette séance');

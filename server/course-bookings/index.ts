@@ -38,6 +38,14 @@ Deno.serve(async(req:Request)=>{
   if(action==='book'){
    const owner=req.headers.has('authorization')?await verifiedUser(req):null;
    if(req.headers.has('authorization')&&!owner)return reply({error:'Reconnectez-vous à votre espace KM16.'},401);
+   let householdId=null;
+   if(payload.household_id){
+    const value=text(payload.household_id);
+    if(!owner||!/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(value)
+     ||!(await db('km16_household_members?id=eq.'+value+'&owner_id=eq.'+owner.id+'&select=id&limit=1')).length)
+     return reply({error:'Profil indisponible dans votre foyer'},400);
+    householdId=value;
+   }
    const id=text(payload.session_id),first=text(payload.first_name),last=text(payload.last_name),email=text(owner?.email??payload.email).toLowerCase();
    if(!/^[0-9a-f-]{36}$/.test(id)||first.length<1||first.length>100||last.length<1||last.length>100||!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)||email.length>254)return reply({error:'Informations invalides'},400);
    if(payload.website)return reply({error:'Demande refusée'},400);
@@ -47,7 +55,7 @@ Deno.serve(async(req:Request)=>{
    if(recent.length>=5)return reply({error:'Trop de demandes récentes. Réessayez plus tard.'},429);
    const token=crypto.randomUUID()+crypto.randomUUID();
    let rows;
-   try{rows=await db('km16_course_bookings','POST',{session_id:id,first_name:first,last_name:last,email,status:'Inscrit',owner_id:owner?.id??null,cancellation_hash:await sha(token)});}
+   try{rows=await db('km16_course_bookings','POST',{session_id:id,first_name:first,last_name:last,email,status:'Inscrit',owner_id:owner?.id??null,household_id:householdId,cancellation_hash:await sha(token)});}
    catch(e){if(String(e).includes('23505'))return reply({error:'Une inscription active existe déjà pour cette adresse et ce cours.'},409);throw e;}
    return reply({ok:true,id:rows[0].id,cancellation_token:token,account_booking:Boolean(owner)});
   }
@@ -70,6 +78,24 @@ Deno.serve(async(req:Request)=>{
    if(!Array.isArray(payload.ids)||payload.ids.length>2000||payload.ids.some((x:unknown)=>!/^[-0-9a-f]{36}$/.test(text(x))))return reply({error:'Sélection invalide'},400);
    if(payload.ids.length)await db('km16_course_bookings?id=in.('+payload.ids.join(',')+')&read_at=is.null','PATCH',{read_at:new Date().toISOString()});
    return reply({ok:true});
+  }
+  if(action==='admin_change_session'){
+   const id=text(payload.session_id);
+   if(!/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(id))return reply({error:'Séance invalide'},400);
+   const current=(await db('km16_course_sessions?id=eq.'+id))[0];
+   const now=new Intl.DateTimeFormat('sv-SE',{timeZone:'Europe/Paris',dateStyle:'short',timeStyle:'short',hourCycle:'h23'}).format(new Date()).replace(' ','T');
+   if(!current?.enabled||current.session_date+'T'+current.start_time.slice(0,5)<=now)return reply({error:'Séance indisponible'},409);
+   let change:{enabled?:boolean;session_date?:string;start_time?:string;end_time?:string;venue?:string};
+   if(payload.cancel===true)change={enabled:false};
+   else{
+    const date=text(payload.session_date),start=text(payload.start_time),end=text(payload.end_time),venue=text(payload.venue);
+    if(!safeDate(date)||venue.length<2||venue.length>120||!/^([01]\d|2[0-3]):[0-5]\d$/.test(start)||!/^([01]\d|2[0-3]):[0-5]\d$/.test(end)||start>=end||date+'T'+start<=now)
+     return reply({error:'Données du cours invalides'},400);
+    change={session_date:date,start_time:start,end_time:end,venue};
+   }
+   const rows=await db('km16_course_sessions?id=eq.'+id+'&enabled=eq.true','PATCH',change);
+   if(!rows?.length)return reply({error:'Séance indisponible'},409);
+   return reply({ok:true,session:rows[0]});
   }
   if(action==='admin_session'){
    const date=text(payload.session_date),course=text(payload.course_key),category=text(payload.category),start=text(payload.start_time),end=text(payload.end_time),venue=text(payload.venue);

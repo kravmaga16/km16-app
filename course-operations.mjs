@@ -50,7 +50,7 @@ async function reservations(cancel=null){
   item.id='booking-'+entry.id;item.tabIndex=-1;
   make(item,'h2',[entry.first_name,entry.last_name].join(' '));
   make(item,'p',sessionLabel(entry));
-  make(item,'p',entry.status);
+  make(item,'p',entry.session_enabled===false&&entry.status==='Inscrit'?'Séance annulée par le club':entry.status);
   if(entry.cancellable)appendMoveCourse(item,entry);
   if(entry.cancellable)button(item,'Annuler cette réservation',async()=>{
    if(window.confirm('Annuler la réservation de '+entry.first_name+' pour cette séance ?'))await reservations(entry.id);

@@ -83,6 +83,7 @@ function render(){
    (!search||[b.first_name,b.last_name,b.email,b.last_name+' '+b.first_name,b.first_name+' '+b.last_name].join(' ').toLocaleLowerCase('fr-FR').includes(search));
  }).sort((a,b)=>{const x=byId.get(a.session_id),y=byId.get(b.session_id);return x.session_date.localeCompare(y.session_date)||x.start_time.localeCompare(y.start_time)||a.last_name.localeCompare(b.last_name,'fr')});
  const focused=sessions.find(s=>s.id===selectedSessionId);
+ $('session-edit').disabled=$('session-cancel').disabled=!focused?.enabled||focused.session_date<today;
  $('session-focus').hidden=!focused;
  $('session-focus-label').textContent=focused?'Séance sélectionnée : '+dateFr(focused.session_date)+' · '+focused.start_time.slice(0,5)+' · '+focused.category+' · '+focused.venue:'';
  $('results-count').textContent=shown.length+' inscription(s) affichée(s) · '+(view==='upcoming'?'séances à venir':view==='active'?'inscriptions actives':view==='cancelled'?'annulations':view==='new'?'nouveautés à traiter':view==='unlinked'?'inscriptions sans dossier':view==='attendance-pending'?'présences passées à renseigner':'tout l’historique');
@@ -231,7 +232,41 @@ $('course-action-attendance').onclick=()=>showCoursePriority('attendance-pending
 $('course-action-new').onclick=()=>showCoursePriority('new');
 $('refresh').onclick=load;
 $('toggle-session-range').onclick=()=>{showAllSessions=!showAllSessions;render();};
-$('session-form').onsubmit=async e=>{e.preventDefault();const date=$('session-date').value,category=$('session-category').value.trim(),start=$('session-start').value,end=$('session-end').value,venue=$('session-venue').value.trim();try{await call('admin_session',{session_date:date,course_key:JSON.stringify([category,start,end,venue]),category,start_time:start,end_time:end,venue});status('Séance ajoutée.');await load();}catch(e){status(e.message,true)}};
+let editingSession=null;
+function endSessionEdit(){
+ editingSession=null;$('session-form').reset();$('session-category').readOnly=false;
+ $('session-submit').textContent='Ajouter la séance';$('session-exit-edit').hidden=true;
+}
+$('session-exit-edit').onclick=endSessionEdit;
+$('session-edit').onclick=()=>{
+ const course=sessions.find(s=>s.id===selectedSessionId);
+ if(!course?.enabled)return;
+ editingSession=course.id;
+ for(const [id,value] of [['session-date',course.session_date],['session-category',course.category],['session-start',course.start_time.slice(0,5)],['session-end',course.end_time.slice(0,5)],['session-venue',course.venue]])$(id).value=value;
+ $('session-category').readOnly=true;
+ $('session-submit').textContent='Enregistrer et prévenir les inscrits';$('session-exit-edit').hidden=false;
+ $('session-date').focus();
+};
+$('session-cancel').onclick=async()=>{
+ const course=sessions.find(s=>s.id===selectedSessionId);
+ if(!course?.enabled||!window.confirm('Annuler cette séance et prévenir les inscrits par e-mail ?'))return;
+ $('session-cancel').disabled=true;
+ try{await call('admin_change_session',{session_id:course.id,cancel:true});endSessionEdit();await load();status('Séance annulée. Les e-mails sont mis en file.');}
+ catch(error){status(error.message,true);render();}
+};
+$('session-form').onsubmit=async e=>{
+ e.preventDefault();
+ const date=$('session-date').value,category=$('session-category').value.trim(),start=$('session-start').value,end=$('session-end').value,venue=$('session-venue').value.trim();
+ const editing=editingSession;
+ $('session-submit').disabled=true;
+ try{
+  const values={session_date:date,start_time:start,end_time:end,venue};
+  if(editing)await call('admin_change_session',{...values,session_id:editing});
+  else await call('admin_session',{...values,course_key:JSON.stringify([category,start,end,venue]),category});
+  endSessionEdit();await load();status(editing?'Séance mise à jour. Les inscrits seront prévenus si le créneau a changé.':'Séance ajoutée.');
+ }catch(error){status(error.message,true);}
+ finally{$('session-submit').disabled=false;}
+};
 supa.auth.onAuthStateChange((_event,s)=>{setTimeout(()=>authState(s),0)});
 const {data}=await supa.auth.getSession();await authState(data.session);
 setInterval(()=>{if(!document.hidden)load()},30000);

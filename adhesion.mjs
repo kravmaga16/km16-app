@@ -257,7 +257,7 @@ $('order').onsubmit=async e=>{
  const photoToUpload=photoData;
  for(const {element} of controls)element.disabled=true;
  busy=true;buttonState();note('Préparation de votre demande…');
- const payload={action:'checkout',request_id:requestId,product_id:selected.id,...(linkToken?{link_token:linkToken}:{}),count:Number($('count').value)};
+ const payload={action:'checkout',request_id:requestId,product_id:selected.id,...($('purchase-profile').value?{household_id:$('purchase-profile').value}:{}),...(linkToken?{link_token:linkToken}:{}),count:Number($('count').value)};
  for(const id of ['first_name','last_name','birth_date','phone','guardian_name'])payload[id]=$(id).value;
  for(const id of draftChecks)payload[id]=$(id).checked;
  try{
@@ -328,9 +328,29 @@ async function householdRpc(args={}){
  if(!Array.isArray(data))throw Error('Profils indisponibles.');
  return data;
 }
+function renderPurchaseProfiles(){
+ const select=$('purchase-profile'),previous=select.value;
+ select.replaceChildren(new Option('Saisir les coordonnées',''));
+ for(const profile of householdProfiles)select.add(new Option(profile.label,profile.id));
+ select.value=householdProfiles.some(p=>p.id===previous)?previous:'';
+ $('purchase-household').hidden=!session||!householdProfiles.length;
+}
+$('purchase-profile').onchange=()=>{
+ const profile=householdProfiles.find(p=>p.id===$('purchase-profile').value);
+ resetRegistration();
+ if(profile){
+  $('purchase-profile').value=profile.id;
+  if(profile.birth_date)fillMemberDetails(profile);
+  else{
+   $('first_name').value=profile.first_name||'';
+   $('last_name').value=profile.last_name||'';
+   updateCheckoutSummary();
+  }
+ }
+};
 async function loadHouseholdProfiles(){
  const gen=generation;
- try{const profiles=await householdRpc();if(gen!==generation)return;householdProfiles=profiles;renderMemberFamily();renderMyOrders();renderUpcomingCourses();}
+ try{const profiles=await householdRpc();if(gen!==generation)return;householdProfiles=profiles;renderPurchaseProfiles();if(accountView){renderMemberFamily();renderMyOrders();renderUpcomingCourses();}}
  catch{if(gen===generation)$('household-status').textContent='Les profils du foyer sont temporairement indisponibles.';}
 }
 $('household-form').onsubmit=async event=>{
@@ -558,10 +578,10 @@ function renderUpcomingCourses(){
   for(const course of memberCourses.filter(row=>row.status==='Inscrit'&&row.cancellable&&matchesParticipant(row))){
    const card=text('article','',list,'summary');
    text('strong',[course.first_name,course.last_name].filter(Boolean).join(' '),card);
-   text('p',[upcomingDate(course.session_date),course.start_time.slice(0,5)+'–'+course.end_time.slice(0,5),course.venue,course.category].join(' · '),card);
+   text('p',[upcomingDate(course.session_date),course.start_time.slice(0,5)+'–'+course.end_time.slice(0,5),course.venue,course.category,course.session_enabled===false?'Séance annulée par le club':''].filter(Boolean).join(' · '),card);
    const actions=text('div','',card,'row');
    const save=text('button','Ajouter à mon calendrier',actions);
-   save.type='button';
+   save.type='button';save.hidden=course.session_enabled===false;
    save.onclick=()=>downloadCourseCalendar(course);
    const link=text('a','Déplacer ou annuler cette réservation',actions);
    link.href='./course-operations.html#booking-'+encodeURIComponent(course.id);
@@ -604,6 +624,38 @@ function renderUpcomingStages(){
   appendDojoDirections(actions,stage.note?.split('·').at(-1));
  }
  if(!stages.length)text('p','Aucun stage confirmé à venir.',list);
+}
+function appendMemberBills(box,order){
+ const panel=text('details','',box);
+ text('summary','Factures et justificatifs de paiement',panel);
+ const list=text('div','',panel);
+ panel.addEventListener('toggle',async()=>{
+  if(!panel.open||list.childNodes.length)return;
+  const status=text('p','Recherche des factures…',list);
+  try{
+   const {bills}=await api({action:'member-bills',order_id:order.id},session?.user);
+   if(!bills.length){status.textContent='Aucune facture émise disponible pour le moment.';return;}
+   status.remove();
+   for(const bill of bills){
+    const line=text('div','',list,'row');
+    text('span','Échéance '+bill.installment+' · '+money(Number(bill.amount_cents)),line);
+    const download=text('button','Télécharger '+bill.number,line);
+    download.type='button';
+    download.onclick=async()=>{
+     download.disabled=true;
+     try{
+      const result=await api({action:'member-bill',order_id:order.id,number:bill.number},session?.user);
+      const bytes=Uint8Array.from(atob(result.bill.pdf_base64),c=>c.charCodeAt(0));
+      const url=URL.createObjectURL(new Blob([bytes],{type:'application/pdf'}));
+      const link=document.createElement('a');link.href=url;link.download=result.bill.number+'.pdf';
+      document.body.append(link);link.click();link.remove();
+      setTimeout(()=>URL.revokeObjectURL(url),30000);
+     }catch(error){note(error.message,true);}
+     finally{download.disabled=false;}
+    };
+   }
+  }catch(error){status.textContent=error.message;}
+ });
 }
 function renderMyOrders(){
  const all=myOrderData.orders.filter(o=>o.livemode===true&&matchesParticipant(o));
@@ -685,6 +737,7 @@ function renderMyOrders(){
     });
    }
   }
+  if(payments.some(p=>['paid','refunded'].includes(p.status)))appendMemberBills(box,o);
   appendOrderHelp(box,o);$('orders').append(box);
  }
  if(focusedCard)$(focusedCard)?.focus({preventScroll:true});
@@ -861,7 +914,7 @@ async function admin(loadMore=false){if(km16AdminLoading)return;if(!km16ConfirmD
 }catch(e){if(gen===generation){note(e.message,true);$('km16-followup-status').textContent='Actualisation impossible : '+e.message;}}finally{if(gen===generation){if(refreshButton)refreshButton.disabled=false;if(followupRefresh)followupRefresh.disabled=false;if(moreButton){moreButton.disabled=false;moreButton.textContent='Charger 25 dossiers supplémentaires';}}km16AdminLoading=false;}}
 function clearMemberFirstCourse(){
  firstCourseRequest?.abort();firstCourseRequest=null;firstCourseSessions=null;
- memberCourses=null;memberPerson='';householdProfiles=[];
+ memberCourses=null;memberPerson='';householdProfiles=[];renderPurchaseProfiles();
  $('member-first-course').hidden=true;$('member-first-course-list').replaceChildren();
  $('member-family').hidden=true;$('member-person').replaceChildren(new Option('Tout le foyer',''));
 }
@@ -888,8 +941,9 @@ async function authState(s){
  if(accountView){
   $('member-upcoming').hidden=false;
   if(!$('member-upcoming-stages').childNodes.length)text('p','Chargement des stages…',$('member-upcoming-stages'));
-  void loadUpcomingCourses();void loadHouseholdProfiles();
+  void loadUpcomingCourses();
  }
+ void loadHouseholdProfiles();
  if(!catalogueReady&&!accountView)return;await orders();if(isAdmin&&!embedded&&!accountView){initLinks();await Promise.all([admin(),listLinks()]);}
 }
 $('payment-return-refresh').onclick=orders;

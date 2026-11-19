@@ -183,6 +183,22 @@ Deno.serve(async req=>{
    }
    return reply({next_at:next>Math.floor(Date.now()/1000)?new Date(next*1000).toISOString():null});
   }
+  if(data.action==='member-bills'||data.action==='member-bill'){
+   const oid=String(data.order_id||'');
+   if(!/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(oid))return reply({error:'Dossier invalide'},400);
+   const order=(await db('km16_membership_orders?id=eq.'+oid+'&user_id=eq.'+user.id+'&livemode=eq.true&select=id'))[0];
+   if(!order)return reply({error:'Dossier indisponible'},404);
+   const filter='km16_bills?livemode=eq.true&snapshot->>order_id=eq.'+oid+'&pdf_base64=not.is.null';
+   if(data.action==='member-bills'){
+    const bills=await db(filter+'&select=number,issued_at,installment:snapshot->>installment,amount_cents:snapshot->>amount_cents&order=issued_at.asc');
+    return reply({bills});
+   }
+   const number=String(data.number||'');
+   if(!/^[A-Z0-9-]{1,60}$/i.test(number))return reply({error:'Facture invalide'},400);
+   const bill=(await db(filter+'&number=eq.'+encodeURIComponent(number)+'&select=number,pdf_base64'))[0];
+   if(!bill)return reply({error:'Facture indisponible pour ce dossier'},404);
+   return reply({bill});
+  }
   if(data.action==='orders'){
    const orders=await db('km16_membership_orders?user_id=eq.'+user.id+'&select=id,product_id,title,first_name,last_name,household_id,livemode,total_cents,count,amounts,approval,created_at,stripe_session_id,schedule_id&order=created_at.desc');
    const ids=orders.map(o=>o.id);
@@ -281,7 +297,15 @@ Deno.serve(async req=>{
    if(duplicate)return reply({error:'Un dossier existe déjà pour ce pratiquant cette saison. Consultez Mes inscriptions ou contactez KM16'},409);
   }
   // Snapshots de prix/consentements : ne jamais prendre de montant fourni par le navigateur.
-  const order={id,user_id:user.id,email:user.email,participant_key:participantKey,product_id:product.id,livemode:Deno.env.get('KM16_ADHESIONS_STRIPE_SECRET_KEY').startsWith('sk_live_'),title:product.title,total_cents:product.amount,count:valid.count,amounts:valid.amounts,first_name:data.first_name.trim(),last_name:data.last_name.trim(),birth_date:data.birth_date,phone:data.phone,guardian_name:valid.age<18?data.guardian_name.trim():null,approval:'pending',terms_version:config.terms_version,consented_at:new Date().toISOString(),license_external:true};
+  let householdId=null;
+  if(data.household_id){
+   const value=String(data.household_id);
+   if(!/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(value)
+    ||!(await db('km16_household_members?id=eq.'+value+'&owner_id=eq.'+user.id+'&select=id&limit=1')).length)
+    return reply({error:'Profil indisponible dans votre foyer'},400);
+   householdId=value;
+  }
+  const order={id,user_id:user.id,email:user.email,household_id:householdId,participant_key:participantKey,product_id:product.id,livemode:Deno.env.get('KM16_ADHESIONS_STRIPE_SECRET_KEY').startsWith('sk_live_'),title:product.title,total_cents:product.amount,count:valid.count,amounts:valid.amounts,first_name:data.first_name.trim(),last_name:data.last_name.trim(),birth_date:data.birth_date,phone:data.phone,guardian_name:valid.age<18?data.guardian_name.trim():null,approval:'pending',terms_version:config.terms_version,consented_at:new Date().toISOString(),license_external:true};
   if(link){
    order.purchase_link_id=link.id;order.standard_cents=link.standard_cents;
    const claimed=await db('rpc/km16_claim_purchase_link','POST',{p_hash:link.token_hash,p_order:order});

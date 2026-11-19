@@ -9,7 +9,7 @@ let participants = [];
 let participantOwner;
 function chooseParticipant() {
  const participant = participants[$('participant').value];
- const useSavedName = Boolean(participant);
+ const useSavedName = Boolean(participant?.first_name && participant?.last_name && !participant.household_id);
  $('first').value = participant?.first_name ?? '';
  $('last').value = participant?.last_name ?? '';
  $('first-label').hidden = $('last-label').hidden = useSavedName;
@@ -20,20 +20,22 @@ void accountSession().then(async session => {
  if (!session) return;
  $('email').value = session.user.email;
  $('email').readOnly = true;
- const {data, error} = await account.rpc('km16_my_course_bookings', {p_cancel: null});
- if (error || !Array.isArray(data)) return;
-
+ const [profileResult,bookingResult] = await Promise.all([
+  account.rpc('km16_household'),account.rpc('km16_my_course_bookings',{p_cancel:null}),
+ ]);
+ const profiles = Array.isArray(profileResult.data) ? profileResult.data : [];
+ const source = Array.isArray(bookingResult.data) ? bookingResult.data : [];
  const distinct = new Map();
- for (const {first_name, last_name} of data) {
+ for (const {first_name,last_name,household_id} of source) {
+  if(household_id&&profiles.some(profile=>profile.id===household_id))continue;
   if (!first_name || !last_name) continue;
   const key = JSON.stringify([first_name.trim(), last_name.trim()]).toLocaleLowerCase('fr');
   distinct.set(key, {first_name, last_name});
  }
- participants = [...distinct.values()];
+ participants = [...profiles.map(profile=>({...profile,household_id:profile.id})),...distinct.values()];
  participantOwner = session.user.id;
  if (!participants.length) return;
- const options = participants.map(({first_name, last_name}, index) =>
-  new Option(first_name + ' ' + last_name, String(index)));
+ const options = participants.map(({first_name,last_name,label},index)=>new Option(label||first_name+' '+last_name,String(index)));
  $('participant').replaceChildren(new Option('Choisir un participant', ''), ...options,
   new Option('Saisir un autre participant', 'manual'));
  $('participant-choice').hidden = false;
@@ -122,7 +124,8 @@ $('book-form').onsubmit=async e=>{
   if(!selected)throw Error('Veuillez choisir une séance avant de confirmer.');
   const participant = participants[$('participant').value];
   const booking = {session_id:selected.id, first_name:$('first').value,
-   last_name:$('last').value, email:$('email').value, website:$('website').value};
+   last_name:$('last').value, email:$('email').value, website:$('website').value,
+   ...(participant?.household_id?{household_id:participant.household_id}:{})};
   const activeAccount = await accountSession();
   if (participant && activeAccount?.user.id !== participantOwner) {
    participants = [];

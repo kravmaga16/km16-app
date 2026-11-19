@@ -13,13 +13,28 @@ let memberDialogBooking=null,memberDialogChoices=[],memberDialogSelected=null,me
 const memberDialog=$('member-dialog');
 const memberConfirm=$('member-dialog-confirm'),memberCheck=$('member-identity-check');
 function updateMemberConfirm(){memberConfirm.disabled=memberDialogSaving||!memberDialogSelected||!memberCheck.checked;}
+function normalizeMemberSearch(value) {
+ return value.normalize('NFD').replace(/\p{M}/gu, '').toLocaleLowerCase('fr-FR');
+}
 function renderMemberChoices(){
- const query=$('member-candidate-search').value.trim().toLocaleLowerCase('fr-FR');const list=$('member-candidate-options');list.replaceChildren();
- const shown=memberDialogChoices.filter(c=>[c.first_name,c.last_name,c.email,c.season_id,c.title,c.birth_date,c.source].join(' ').toLocaleLowerCase('fr-FR').includes(query));
+ const terms=normalizeMemberSearch($('member-candidate-search').value).trim().split(/\s+/).filter(Boolean);
+ const list=$('member-candidate-options');
+ list.replaceChildren();
+ const shown=memberDialogChoices.filter(candidate=>{
+  const searchable=normalizeMemberSearch([candidate.first_name,candidate.last_name,candidate.email,candidate.season_id,candidate.title,candidate.birth_date,candidate.source].join(' '));
+  return terms.every(term=>searchable.includes(term));
+ });
+ if(memberDialogSelected&&!shown.includes(memberDialogSelected)&&!memberDialogSaving){
+  memberDialogSelected=null;
+  memberCheck.checked=false;
+  $('member-identity-check-wrap').hidden=true;
+  $('member-selection-warning').textContent='';
+  updateMemberConfirm();
+ }
  $('member-candidate-count').textContent=shown.length+' dossier(s) correspondant à la recherche';
  for(const c of shown){const button=document.createElement('button');button.type='button';button.className='member-option';button.setAttribute('aria-pressed',String(memberDialogSelected?.order_id===c.order_id));
  const strong=document.createElement('strong');strong.textContent=[c.first_name,c.last_name].filter(Boolean).join(' ');const detail=document.createElement('small');detail.textContent=[c.birth_date?'Naissance : '+c.birth_date.split('-').reverse().join('/'):'Naissance non renseignée',c.email||'E-mail non renseigné','Saison '+(c.season_id||'non renseignée'),c.title||'Adhésion',c.source||'KM16'].join(' · ');button.append(strong,detail);
- button.onclick=()=>{memberDialogSelected=c;memberCheck.checked=false;$('member-identity-check-wrap').hidden=false;renderMemberChoices();const exact=(c.first_name||'').trim().toLocaleLowerCase('fr-FR')===(memberDialogBooking.first_name||'').trim().toLocaleLowerCase('fr-FR');$('member-selection-warning').textContent=exact?'Vérifiez l’identité avant de confirmer.':'Prénoms différents : vérifiez impérativement l’identité et les coordonnées avant l’association.';updateMemberConfirm();};list.append(button);}
+ button.onclick=()=>{if(memberDialogSaving)return;memberDialogSelected=c;memberCheck.checked=false;$('member-identity-check-wrap').hidden=false;renderMemberChoices();const exact=(c.first_name||'').trim().toLocaleLowerCase('fr-FR')===(memberDialogBooking.first_name||'').trim().toLocaleLowerCase('fr-FR');$('member-selection-warning').textContent=exact?'Vérifiez l’identité avant de confirmer.':'Prénoms différents : vérifiez impérativement l’identité et les coordonnées avant l’association.';updateMemberConfirm();};list.append(button);}
 }
 async function openMemberDialog(b,linked){
  const request=++memberDialogRequest;memberDialogBooking=b;memberDialogChoices=[];memberDialogSelected=null;memberDialogSaving=false;
@@ -31,8 +46,8 @@ async function openMemberDialog(b,linked){
   if(error)throw error;memberDialogChoices=[...(data||[]).map(c=>({...c,source:'KM16'})),...(external||[]).map(c=>({...c,order_id:'external:'+c.external_id+':'+c.season_id,source:c.source||'Import',external_key:c.external_id}))];renderMemberChoices();if(!memberDialogChoices.length)$('member-selection-warning').textContent='Aucun dossier KM16 ou importé compatible trouvé. Vérifiez le nom et les coordonnées dans le fichier adhérents.';
  }catch(e){if(request===memberDialogRequest&&memberDialog.open)$('member-candidate-count').textContent='Recherche impossible : '+e.message;}
 }
-async function saveMemberLink(id){const b=memberDialogBooking;if(!b||memberDialogSaving)return;if(id&&(!memberDialogSelected||!memberCheck.checked))return;memberDialogSaving=true;updateMemberConfirm();$('member-dialog-unlink').disabled=true;
- try{if(id&&((memberLinks.get(b.id)||externalLinks.get(b.id))===id)){memberDialog.close();status('Ce dossier est déjà associé à cette réservation. Aucune modification nécessaire.');return;}if(!id){const [a,z]=await Promise.all([supa.from('km16_booking_member_links').delete().eq('booking_id',b.id),supa.from('km16_booking_external_links').delete().eq('booking_id',b.id)]);if(a.error||z.error)throw a.error||z.error;memberLinks.delete(b.id);externalLinks.delete(b.id);}else if(memberDialogSelected?.external_key){const {data:{user}}=await supa.auth.getUser();if(!user)throw Error('Session expirée');if(memberLinks.has(b.id)||externalLinks.has(b.id))throw Error('Retirez d’abord l’association existante');const {error}=await supa.from('km16_booking_external_links').upsert({booking_id:b.id,external_id:memberDialogSelected.external_key,season_id:memberDialogSelected.season_id,linked_by:user.id},{onConflict:'booking_id'});if(error)throw error;externalLinks.set(b.id,id);}else{if(externalLinks.has(b.id))throw Error('Retirez d’abord le dossier importé existant');const {data:{user}}=await supa.auth.getUser();if(!user)throw Error('Session expirée');const {error}=await supa.from('km16_booking_member_links').upsert({booking_id:b.id,membership_order_id:id,linked_by:user.id,linked_at:new Date().toISOString()},{onConflict:'booking_id'});if(error)throw error;memberLinks.set(b.id,id);}memberDialog.close();status(id?'Dossier associé après vérification manuelle.':'Association retirée.');render();}catch(e){$('member-selection-warning').textContent='Enregistrement impossible : '+e.message;}finally{memberDialogSaving=false;$('member-dialog-unlink').disabled=false;updateMemberConfirm();}
+async function saveMemberLink(id){const b=memberDialogBooking;if(!b||memberDialogSaving)return;if(id&&(!memberDialogSelected||!memberCheck.checked))return;memberDialogSaving=true;$('member-candidate-search').disabled=true;updateMemberConfirm();$('member-dialog-unlink').disabled=true;
+ try{if(id&&((memberLinks.get(b.id)||externalLinks.get(b.id))===id)){memberDialog.close();status('Ce dossier est déjà associé à cette réservation. Aucune modification nécessaire.');return;}if(!id){const [a,z]=await Promise.all([supa.from('km16_booking_member_links').delete().eq('booking_id',b.id),supa.from('km16_booking_external_links').delete().eq('booking_id',b.id)]);if(a.error||z.error)throw a.error||z.error;memberLinks.delete(b.id);externalLinks.delete(b.id);}else if(memberDialogSelected?.external_key){const {data:{user}}=await supa.auth.getUser();if(!user)throw Error('Session expirée');if(memberLinks.has(b.id)||externalLinks.has(b.id))throw Error('Retirez d’abord l’association existante');const {error}=await supa.from('km16_booking_external_links').upsert({booking_id:b.id,external_id:memberDialogSelected.external_key,season_id:memberDialogSelected.season_id,linked_by:user.id},{onConflict:'booking_id'});if(error)throw error;externalLinks.set(b.id,id);}else{if(externalLinks.has(b.id))throw Error('Retirez d’abord le dossier importé existant');const {data:{user}}=await supa.auth.getUser();if(!user)throw Error('Session expirée');const {error}=await supa.from('km16_booking_member_links').upsert({booking_id:b.id,membership_order_id:id,linked_by:user.id,linked_at:new Date().toISOString()},{onConflict:'booking_id'});if(error)throw error;memberLinks.set(b.id,id);}memberDialog.close();status(id?'Dossier associé après vérification manuelle.':'Association retirée.');render();}catch(e){$('member-selection-warning').textContent='Enregistrement impossible : '+e.message;}finally{memberDialogSaving=false;$('member-candidate-search').disabled=false;$('member-dialog-unlink').disabled=false;updateMemberConfirm();}
 }
 $('member-candidate-search').oninput=renderMemberChoices;
 memberCheck.onchange=updateMemberConfirm;

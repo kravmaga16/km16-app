@@ -1,4 +1,4 @@
-import {prepareStageAnalytics, trackStageCheckout} from './stage-analytics.mjs?v=1';
+import {prepareStageAnalytics, stageReminderSource, trackStageCheckout, trackStageReminderVisit} from './stage-analytics.mjs?v=2';
 import {enhanceBirthDate} from './birth-date-input.mjs?v=1';
 enhanceBirthDate(document.getElementById('birth_date'));
 import {preparePhoto} from './member-photo.mjs?v=1';
@@ -14,6 +14,7 @@ const accountView=new URLSearchParams(location.search).get('espace')==='1'&&!emb
 const requestedCategory=new URLSearchParams(location.search).get('categorie')||'Tous';
 const requestedProduct=new URLSearchParams(location.search).get('produit')||'';
 let stageCatalogueLoaded=false;
+const reminderSource=stageReminderSource(new URLSearchParams(location.search).get('source_stage'));
 const stageDetail=/^stage-[a-z0-9-]+$/.test(requestedProduct)&&!embedded&&!accountView;
 if(stageDetail){
  document.title='Inscription au stage · KM16';
@@ -199,7 +200,7 @@ $('order').onsubmit=async e=>{
   await api({action:'photo-upload',request_id:payload.request_id,photo:photoToUpload},verified.user);
   const r=await api(payload,verified.user);
   if(r.free){await checkoutAccess.clear();note('Votre demande gratuite a été enregistrée dans votre espace KM16. Le club doit la valider.');requestId=crypto.randomUUID();await orders();}
-  else{const u=new URL(r.url);if(u.protocol!=='https:'||u.hostname!=='checkout.stripe.com')throw Error('Adresse de paiement invalide');await checkoutAccess.clear();if(!linkToken&&!embedded)await trackStageCheckout(selected);(embedded?window.top:window).location.assign(u.href);}
+  else{const u=new URL(r.url);if(u.protocol!=='https:'||u.hostname!=='checkout.stripe.com')throw Error('Adresse de paiement invalide');await checkoutAccess.clear();if(!linkToken&&!embedded)await trackStageCheckout(selected, stageDetail && selected.id===requestedProduct ? reminderSource : undefined);(embedded?window.top:window).location.assign(u.href);}
  }catch(error){note(error.message,true);}finally{for(const {element,disabled} of controls)element.disabled=disabled;busy=false;buttonState();}
 };
 let myOrderGroup='Tous les achats',myOrderData={orders:[],payments:[],documents:[]};
@@ -435,6 +436,10 @@ syncAccountForm();
 try{
  const fallback=await fetch('./catalogue.json').then(r=>r.json());products=fallback;category=categoryFor(requestedCategory);render();
  try{const c=await api({action:'catalogue'});products=c.products;stageCatalogueLoaded=true;enabled=c.enabled;for(const [id,value] of [['terms-link',c.terms_url],['privacy-link',c.privacy_url]]){try{const u=new URL(value);if(u.protocol==='https:')$(id).href=u.href;}catch{enabled=false;}}$('opening').textContent=enabled?'Inscriptions ouvertes · Paiement en 1, 3 ou 4 fois pour les cotisations annuelles.':'Les paiements en ligne ne sont pas encore ouverts.';render();
+ if(stageDetail&&reminderSource&&!linkToken){
+  const stage=products.find(p=>p.id===requestedProduct&&!p.draft&&!p.review&&p.event_date>=today());
+  if(stage)trackStageReminderVisit(stage,reminderSource);
+ }
  if(requestedProduct==='essai'&&!linkToken){const trial=products.find(p=>p.id==='essai'&&!p.draft);if(trial)choose(trial);}
  if(requestedStageDate&&!linkToken){const matches=products.filter(p=>p.category==='Stages'&&!p.draft&&p.event_date===requestedStageDate&&p.event_date>=today());if(matches.length===1)choose(matches[0]);else note('Ce stage n’est pas ouvert au paiement en ligne. Choisissez un autre stage disponible ou contactez contact@km16.fr.',true);}}catch{$('opening').textContent='Le paiement est temporairement indisponible.';note('Vérifiez votre connexion puis rechargez la page pour réessayer.',true);}
  if(linkToken){

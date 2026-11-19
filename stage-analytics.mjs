@@ -42,15 +42,34 @@ export function trackStageSignupClick(stageDate, placement) {
   } catch {}
 }
 
-export async function trackStageCheckout(stage) {
+export function stageReminderSource(value) {
+  return ['email-j7', 'email-j3', 'push-48h'].includes(value) ? value : undefined;
+}
+
+export function trackStageReminderVisit(stage, source) {
+  const stageSource = stageReminderSource(source);
+  if (!stageSource || !hasConsent() || stage?.category !== 'Stages'
+    || !stageIdPattern.test(stage.id) || !datePattern.test(stage.event_date)) return;
+  try {
+    prepareStageAnalytics();
+    window.gtag('event', 'km16_stage_reminder_visit', {
+      stage_id: stage.id, stage_date: stage.event_date, stage_source: stageSource,
+      send_to: measurementId,
+    });
+  } catch {}
+}
+
+export async function trackStageCheckout(stage, source) {
   if (stage?.category !== 'Stages' || !hasConsent()
     || !stageIdPattern.test(stage.id) || !datePattern.test(stage.event_date)) return;
+  const stageSource = stageReminderSource(source);
   try {
     prepareStageAnalytics();
     await new Promise(resolve => {
       const timeout = setTimeout(resolve, 400);
       window.gtag('event', 'km16_stage_stripe_redirect', {
         stage_id: stage.id, stage_date: stage.event_date, send_to: measurementId,
+        ...(stageSource ? {stage_source: stageSource} : {}),
         page_location: new URL('./adhesion.html', location.href).href, page_referrer: '',
         event_timeout: 400,
         event_callback: () => { clearTimeout(timeout); resolve(); },

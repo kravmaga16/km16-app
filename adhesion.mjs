@@ -285,6 +285,21 @@ const memberEventDate = new Intl.DateTimeFormat('fr-FR', {dateStyle:'full',timeZ
 function upcomingDate(date){
  return memberEventDate.format(new Date(date+'T12:00:00Z'));
 }
+function appendDojoDirections(parent, venue){
+ const name=String(venue||'').trim().toLowerCase().replace(/[ -]+/g,' ');
+ let address;
+ if(name==='suchet'||name==='dojo suchet')address='1 square Henry-Bataille, 75016 Paris';
+ if(['st jean','st jean de passy','saint jean de passy'].includes(name))address='72 rue Raynouard, 75016 Paris';
+ if(!address)return;
+ const link=text('a','Itinéraire',parent);
+ const url=new URL('https://www.google.com/maps/dir/');
+ url.searchParams.set('api','1');
+ url.searchParams.set('destination',address);
+ link.href=url.href;
+ link.target='_blank';
+ link.rel='noopener noreferrer';
+ link.setAttribute('aria-label','Itinéraire vers '+address);
+}
 async function loadUpcomingCourses(){
  const gen=generation;
  const list=$('member-upcoming-courses');
@@ -305,6 +320,7 @@ async function loadUpcomingCourses(){
    save.onclick=()=>downloadCourseCalendar(course);
    const link=text('a','Gérer ou annuler cette réservation',actions);
    link.href='./course-operations.html#booking-'+encodeURIComponent(course.id);
+   appendDojoDirections(actions,course.venue);
   }
   if(!list.childNodes.length)text('p','Aucun cours réservé à venir.',list);
  }catch{
@@ -334,6 +350,7 @@ function renderUpcomingStages(){
   text('strong',order.title,card);
   const participant=[order.first_name,order.last_name].filter(Boolean).join(' ');
   text('p',[participant,upcomingDate(stage.event_date),stage.note].filter(Boolean).join(' · '),card);
+  appendDojoDirections(card,stage.note?.split('·').at(-1));
  }
  if(!stages.length)text('p','Aucun stage confirmé à venir.',list);
 }

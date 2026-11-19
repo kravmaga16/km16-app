@@ -25,7 +25,7 @@ function button(parent,label,action){
  return b;
 }
 function appendMoveCourse(item,entry){
- button(item,'Déplacer ce cours',async()=>{
+ return button(item,'Déplacer ce cours',async()=>{
   const existing=item.querySelector('.move-course');
   if(existing){existing.remove();return;}
   const alternatives=await rpc('km16_move_course_booking',{p_booking:entry.id});
@@ -51,7 +51,12 @@ async function reservations(cancel=null){
   make(item,'h2',[entry.first_name,entry.last_name].join(' '));
   make(item,'p',sessionLabel(entry));
   make(item,'p',entry.session_enabled===false&&entry.status==='Inscrit'?'Séance annulée par le club':entry.status);
-  if(entry.cancellable)appendMoveCourse(item,entry);
+  if(entry.cancellable){
+   const move=appendMoveCourse(item,entry);
+   if(entry.session_enabled===false&&new URLSearchParams(location.search).get('remplacement')==='1'&&location.hash==='#'+item.id){
+    const url=new URL(location.href);url.searchParams.delete('remplacement');history.replaceState(null,'',url);move.click();
+   }
+  }
   if(entry.cancellable)button(item,'Annuler cette réservation',async()=>{
    if(window.confirm('Annuler la réservation de '+entry.first_name+' pour cette séance ?'))await reservations(entry.id);
   });

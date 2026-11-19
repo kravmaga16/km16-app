@@ -85,6 +85,7 @@ function render(){
  const focused=sessions.find(s=>s.id===selectedSessionId);
  $('session-edit').disabled=$('session-cancel').disabled=!focused?.enabled||focused.session_date<today;
  $('session-focus').hidden=!focused;
+ syncSessionMail(focused);
  $('session-focus-label').textContent=focused?'Séance sélectionnée : '+dateFr(focused.session_date)+' · '+focused.start_time.slice(0,5)+' · '+focused.category+' · '+focused.venue:'';
  $('results-count').textContent=shown.length+' inscription(s) affichée(s) · '+(view==='upcoming'?'séances à venir':view==='active'?'inscriptions actives':view==='cancelled'?'annulations':view==='new'?'nouveautés à traiter':view==='unlinked'?'inscriptions sans dossier':view==='attendance-pending'?'présences passées à renseigner':'tout l’historique');
  $('print-roster').disabled=!selectedSessionId||!shown.some(b=>b.status==='Inscrit');
@@ -148,7 +149,7 @@ function render(){
  const counts=new Map();
  for(const b of bookings){if(b.status==='Inscrit')counts.set(b.session_id,(counts.get(b.session_id)||0)+1);}
  $('session-rows').replaceChildren();
- const allUpcoming=sessions.filter(s=>s.enabled&&s.session_date>=today).sort((a,b)=>a.session_date.localeCompare(b.session_date)||a.start_time.localeCompare(b.start_time));
+ const allUpcoming=sessions.filter(s=>s.session_date>=today).sort((a,b)=>a.session_date.localeCompare(b.session_date)||a.start_time.localeCompare(b.start_time));
  const endDate=new Date(today+'T12:00:00Z');endDate.setUTCDate(endDate.getUTCDate()+13);
  const endIso=endDate.toISOString().slice(0,10);
  const upcoming=showAllSessions?allUpcoming:allUpcoming.filter(s=>s.session_date<=endIso);
@@ -156,7 +157,7 @@ function render(){
  $('toggle-session-range').textContent=showAllSessions?'Afficher les 14 prochains jours':'Afficher toutes les séances à venir';
  for(const s of upcoming){
   const tr=document.createElement('tr');
-  for(const v of [dateFr(s.session_date)+' · '+s.start_time.slice(0,5),s.category,s.venue,String(counts.get(s.id)||0)]){
+  for(const v of [dateFr(s.session_date)+' · '+s.start_time.slice(0,5),s.category,s.venue+(s.enabled?'':' · Annulée'),String(counts.get(s.id)||0)]){
    const td=document.createElement('td');td.textContent=v;tr.append(td);
   }
   const actionCell=document.createElement('td');
@@ -178,6 +179,50 @@ function render(){
   $(id).classList.toggle('primary',view===value);$(id).setAttribute('aria-pressed',String(view===value));
  }
 }
+let mailSession=null,mailRequest=0;
+function syncSessionMail(focused){
+ const panel=$('session-mail-panel');
+ panel.hidden=!focused;
+ if(mailSession===focused?.id)return;
+ mailSession=focused?.id;
+ mailRequest++;
+ $('session-mail-results').replaceChildren();
+ $('session-mail-status').textContent='';
+ if(mailSession)void loadSessionMail();
+}
+async function loadSessionMail(){
+ if(!mailSession||!session)return;
+ const request=++mailRequest;
+ const trigger=$('session-mail-refresh');
+ const statusNode=$('session-mail-status');
+ const target=$('session-mail-results');
+ trigger.disabled=true;
+ statusNode.textContent='Chargement des envois…';
+ try{
+  const {data,error}=await supa.rpc('km16_admin_course_mail_summary',{p_session:mailSession});
+  if(request!==mailRequest)return;
+  if(error)throw error;
+  target.replaceChildren();
+  statusNode.textContent=data.length?'20 changements les plus récents au maximum. « Accepté » indique la prise en charge par la messagerie.':'Aucun e-mail de changement enregistré pour cette séance.';
+  if(!data.length)return;
+  const table=document.createElement('table');
+  const heading=table.createTHead().insertRow();
+  for(const title of ['Changement','Destinataires','En attente','Acceptés','Échecs','À vérifier']){
+   const th=document.createElement('th');th.scope='col';th.textContent=title;heading.append(th);
+  }
+  const body=table.createTBody();
+  for(const entry of data){
+   const row=body.insertRow();
+   for(const value of [new Date(entry.created_at).toLocaleString('fr-FR',{timeZone:'Europe/Paris'})+' · '+entry.subject,entry.total,entry.pending,entry.accepted,entry.failed,entry.uncertain])row.insertCell().textContent=value;
+  }
+  target.append(table);
+ }catch{
+  if(request===mailRequest)statusNode.textContent='Suivi des e-mails indisponible. Réessayez avec Actualiser les envois.';
+ }finally{
+  if(request===mailRequest)trigger.disabled=false;
+ }
+}
+$('session-mail-refresh').onclick=loadSessionMail;
 async function load(){if(busy||!session)return;busy=true;try{const data=await call('admin_list');bookings=data.bookings;sessions=data.sessions;const attendanceResult=await supa.from('km16_course_attendance').select('booking_id,present');if(attendanceResult.error)throw attendanceResult.error;attendance=new Map((attendanceResult.data||[]).map(row=>[row.booking_id,row.present]));const linksResult=await supa.from('km16_booking_member_links').select('booking_id,membership_order_id');if(linksResult.error)throw linksResult.error;memberLinks=new Map((linksResult.data||[]).map(row=>[row.booking_id,row.membership_order_id]));const externalResult=await supa.from('km16_booking_external_links').select('booking_id,external_id,season_id');if(externalResult.error)throw externalResult.error;externalLinks=new Map((externalResult.data||[]).map(row=>[row.booking_id,'external:'+row.external_id+':'+row.season_id]));$('updated').textContent='Mis à jour à '+new Date().toLocaleTimeString('fr-FR')+' · Actualisation toutes les 30 secondes';status('');}catch(e){status(e.message,true)}finally{busy=false;render();}}
 async function authState(s){session=s;const admin=s?.user?.email?.toLowerCase()===ADMIN;$('login').hidden=!!s;$('workspace').hidden=!admin;$('identity').textContent=admin?s.user.email:'';if(s&&!admin)$('global-status').textContent='Accès réservé à l’administrateur KM16';if(admin)await load();}
 $('login-form').onsubmit=async e=>{e.preventDefault();try{const {error}=await supa.auth.signInWithPassword({email:$('email').value.trim(),password:$('password').value});if(error)throw error;}catch(e){$('global-status').textContent=e.message}finally{$('password').value=''}};
@@ -251,7 +296,7 @@ $('session-cancel').onclick=async()=>{
  const course=sessions.find(s=>s.id===selectedSessionId);
  if(!course?.enabled||!window.confirm('Annuler cette séance et prévenir les inscrits par e-mail ?'))return;
  $('session-cancel').disabled=true;
- try{await call('admin_change_session',{session_id:course.id,cancel:true});endSessionEdit();await load();status('Séance annulée. Les e-mails sont mis en file.');}
+ try{await call('admin_change_session',{session_id:course.id,cancel:true});endSessionEdit();await load();status('Séance annulée. Les e-mails sont mis en file.');void loadSessionMail();}
  catch(error){status(error.message,true);render();}
 };
 $('session-form').onsubmit=async e=>{
@@ -264,9 +309,10 @@ $('session-form').onsubmit=async e=>{
   if(editing)await call('admin_change_session',{...values,session_id:editing});
   else await call('admin_session',{...values,course_key:JSON.stringify([category,start,end,venue]),category});
   endSessionEdit();await load();status(editing?'Séance mise à jour. Les inscrits seront prévenus si le créneau a changé.':'Séance ajoutée.');
+  if(editing)void loadSessionMail();
  }catch(error){status(error.message,true);}
  finally{$('session-submit').disabled=false;}
 };
 supa.auth.onAuthStateChange((_event,s)=>{setTimeout(()=>authState(s),0)});
 const {data}=await supa.auth.getSession();await authState(data.session);
-setInterval(()=>{if(!document.hidden)load()},30000);
+setInterval(()=>{if(!document.hidden){void load();if(!$('session-mail-panel').hidden&&!$('session-mail-refresh').disabled)void loadSessionMail();}},30000);

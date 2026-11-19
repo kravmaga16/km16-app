@@ -1,5 +1,5 @@
 import {initCommunications} from './communications.mjs?v=ages1';
-import {SEASON,seasonState} from './seasons.mjs?v=1';
+import {SEASON,seasonState,parisDate} from './seasons.mjs?v=1';
 import {clientsWorkbook,stagesMonthly} from './clients-excel.mjs?v=import-actifs1';
 const $=id=>document.getElementById(id),ADMIN='alexandre.marchat@gmail.com';
 const client=window.supabase?.createClient('https://tlfewpbgbwesdriklxzb.supabase.co','sb_publishable_OGRSgobOGf54jlfmXGmS8g_04Ftvfsn',{auth:{storageKey:'km16-video-auth',detectSessionInUrl:false,flowType:'implicit'}});
@@ -547,6 +547,7 @@ function render(){
  $('export').disabled=busy||!all.some(matches);
 }
 async function load(){
+ if ($('club-registration-form')) void refreshClubRegistrations();
  if(busy||session?.user.email?.toLowerCase()!==ADMIN)return;
  refreshExternalPayments();
  if(location.hash!=='#km16-email-relances'){
@@ -823,3 +824,90 @@ if(!client)status('Connexion indisponible : rechargez la page',true);
 else{client.auth.onAuthStateChange((_event,s)=>{setTimeout(()=>authState(s),0);});const {data}=await client.auth.getSession();await authState(data.session);}
 // Avoid redundant background reloads; manual refresh remains available.
 setInterval(()=>{if(!document.hidden&&!busy&&session?.user?.email?.toLowerCase()===ADMIN)load();},120000);
+
+const clubRegistrationForm = $('club-registration-form');
+let clubRegistrationRequest = 0;
+let clubRegistrationPending;
+const clubRegistrationTable = 'km16_club_registrations';
+const clubRegistrationScope = () => ({season_id: $('season').value, test: $('test').checked});
+const clubPaymentLabel = method => method === 'cheque' ? 'Chèque' : 'Espèces';
+
+async function refreshClubRegistrations() {
+ const request = ++clubRegistrationRequest;
+ const list = $('club-registration-list');
+ list.replaceChildren();
+ if (session?.user.email?.toLowerCase() !== ADMIN) return;
+ const scope = clubRegistrationScope();
+ $('club-registration-scope').textContent = 'Saison ' + scope.season_id + (scope.test ? ' · MODE TEST' : '');
+ const {data, error} = await client.from(clubRegistrationTable)
+  .select('id,first_name,last_name,method,amount_cents,received_on')
+  .match(scope).order('created_at', {ascending:false}).limit(100);
+ if (request !== clubRegistrationRequest || session?.user.email?.toLowerCase() !== ADMIN) return;
+ if (error || !data.length) {
+  const item = document.createElement('li');
+  item.textContent = error ? 'Historique indisponible.' : 'Aucun règlement au club pour cette saison.';
+  list.append(item);
+  return;
+ }
+ for (const row of data) {
+  const item = document.createElement('li');
+  item.textContent = [row.first_name + ' ' + row.last_name, clubPaymentLabel(row.method),
+   euro(row.amount_cents), row.received_on.split('-').reverse().join('/')].join(' · ');
+  list.append(item);
+ }
+}
+
+if (clubRegistrationForm) {
+ const date = clubRegistrationForm.elements.received_on;
+ date.value = date.max = parisDate();
+ clubRegistrationForm.addEventListener('submit', async event => {
+  event.preventDefault();
+  const button = clubRegistrationForm.querySelector('button[type=submit]');
+  if (button.disabled || session?.user.email?.toLowerCase() !== ADMIN) return;
+  const fields = new FormData(clubRegistrationForm);
+  const status = $('club-registration-status');
+  const entry = {
+   ...clubRegistrationScope(),
+   first_name: fields.get('first_name').trim(),
+   last_name: fields.get('last_name').trim(),
+   email: fields.get('email').trim() || null,
+   method: fields.get('method'),
+   amount_cents: Math.round(Number(fields.get('amount')) * 100),
+   received_on: fields.get('received_on')
+  };
+  if (!entry.first_name || !entry.last_name) {
+   status.textContent = 'Renseigne le prénom et le nom.';
+   return;
+  }
+  const fingerprint = JSON.stringify(entry);
+  if (clubRegistrationPending && clubRegistrationPending.fingerprint !== fingerprint) {
+   status.textContent = 'Rétablis les valeurs de la dernière tentative et réessaie pour vérifier son enregistrement.';
+   return;
+  }
+  clubRegistrationPending ??= {fingerprint, id: crypto.randomUUID()};
+  const controls = Array.from(clubRegistrationForm.elements);
+  controls.forEach(control => { control.disabled = true; });
+  status.textContent = 'Enregistrement…';
+  try {
+   const id = clubRegistrationPending.id;
+   const {error} = await client.from(clubRegistrationTable).insert({id, ...entry});
+   if (error) {
+    if (error.code !== '23505') throw error;
+    const retry = await client.from(clubRegistrationTable).select('id').match({id, season_id: entry.season_id, test: entry.test}).maybeSingle();
+    if (retry.error || !retry.data) throw retry.error || error;
+   }
+   clubRegistrationPending = undefined;
+   clubRegistrationForm.reset();
+   date.value = date.max = parisDate();
+   status.textContent = 'Client créé et règlement enregistré.';
+   await refreshClubRegistrations();
+  } catch (error) {
+   if (['23514','42501','22007','22008'].includes(error.code)) clubRegistrationPending = undefined;
+   status.textContent = clubRegistrationPending
+    ? 'Enregistrement à vérifier. Réessaie avec les mêmes valeurs.'
+    : 'Enregistrement refusé. Vérifie les données et ta connexion administrateur.';
+  } finally {
+   controls.forEach(control => { control.disabled = false; });
+  }
+ });
+}

@@ -179,6 +179,54 @@ function render(){
   $(id).classList.toggle('primary',view===value);$(id).setAttribute('aria-pressed',String(view===value));
  }
 }
+let dailyCourseLoading=false;
+async function loadDailyCourses(){
+ if(dailyCourseLoading||session?.user?.email?.toLowerCase()!==ADMIN)return;
+ const owner=session.user.id,refresh=$('course-today-refresh');
+ const feedback=$('course-today-status'),results=$('course-today-results');
+ const create=(tag,label,parent)=>{
+  const node=document.createElement(tag);node.textContent=label;parent.append(node);return node;
+ };
+ dailyCourseLoading=true;refresh.disabled=true;
+ try{
+  const {data,error}=await supa.rpc('km16_admin_courses_today_tomorrow');
+  if(session?.user?.id!==owner)return;
+  if(error)throw error;
+  const fragment=document.createDocumentFragment();
+  for(const [label,date] of [['Aujourd’hui',data.today],['Demain',data.tomorrow]]){
+   const section=create('section','',fragment);
+   create('h3',label+' · '+dateFr(date),section);
+   const daily=data.sessions.filter(item=>item.display_date===date);
+   if(!daily.length)create('p','Aucun cours prévu.',section);
+   for(const item of daily){
+    const card=create('div','',section);card.className='summary';
+    const state=!item.enabled?'Annulé':item.changed?'Modifié':'Prévu';
+    create('strong',item.display_time.slice(0,5)+' · '+item.category+' · '+state,card);
+    if(item.session_date!==date)create('p',(item.enabled?'Reporté au ':'Dernier créneau le ')+dateFr(item.session_date)+' à '+item.start_time.slice(0,5)+' · '+item.venue,card);
+    else{
+     create('p',item.start_time.slice(0,5)+'–'+item.end_time.slice(0,5)+' · '+item.venue,card);
+     if(item.enabled&&item.previous_date)create('p','Créneau précédent : '+dateFr(item.previous_date)+' à '+item.previous_start.slice(0,5)+' · '+item.previous_venue,card);
+    }
+    create('p',item.active_count+' réservation(s) active(s)',card);
+    if(item.attendance_pending)create('p',item.attendance_pending+' présence(s) à renseigner',card);
+    if(item.mail_alerts)create('p',item.mail_alerts+' alerte(s) d’envoi à vérifier',card);
+    const button=create('button','Ouvrir la séance',card);
+    button.type='button';
+    button.onclick=()=>{
+     selectedSessionId=item.id;view='all';
+     for(const id of ['filter-date','filter-course','filter-status','filter-search'])$(id).value='';
+     render();
+     if(!sessions.some(course=>course.id===item.id))syncSessionMail(item);
+     $(item.mail_alerts?'session-mail-panel':'bookings-panel').scrollIntoView({block:'start'});
+    };
+   }
+  }
+  results.replaceChildren(fragment);feedback.textContent='';
+ }catch{
+  if(session?.user?.id===owner)feedback.textContent='Planning temporairement indisponible. Réessayez avec Actualiser le planning.';
+ }finally{dailyCourseLoading=false;refresh.disabled=false;}
+}
+$('course-today-refresh').onclick=loadDailyCourses;
 let alertQueueLoading=false;
 async function loadCourseAlertQueue(){
  if(alertQueueLoading||session?.user?.email?.toLowerCase()!==ADMIN)return;
@@ -300,7 +348,7 @@ async function loadSessionMail(){
  }
 }
 $('session-mail-refresh').onclick=loadSessionMail;
-async function load(){if(busy||!session)return;busy=true;try{const data=await call('admin_list');bookings=data.bookings;sessions=data.sessions;const attendanceResult=await supa.from('km16_course_attendance').select('booking_id,present');if(attendanceResult.error)throw attendanceResult.error;attendance=new Map((attendanceResult.data||[]).map(row=>[row.booking_id,row.present]));const linksResult=await supa.from('km16_booking_member_links').select('booking_id,membership_order_id');if(linksResult.error)throw linksResult.error;memberLinks=new Map((linksResult.data||[]).map(row=>[row.booking_id,row.membership_order_id]));const externalResult=await supa.from('km16_booking_external_links').select('booking_id,external_id,season_id');if(externalResult.error)throw externalResult.error;externalLinks=new Map((externalResult.data||[]).map(row=>[row.booking_id,'external:'+row.external_id+':'+row.season_id]));$('updated').textContent='Mis à jour à '+new Date().toLocaleTimeString('fr-FR')+' · Actualisation toutes les 30 secondes';status('');}catch(e){status(e.message,true)}finally{busy=false;render();void loadCourseAlertQueue();}}
+async function load(){if(busy||!session)return;busy=true;try{const data=await call('admin_list');bookings=data.bookings;sessions=data.sessions;const attendanceResult=await supa.from('km16_course_attendance').select('booking_id,present');if(attendanceResult.error)throw attendanceResult.error;attendance=new Map((attendanceResult.data||[]).map(row=>[row.booking_id,row.present]));const linksResult=await supa.from('km16_booking_member_links').select('booking_id,membership_order_id');if(linksResult.error)throw linksResult.error;memberLinks=new Map((linksResult.data||[]).map(row=>[row.booking_id,row.membership_order_id]));const externalResult=await supa.from('km16_booking_external_links').select('booking_id,external_id,season_id');if(externalResult.error)throw externalResult.error;externalLinks=new Map((externalResult.data||[]).map(row=>[row.booking_id,'external:'+row.external_id+':'+row.season_id]));$('updated').textContent='Mis à jour à '+new Date().toLocaleTimeString('fr-FR')+' · Actualisation toutes les 30 secondes';status('');}catch(e){status(e.message,true)}finally{busy=false;render();void loadCourseAlertQueue();void loadDailyCourses();}}
 async function authState(s){session=s;const admin=s?.user?.email?.toLowerCase()===ADMIN;$('login').hidden=!!s;$('workspace').hidden=!admin;$('identity').textContent=admin?s.user.email:'';if(s&&!admin)$('global-status').textContent='Accès réservé à l’administrateur KM16';if(admin)await load();}
 $('login-form').onsubmit=async e=>{e.preventDefault();try{const {error}=await supa.auth.signInWithPassword({email:$('email').value.trim(),password:$('password').value});if(error)throw error;}catch(e){$('global-status').textContent=e.message}finally{$('password').value=''}};
 $('logout').onclick=()=>supa.auth.signOut();

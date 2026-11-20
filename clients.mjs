@@ -115,7 +115,7 @@ async function refreshKm16HealthDocuments(){
   if(error)throw error;
   const missing=data.filter(row=>row.state==='missing').length;
   const review=data.length-missing;
-  count.textContent='· '+missing+' manquant(s) · '+review+' à vérifier';
+  count.textContent=missing+' manquant(s) · '+review+' à vérifier';
   status.textContent=data.length?'Dossiers réels de la saison sélectionnée, y compris ceux déjà validés administrativement.':'Aucun certificat manquant ou à vérifier pour cette saison.';
   for(const row of data){
    const item=document.createElement('li');
@@ -171,7 +171,7 @@ function renderPriorities(){
  const unknown=tasks.filter(t=>t.count===null);
  const total=pending.reduce((sum,t)=>sum+t.count,0);
  const knownCount=count=>unknown.length===tasks.length?'—':unknown.length&&count>0?'≥ '+count:unknown.length?'—':String(count);
- $('km16-priorities-total').textContent=knownCount(total);
+ $('km16-priorities-total').textContent=$('km16-dashboard-priority-count').textContent=knownCount(total);
  $('km16-priorities-categories').textContent=knownCount(pending.length);
  $('km16-priorities-status').textContent=(unknown.length?'Données partielles : '+unknown.map(t=>t.label).join(', ')+'. ':'')+(!pending.length&&!unknown.length?'Aucune alerte en attente. ':'')+(km16ActionError?'Erreur de synchronisation : '+km16ActionError:km16ActionLoaded?'Suivi « En cours » synchronisé entre appareils. Il ne valide aucun dossier.':'Chargement du suivi partagé…');
  const ul=document.createElement('ul');ul.className='km16-approval-list';
@@ -195,7 +195,13 @@ $('km16-priorities-refresh').onclick=()=>{refreshCourseAlerts();refreshShirtKpi(
 let overviewLoaded=false,shirtRefresh=0;
 function renderApprovalDossiers(){const host=$('km16-dossiers-list'),count=$('km16-dossiers-count');host.replaceChildren();if(!overviewLoaded){count.textContent='Chargement des dossiers…';return;}const dossiers=[];const seen=new Set();for(const c of all){for(const p of c.products||[]){if(p.external||p.approval!=='pending'||!p.order_id||seen.has(p.order_id))continue;seen.add(p.order_id);dossiers.push({client:c,product:p});}}count.textContent=dossiers.length+' dossier(s) avec validation administrative en attente · Saison '+$('season').value+($('test').checked?' · Mode test':'');if(!dossiers.length){const p=document.createElement('p');p.className='muted';p.textContent='Aucune validation administrative en attente parmi les achats présents dans ce fichier.';host.append(p);return;}const ul=document.createElement('ul');ul.className='km16-approval-list';const dossierRows=document.createDocumentFragment();for(const d of dossiers){const li=document.createElement('li');const label=document.createElement('span');label.textContent=[d.client.first_name,d.client.last_name].filter(Boolean).join(' ')+' · '+d.product.title+' · '+euro(d.product.net_cents||0)+' encaissé(s)';const a=document.createElement('a');a.href='./adhesion.html?admin_order='+encodeURIComponent(d.product.order_id)+'#admin';a.textContent='Vérifier / valider le dossier';a.setAttribute('aria-label','Ouvrir la validation administrative de '+d.client.first_name+' '+d.client.last_name);li.append(label,a);dossierRows.append(li);}ul.append(dossierRows);host.append(ul);}
 
-let processingItems=[], processingStatus='', processingRequest=0;
+let processingItems=[], processingStatus='', processingRequest=0, processingReady=false;
+function openDashboardTask(){
+ const id=location.hash.slice(1);
+ if(id==='km16-to-process'||id==='km16-health-documents')$(id).open=true;
+}
+window.addEventListener('hashchange',openDashboardTask);
+openDashboardTask();
 function renderProcessingItems(){
  const host=$('km16-to-process-list');
  host.replaceChildren();
@@ -223,6 +229,10 @@ function renderProcessingItems(){
    action:payment?'Rapprocher les paiements':'Ouvrir le suivi des e-mails',
   });
  }
+ $('km16-processing-payments').href='./course-operations.html?vue=paiements&saison='+encodeURIComponent($('season').value);
+ const capped=['payment','email'].some(kind=>processingItems.filter(item=>item.kind===kind).length>=100);
+ const partial=capped||!processingReady||!overviewLoaded;
+ $('km16-processing-count').textContent=rows.length?(partial?'≥ ':'')+rows.length:partial?'—':'0';
  for(const row of rows){
   const item=document.createElement('li');
   const label=document.createElement('span');
@@ -237,16 +247,16 @@ function renderProcessingItems(){
 }
 async function refreshProcessingItems(){
  const request=++processingRequest;
- processingItems=[];
+ processingItems=[];processingReady=false;
  const test=$('test').checked;
  processingStatus=test?'Mode test · dossiers de test uniquement.':'Chargement des paiements et des e-mails…';
  renderProcessingItems();
- if(test)return;
+ if(test){processingReady=true;renderProcessingItems();return;}
  try{
   const {data,error}=await client.rpc('km16_admin_processing_items',{p_season:$('season').value});
   if(request!==processingRequest)return;
   if(error)throw error;
-  processingItems=data||[];
+  processingItems=data||[];processingReady=true;
   processingStatus=processingItems.filter(i=>i.kind==='payment').length===100||processingItems.filter(i=>i.kind==='email').length===100?'Les 100 opérations les plus récentes sont affichées par catégorie.':'';
  }catch{
   if(request!==processingRequest)return;
@@ -329,7 +339,7 @@ async function refreshExternalPayments(){
 }
 const moneyFields=[['total_cents','Achats'],['gross_cents','Encaissé brut'],['refunded_cents','Remboursements'],['net_cents','Encaissé net'],['future_cents','Échéances futures'],['planned_cents','CA planifié · net + futur'],['overdue_cents','Échues impayées'],['cancelled_cents','Échéances annulées'],['disputed_cents','Montants contestés inclus dans le net']];
 const status=(text,error=false)=>{$('status').textContent=text;$('status').className=error?'status error':'status';};
-function clear(){sourceClients=[];clubPayments=[];clubRegistrationRequest++;resetClubClientChoice();$('club-registration-list')?.replaceChildren();clubPaymentTotals=null;clubPaymentTotalsError=false;processingRequest++;stageReminderRequest++;processingItems=[];processingStatus='';$('km16-stage-reminders-rows').replaceChildren();externalPaymentRequest++;if($('external-payment-summary'))$('external-payment-summary').replaceChildren();if($('external-payment-status'))$('external-payment-status').textContent='En attente de connexion.';closeMemberProfile();overviewLoaded=false;renderOverview();shirtRefresh++;courseAlertRequest++;$('kpi-course-unlinked').textContent='—';$('kpi-course-attendance').textContent='—';$('kpi-course-status').textContent='Suivi des cours en attente de connexion.';putShirts('—','En attente de connexion');all=[];$('stage-rows').replaceChildren();$('money-summary').replaceChildren();$('money-breakdown').replaceChildren();$('money-alerts').replaceChildren();$('money-alerts').hidden=true;$('rows').replaceChildren();$('data-status').textContent='';$('imports-note').textContent='';$('export').disabled=true;for(const g of ['enfants','ados','adultes'])$('split-'+g).textContent='';for(const id of ['count-enfants','count-ados','count-adultes'])$(id).textContent='0';}
+function clear(){sourceClients=[];clubPayments=[];clubRegistrationRequest++;resetClubClientChoice();$('club-registration-list')?.replaceChildren();clubPaymentTotals=null;clubPaymentTotalsError=false;processingRequest++;stageReminderRequest++;processingItems=[];processingStatus='';processingReady=false;$('km16-stage-reminders-rows').replaceChildren();externalPaymentRequest++;if($('external-payment-summary'))$('external-payment-summary').replaceChildren();if($('external-payment-status'))$('external-payment-status').textContent='En attente de connexion.';closeMemberProfile();overviewLoaded=false;renderOverview();shirtRefresh++;courseAlertRequest++;$('kpi-course-unlinked').textContent='—';$('kpi-course-attendance').textContent='—';$('kpi-course-status').textContent='Suivi des cours en attente de connexion.';putShirts('—','En attente de connexion');all=[];$('stage-rows').replaceChildren();$('money-summary').replaceChildren();$('money-breakdown').replaceChildren();$('money-alerts').replaceChildren();$('money-alerts').hidden=true;$('rows').replaceChildren();$('data-status').textContent='';$('imports-note').textContent='';$('export').disabled=true;for(const g of ['enfants','ados','adultes'])$('split-'+g).textContent='';for(const id of ['count-enfants','count-ados','count-adultes'])$(id).textContent='0';}
 let selectedMember=null;
 function closeMemberProfile(){selectedMember=null;$('member-profile').hidden=true;$('member-profile-content').replaceChildren();}
 function profileLine(parent,label,value){const p=document.createElement('p');const strong=document.createElement('strong');strong.textContent=label+' : ';p.append(strong,document.createTextNode(value===null||value===undefined||value===''?'Non renseigné':String(value)));parent.append(p);}

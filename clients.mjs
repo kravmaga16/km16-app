@@ -147,9 +147,11 @@ function renderPriorities(){
  const tasks=KM16_ACTIONS.map(t=>({...t,count:value(t.kpi)}));
  const pending=tasks.filter(t=>t.count!==null&&t.count>0).sort((a,b)=>a.priority-b.priority||b.count-a.count);
  const unknown=tasks.filter(t=>t.count===null);
- $('km16-priorities-total').textContent=unknown.length?'—':String(tasks.reduce((sum,t)=>sum+(t.count||0),0));
- $('km16-priorities-categories').textContent=unknown.length?'—':String(pending.length);
- $('km16-priorities-status').textContent=(pending.length?pending.length+' catégorie(s) nécessitent une intervention. ':'')+(unknown.length?'Certaines données sont indisponibles. ':'')+(!pending.length&&!unknown.length?'Aucune alerte en attente. ':'')+(km16ActionError?'Erreur de synchronisation : '+km16ActionError:km16ActionLoaded?'Suivi « En cours » synchronisé entre appareils. Il ne valide aucun dossier.':'Chargement du suivi partagé…');
+ const total=pending.reduce((sum,t)=>sum+t.count,0);
+ const knownCount=count=>unknown.length===tasks.length?'—':unknown.length&&count>0?'≥ '+count:unknown.length?'—':String(count);
+ $('km16-priorities-total').textContent=knownCount(total);
+ $('km16-priorities-categories').textContent=knownCount(pending.length);
+ $('km16-priorities-status').textContent=(unknown.length?'Données partielles : '+unknown.map(t=>t.label).join(', ')+'. ':'')+(!pending.length&&!unknown.length?'Aucune alerte en attente. ':'')+(km16ActionError?'Erreur de synchronisation : '+km16ActionError:km16ActionLoaded?'Suivi « En cours » synchronisé entre appareils. Il ne valide aucun dossier.':'Chargement du suivi partagé…');
  const ul=document.createElement('ul');ul.className='km16-approval-list';
  for(const task of [...pending,...unknown]){
   const li=document.createElement('li'),label=document.createElement('span'),link=document.createElement('a');

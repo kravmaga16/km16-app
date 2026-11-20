@@ -75,11 +75,33 @@ Les versions des fichiers de migration doivent correspondre aux versions réelle
 enregistrées dans `supabase_migrations.schema_migrations` après leur application.
 La migration de planification ne doit être appliquée qu’une fois la fonction prête.
 
+### Mise en service du 20 novembre 2026
+
+Les migrations appliquées au projet KM16-Videos sont
+`20261120035231_purchase_notification_coverage.sql` et
+`20261120035314_schedule_shirt_payment_reconciliation.sql`. La nouvelle Edge
+Function est active en version 1 ; les deux fichiers déployés correspondent aux
+sources du dépôt.
+
+La première exécution automatique, à 04 h 54 (heure de Paris), a répondu HTTP 200
+avec `ok: true`, zéro commande à vérifier et zéro erreur. Le worker d’envoi
+existant a également répondu HTTP 200, sans message en échec ou incertain.
+Les trois commandes de tee-shirts de test et l’unique notification de test
+historique sont restées inchangées. Aucun achat ni envoi de test n’a été créé
+pour cette mise en service.
+
+Les droits des fonctions, les déclencheurs et la planification ont été contrôlés
+en lecture seule. Security Advisor n’a ajouté aucun avis par rapport à l’état
+précédent ; Health Advisor ne retourne aucun avis. Cette vérification technique
+ne constitue pas une preuve de réception dans la boîte `contact@km16.fr`.
+
 ## Vérification
 
-Le workflow `KM16 purchase notifications` exécute le handler avec des réponses
-Stripe simulées puis les tests SQL sur un PostgreSQL 17 isolé. Il n’utilise aucun
-secret de production et ne fait partir aucun e-mail.
+Le workflow `KM16 purchase notifications` exécute 17 tests du handler avec des
+réponses Stripe simulées, 27 assertions SQL sur un PostgreSQL 17 isolé, puis un
+test avec deux connexions concurrentes. Les scénarios vérifient également la
+reprise après annulation d’une transaction. Il n’utilise aucun secret de
+production et ne fait partir aucun e-mail.
 
 ```bash
 node --test tests/shirt-payment-reconciliation.test.mjs

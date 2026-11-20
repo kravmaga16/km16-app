@@ -104,6 +104,28 @@ const KM16_DAILY_ACTIONS=[
  {id:'kpi-course-unlinked',label:'Réservations sans dossier',href:'./course-admin.html?view=unlinked'},
  {id:'kpi-shirts',label:'Tee-shirts à remettre',href:'./tee-shirts.html#admin'}
 ];
+let km16HealthRequest=0;
+async function refreshKm16HealthDocuments(){
+ const request=++km16HealthRequest;
+ const count=$('km16-health-count'),status=$('km16-health-status'),host=$('km16-health-list');
+ count.textContent='—';host.replaceChildren();status.textContent='Chargement des certificats médicaux…';
+ try{
+  const {data,error}=await client.rpc('km16_admin_health_documents',{p_season:$('season').value});
+  if(request!==km16HealthRequest)return;
+  if(error)throw error;
+  const missing=data.filter(row=>row.state==='missing').length;
+  const review=data.length-missing;
+  count.textContent='· '+missing+' manquant(s) · '+review+' à vérifier';
+  status.textContent=data.length?'Dossiers réels de la saison sélectionnée, y compris ceux déjà validés administrativement.':'Aucun certificat manquant ou à vérifier pour cette saison.';
+  for(const row of data){
+   const item=document.createElement('li');
+   item.textContent=[row.first_name,row.last_name].filter(Boolean).join(' ')+' · '+(row.state==='missing'?'Certificat manquant':'Certificat reçu · à vérifier');
+   host.append(item);
+  }
+ }catch{
+  if(request===km16HealthRequest)status.textContent='Suivi des certificats indisponible. Actualise le tableau de bord pour réessayer.';
+ }
+}
 let km16FollowupRequest=0;
 async function refreshKm16FollowupDashboard(){const seq=++km16FollowupRequest;const ids=['pending','due','never','uncertain'];if(session?.user?.email?.toLowerCase()!==ADMIN){for(const id of ids)$('km16-followup-'+id).textContent='—';$('km16-followup-dashboard-status').textContent='Connexion administrateur requise.';return;}try{const {data,error}=await client.rpc('km16_admin_followup_dashboard');if(seq!==km16FollowupRequest)return;if(error)throw error;const row=data?.[0];if(!row)throw Error('Indicateurs indisponibles');for(const id of ids)$('km16-followup-'+id).textContent=String(row[id+'_count']??'—');$('km16-followup-dashboard-status').textContent='Indicateurs calculés sur les dossiers réels en attente · Actualisés à '+new Date().toLocaleTimeString('fr-FR');}catch(e){if(seq!==km16FollowupRequest)return;for(const id of ids)$('km16-followup-'+id).textContent='—';$('km16-followup-dashboard-status').textContent='Suivi indisponible : '+e.message;}}
 function renderKm16Daily(){const cards=$('km16-daily-cards'),next=$('km16-daily-next');if(!cards||!next)return;
@@ -117,7 +139,7 @@ function renderKm16Daily(){const cards=$('km16-daily-cards'),next=$('km16-daily-
  next.replaceChildren();const upcoming=km16UpcomingDeadlines().slice(0,3);if(!upcoming.length){const p=document.createElement('p');p.className='muted';p.textContent='Aucune échéance future renseignée.';next.append(p);return;}
  const ul=document.createElement('ul');ul.className='km16-approval-list';for(const d of upcoming){const li=document.createElement('li');li.textContent=km16DateFr(d.date)+(d.end?' au '+km16DateFr(d.end):'')+' · '+d.label;ul.append(li);}next.append(ul);
 }
-$('km16-daily-refresh').onclick=()=>{refreshCourseAlerts();refreshShirtKpi();refreshAdminActionProgress();refreshKm16AutoMail();refreshKm16FollowupDashboard();load();renderKm16Daily();};
+$('km16-daily-refresh').onclick=()=>{refreshCourseAlerts();refreshShirtKpi();refreshAdminActionProgress();refreshKm16AutoMail();refreshKm16FollowupDashboard();refreshKm16HealthDocuments();load();renderKm16Daily();};
 const KM16_ACTIONS=[
  {id:'review',label:'Dossiers administratifs à valider',kpi:'kpi-review',url:'./clients.html#km16-dossiers',priority:1},
  {id:'attendance',label:'Présences des cours passés à renseigner',kpi:'kpi-course-attendance',url:'./course-admin.html?view=attendance-pending',priority:1},
@@ -834,12 +856,12 @@ async function authState(s){
  $('login').hidden=!!s;$('forbidden').hidden=!s||admin;$('workspace').hidden=!admin;$('stages-panel').hidden=!admin;
  $('km16-email-relances').hidden=!isKm16EmailAdmin(s);
  $('password').value='';$('test').checked=false;$('test-notice').hidden=true;group='';$('search').value='';
- if(admin){$('identity').textContent=s.user.email;refreshShirtKpi();refreshCourseAlerts();refreshAdminActionProgress();refreshKm16AutoMail();refreshKm16FollowupDashboard();await load();communications.load();}else{km16ActionRequest++;km16ActionState.clear();km16ActionLoaded=false;km16ActionError='';}
+ if(admin){$('identity').textContent=s.user.email;refreshShirtKpi();refreshCourseAlerts();refreshAdminActionProgress();refreshKm16AutoMail();refreshKm16FollowupDashboard();refreshKm16HealthDocuments();await load();communications.load();}else{km16ActionRequest++;km16ActionState.clear();km16ActionLoaded=false;km16ActionError='';}
 }
 $('login-form').onsubmit=async event=>{event.preventDefault();if(!client)return;const button=$('login-button');button.disabled=true;status('');try{const {error}=await client.auth.signInWithPassword({email:$('email').value.trim(),password:$('password').value});if(error)throw error;}catch(e){status(e.message,true);}finally{button.disabled=false;$('password').value='';}};
 const logout=async()=>{generation++;controller?.abort();clear();clearKm16EmailAlerts();$('km16-email-relances').hidden=true;session=null;await client.auth.signOut();await authState(null);};
 $('logout').onclick=logout;$('other-account').onclick=logout;
-$('season').onchange=()=>{generation++;controller?.abort();busy=false;clear();showSeason();load();};
+$('season').onchange=()=>{generation++;controller?.abort();busy=false;clear();showSeason();refreshKm16HealthDocuments();load();};
 $('refresh').onclick=()=>{load();refreshCourseAlerts();};let km16SearchTimer; $('search').oninput=()=>{clearTimeout(km16SearchTimer);km16SearchTimer=setTimeout(render,160);};$('search-clear').onclick=()=>{clearTimeout(km16SearchTimer);$('search').value='';render();$('search').focus();};
 $('all').onclick=()=>{group='';render();};
 for(const b of document.querySelectorAll('[data-group]'))b.onclick=()=>{group=b.dataset.group;render();};

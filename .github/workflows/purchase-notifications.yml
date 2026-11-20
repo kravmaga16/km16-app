@@ -1,0 +1,72 @@
+name: KM16 purchase notifications
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'supabase/functions/km16-reconcile-shirt-payments/**'
+      - 'supabase/migrations/*purchase_notification_coverage.sql'
+      - 'supabase/migrations/*schedule_shirt_payment_reconciliation.sql'
+      - 'tests/purchase-notifications*'
+      - 'tests/shirt-payment-*'
+      - '.github/workflows/purchase-notifications.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'supabase/functions/km16-reconcile-shirt-payments/**'
+      - 'supabase/migrations/*purchase_notification_coverage.sql'
+      - 'supabase/migrations/*schedule_shirt_payment_reconciliation.sql'
+      - 'tests/purchase-notifications*'
+      - 'tests/shirt-payment-*'
+      - '.github/workflows/purchase-notifications.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: km16-purchase-notifications-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  payment-notifications:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: purchase-test-only
+          POSTGRES_DB: purchase_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d purchase_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      PGHOST: localhost
+      PGPORT: '5432'
+      PGUSER: postgres
+      PGPASSWORD: purchase-test-only
+      PGDATABASE: purchase_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Test automatic Stripe reconciliation without external requests
+        run: node --test tests/shirt-payment-reconciliation.test.mjs
+      - name: Prepare isolated PostgreSQL fixtures
+        run: psql -X -v ON_ERROR_STOP=1 -f tests/purchase-notifications-fixture.sql
+      - name: Apply the purchase notification migration
+        run: |
+          set -eu
+          for migration in supabase/migrations/*_purchase_notification_coverage.sql; do
+            psql -X -v ON_ERROR_STOP=1 -1 -f "$migration"
+          done
+      - name: Test real triggers, permissions, labels and payment claims
+        run: psql -X -v ON_ERROR_STOP=1 -f tests/purchase-notifications-postgres.sql
+      - name: Test two simultaneous PostgreSQL workers
+        run: node tests/shirt-payment-concurrency.mjs

@@ -77,7 +77,19 @@ La désinscription arrête tous les rappels de paiement de cette adresse, y comp
 
 Les RPC sont `SECURITY INVOKER`, avec `search_path` vide et droit `EXECUTE` limité à `service_role`. Les deux tables privées ont RLS activée et aucun accès `anon`/`authenticated`. Seul le dispatcher du planificateur est `SECURITY DEFINER`, propriétaire `postgres`, non exécutable par les rôles API.
 
-Ordre de livraison : tests isolés et CI, migration du registre, worker, créateurs avec leur helper partagé, publication du site et activation du planificateur. Les noms de migrations du dépôt doivent correspondre aux versions effectivement enregistrées en production.
+La livraison commence par les tests isolés et la CI, puis la migration du registre, le worker et les créateurs avec leur helper partagé. Le planificateur et les formulaires sont ensuite mis en service. Les noms de migrations du dépôt correspondent aux versions effectivement enregistrées en production.
+
+### Livraison du 20 novembre 2026
+
+- Registre : migration `20261120044416_checkout_reminders.sql`.
+- Planificateur : migration `20261120044642_schedule_checkout_reminders.sql`, tâche `km16-checkout-reminders-every-five-minutes` active.
+- Worker `km16-checkout-reminders` version 1 ; créateurs `km16-adhesions` version 76, `km16-shirts` version 22 et `km16-create-checkout` version 46.
+- Première vérification du worker en production : HTTP 200, `ok: true`, zéro tentative réclamée et zéro envoi. Les trois créateurs répondent bien à leurs contrôles d'accès.
+- Deux nouvelles tables privées avec RLS ; les huit RPC sont accessibles à `service_role` et inaccessibles à `anon` et `authenticated`.
+- 56 tests Node locaux et 79 assertions PostgreSQL réussis. La CI PostgreSQL 17 vérifie aussi la concurrence réelle et la désinscription avant l'envoi.
+- CI navigateur : 88 parcours adhésion/caméra et 8 parcours tee-shirts/vidéos, sous Chromium et WebKit. Les accès Stripe/SMTP des tests sont simulés.
+
+Suivi de livraison : https://github.com/kravmaga16/km16-app/pull/39
 
 ## Suivi des résultats
 

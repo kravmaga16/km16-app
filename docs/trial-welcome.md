@@ -35,3 +35,12 @@ Le commutateur global `km16_automation_settings.enabled` et le jeton interne exi
 5. Activer le planificateur et vérifier son premier passage.
 
 Les tests utilisent uniquement des destinataires fictifs et un transport SMTP simulé.
+
+## Mise en service du 20 novembre 2026
+
+- Worker `km16-trial-welcome` version 1 et fonction `km16-adhesions` version 77 déployés.
+- Migrations appliquées : `20261120050920_trial_welcome`, `20261120051020_trial_welcome_terms` et `20261120051021_schedule_trial_welcome`. Les fichiers portent les versions réellement enregistrées dans Supabase.
+- Conditions V6 actives ; empreinte de l’archive V5 inchangée. Les deux produits d’essai sont gratuits et ne demandent plus de validation préalable du créneau.
+- Tâche `km16-trial-welcome-every-minute` active ; premiers passages terminés avec succès.
+- Contrôle authentifié du worker : HTTP 200, `ok=true`, file vide et aucun message envoyé par ce contrôle. Ce résultat valide le raccordement du planificateur, l’authentification et l’accès à la file ; il ne constitue pas une preuve de réception d’un e-mail réel.
+- Les quatre workflows de la PR nº 40 sont réussis, dont les parcours navigateur et les contrôles PostgreSQL isolés.

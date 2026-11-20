@@ -21,7 +21,8 @@ for(const [name,engine] of [['Chromium',chromium],['WebKit',webkit]]){
       assert.equal(await page.locator('#password').count(),1,name+' password field');
       await page.evaluate(()=>{document.querySelector('#login').hidden=true;document.querySelector('#workspace').hidden=false});
       const nav=page.locator('.km16-dashboard-nav');
-      assert.equal(await nav.locator('a').count(),4,name+' dashboard links');
+      assert.deepEqual(await nav.locator('a').evaluateAll(links=>links.map(link=>link.getAttribute('href'))),
+        ['#km16-deadlines','#km16-automatic-comms','#km16-member-directory'],name+' dashboard links');
       for(const link of await nav.locator('a').all()){
         const target=await link.getAttribute('href');
         assert.equal(await page.locator(target).count(),1,name+' broken link '+target);

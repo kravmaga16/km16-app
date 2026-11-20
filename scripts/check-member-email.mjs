@@ -529,6 +529,7 @@ try{
      assert.equal(otpCalls(events).length,1);assert.deepEqual(writes(events),[]);assert.equal(await page.locator('#first_name').inputValue(),'Camille');assert.equal(await page.locator('#contact_email').inputValue(),confirmed.user.email);assert.equal(await page.locator('#photo-preview').isVisible(),true);
      if(scenario==='network-reload'){
       await page.evaluate(()=>localStorage.setItem('km16-test-otp-ok','1'));await page.reload();
+      await page.locator('#resume-request').click();
       await page.waitForFunction(()=>document.querySelector('#first_name').value==='Camille'&&!document.querySelector('#pay').disabled);
       assert.equal(await page.locator('#photo-preview').isVisible(),true);
       await page.locator('#pay').click();await page.waitForFunction(()=>!document.querySelector('#checkout-access').hidden&&!document.querySelector('#pay').disabled);

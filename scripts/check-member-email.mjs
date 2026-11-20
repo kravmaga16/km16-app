@@ -502,7 +502,7 @@ try{
      assert.equal(await page.locator('#first_name').isEnabled(),true,'form controls restored after failure');
     }else if(scenario==='guest'){
      await page.locator('#pay').click();assert.equal(otpCalls(events).length,0,'empty form cannot create account');
-     await fill(page,{photo:false});await page.locator('#pay').click();assert.equal(otpCalls(events).length,0,'photo required');
+     await fill(page,{photo:false});assert.equal(await page.locator('#member_photo').getAttribute('required'),null,'photo is optional for paid registration');
      await addPhoto(page);await page.locator('#terms').uncheck();await page.locator('#pay').click();assert.equal(otpCalls(events).length,0,'consent required');
      await page.locator('#terms').check();
      await page.locator('#checkout-reminder').check();

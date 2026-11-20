@@ -100,8 +100,14 @@ Deno.serve(async req=>{
   const review=async code=>{await db('km16_bill_queue?reference=eq.'+encodeURIComponent(job.reference),'PATCH',{status:'review',error_code:code});return Response.json({review:1});};
   if(order.livemode!==live||payment.status!=='paid'||payment.refunded_cents!==0)return await review('payment_changed');
   async function stripe(path){const r=await fetch('https://api.stripe.com/v1/'+path,{headers:{Authorization:'Bearer '+key,'Stripe-Version':'2026-08-26.dahlia'},signal:AbortSignal.timeout(10000)});if(!r.ok)throw Error('stripe');return await r.json();}
+  const family=order.family_payment_id?(await db('km16_family_payments?id=eq.'+order.family_payment_id))[0]:null;
   let piId=job.reference,paidAt;
-  if(job.reference.startsWith('in_')){
+  if(order.family_payment_id){
+   if(!family||family.state!=='paid'||family.livemode!==live||family.user_id!==order.user_id||
+     job.reference!=='family:'+family.payment_intent_id+':'+order.id||payment.amount_cents!==order.total_cents)
+    return await review('family_payment_changed');
+   piId=family.payment_intent_id;
+  }else if(job.reference.startsWith('in_')){
    const inv=await stripe('invoices/'+encodeURIComponent(job.reference));
    if(inv.status!=='paid'||inv.amount_paid!==payment.amount_cents||inv.currency!=='eur'||id(inv.customer)!==order.customer_id||inv.livemode!==live)return await review('invoice_changed');
    const links=await stripe('invoice_payments?invoice='+encodeURIComponent(inv.id)+'&limit=100');
@@ -110,15 +116,18 @@ Deno.serve(async req=>{
    paidAt=inv.status_transitions?.paid_at;
   }else if(job.reference!==order.payment_intent_id)return await review('wrong_reference');
   const pi=await stripe('payment_intents/'+encodeURIComponent(piId));
-  if(pi.status!=='succeeded'||pi.currency!=='eur'||pi.amount_received!==payment.amount_cents||id(pi.customer)!==order.customer_id||pi.livemode!==live)return await review('payment_not_confirmed');
+  const expectedAmount=family?family.total_cents:payment.amount_cents;
+  const customerId=family?id(pi.customer):order.customer_id;
+  if(!customerId||pi.status!=='succeeded'||pi.currency!=='eur'||pi.amount_received!==expectedAmount||id(pi.customer)!==customerId||pi.livemode!==live
+   ||family&&pi.metadata?.km16_family!==family.id)return await review('payment_not_confirmed');
   const ch=await stripe('charges/'+encodeURIComponent(id(pi.latest_charge)));
-  if(!ch.paid||ch.refunded||ch.amount_refunded||ch.disputed||ch.currency!=='eur'||ch.amount!==payment.amount_cents||id(ch.customer)!==order.customer_id)return await review('charge_changed');
+  if(!ch.paid||ch.refunded||ch.amount_refunded||ch.disputed||ch.currency!=='eur'||ch.amount!==expectedAmount||id(ch.customer)!==customerId)return await review('charge_changed');
   paidAt=paidAt||ch.created;
   let bill=(await db('km16_bills?reference=eq.'+encodeURIComponent(job.reference)))[0];
   if(!bill){
-   const session=await stripe('checkout/sessions/'+encodeURIComponent(order.stripe_session_id));
-   if(session.metadata?.km16_order!==order.id||id(session.customer)!==order.customer_id||session.livemode!==live)return await review('wrong_session');
-   const customer=await stripe('customers/'+encodeURIComponent(order.customer_id));
+   const session=await stripe('checkout/sessions/'+encodeURIComponent(family?family.stripe_session_id:order.stripe_session_id));
+   if((family?session.metadata?.km16_family!==family.id:session.metadata?.km16_order!==order.id)||id(session.customer)!==customerId||session.livemode!==live)return await review('wrong_session');
+   const customer=await stripe('customers/'+encodeURIComponent(customerId));
    const details=session.customer_details||{};
    // Une ancienne session peut contenir {country:'FR',line1:null}.
    // Choisir la première adresse complète, sans bloquer le repli sur le client.
@@ -127,7 +136,7 @@ Deno.serve(async req=>{
    const buyer=[details.name,customer.name,ch.billing_details?.name].find(n=>typeof n==='string'&&n.trim());
    if(!buyer||!address?.line1||!address?.country)return await review('billing_address_missing');
    const refs=await db('km16_membership_payments?order_id=eq.'+order.id+'&order=created_at,reference');
-   const initial=refs.find(p=>p.reference===order.payment_intent_id);
+   const initial=refs.find(p=>p.reference===(family?job.reference:order.payment_intent_id));
    const recurring=[];
    for(const p of refs.filter(p=>p.reference.startsWith('in_'))){
     const inv=await stripe('invoices/'+encodeURIComponent(p.reference));
@@ -136,7 +145,7 @@ Deno.serve(async req=>{
    }
    recurring.sort((a,b)=>a.created-b.created||a.reference.localeCompare(b.reference));
    // Un échec puis une régularisation met à jour la même facture Stripe, sans nouvel indice.
-   const installment=job.reference===order.payment_intent_id?1:recurring.findIndex(p=>p.reference===job.reference)+2;
+   const installment=family||job.reference===order.payment_intent_id?1:recurring.findIndex(p=>p.reference===job.reference)+2;
    if(!initial||installment<1||installment>order.count)return await review('installment_unclear');
    const snapshot={order_id:order.id,email:order.email,title:order.title,
     participant:order.first_name+' '+order.last_name,buyer_name:buyer,

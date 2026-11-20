@@ -502,7 +502,7 @@ try{
      assert.equal(await page.locator('#first_name').isEnabled(),true,'form controls restored after failure');
     }else if(scenario==='guest'){
      await page.locator('#pay').click();assert.equal(otpCalls(events).length,0,'empty form cannot create account');
-     await fill(page,{photo:false});await page.locator('#pay').click();assert.equal(otpCalls(events).length,0,'photo required');
+     await fill(page,{photo:false});assert.equal(await page.locator('#member_photo').getAttribute('required'),null,'photo is optional for paid registration');
      await addPhoto(page);await page.locator('#terms').uncheck();await page.locator('#pay').click();assert.equal(otpCalls(events).length,0,'consent required');
      await page.locator('#terms').check();
      await page.locator('#checkout-reminder').check();
@@ -529,6 +529,7 @@ try{
      assert.equal(otpCalls(events).length,1);assert.deepEqual(writes(events),[]);assert.equal(await page.locator('#first_name').inputValue(),'Camille');assert.equal(await page.locator('#contact_email').inputValue(),confirmed.user.email);assert.equal(await page.locator('#photo-preview').isVisible(),true);
      if(scenario==='network-reload'){
       await page.evaluate(()=>localStorage.setItem('km16-test-otp-ok','1'));await page.reload();
+      await page.locator('#resume-request').click();
       await page.waitForFunction(()=>document.querySelector('#first_name').value==='Camille'&&!document.querySelector('#pay').disabled);
       assert.equal(await page.locator('#photo-preview').isVisible(),true);
       await page.locator('#pay').click();await page.waitForFunction(()=>!document.querySelector('#checkout-access').hidden&&!document.querySelector('#pay').disabled);

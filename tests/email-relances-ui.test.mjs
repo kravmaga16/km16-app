@@ -41,7 +41,7 @@ async function harness(browser){
    signOut:async()=>{if(state.holdSignOut)await new Promise(done=>{state.finishSignOut=done;});state.notify(null,'SIGNED_OUT');return {error:null};},
    signInWithPassword:async()=>{state.login();return {data:{session:state.session},error:null};}
   };
-  const readRpcs=new Set(['km16_admin_action_progress_list','km16_admin_scheduled_campaigns_list','km16_admin_followup_dashboard','km16_admin_external_payment_summary','km16_admin_external_payment_statuses']);
+  const readRpcs=new Set(['km16_admin_action_progress_list','km16_admin_scheduled_campaigns_list','km16_admin_followup_dashboard','km16_admin_external_payment_summary','km16_admin_external_payment_statuses','km16_admin_health_documents']);
   const readTables=new Set(['km16_booking_member_links','km16_course_attendance','km16_booking_external_links']);
   // The client dashboard also reads the selected season's club payments on login.
   // Only this bounded read is simulated; writes and other tables remain rejected.

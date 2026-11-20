@@ -230,14 +230,8 @@ window.KM16_receive=function(data){
          descriptionBlock.appendChild(km16Text('p',description));
          card.appendChild(descriptionBlock);
        }
-       const signup=km16Text('a',"S’inscrire et payer →");
-       signup.className='cta mini';
-       const paymentUrl=new URL('./adhesion.html',location.href);
-       paymentUrl.searchParams.set('categorie','Stages');
-       if(card.dataset.stageDate)paymentUrl.searchParams.set('stage_date',card.dataset.stageDate);
-       signup.href=paymentUrl.href;
-       signup.dataset.stageSignup=card.dataset.stageDate;
-       card.appendChild(signup);target.appendChild(card);
+       card.appendChild(km16Text('p','Vérification des inscriptions…','stage-registration'));
+       target.appendChild(card);
      }
      continue;
    }
@@ -281,6 +275,7 @@ window.KM16_receive=function(data){
    }
  }
  km16UpdateStages();
+ void km16LoadStageCatalogue();
  status.textContent=total?'Les informations du club sont à jour.':'Les informations du club seront disponibles prochainement.';status.classList.add('ok');clearTimeout(km16DataTimer);document.getElementById('data-load-status').hidden=true;
 };
 let km16DataTimer;
@@ -296,6 +291,48 @@ document.getElementById('data-retry').onclick=km16LoadData;km16LoadData();
 
 
 let km16StageTimer;
+let km16StageCatalogue;
+let km16StageCatalogueRequest;
+async function km16LoadStageCatalogue(){
+ if(km16StageCatalogueRequest)return km16StageCatalogueRequest;
+ km16StageCatalogueRequest=(async()=>{
+  try{
+   const response=await fetch('https://tlfewpbgbwesdriklxzb.supabase.co/functions/v1/km16-adhesions',{
+    method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'catalogue'})
+   });
+   if(!response.ok)throw Error('Catalogue indisponible');
+   const catalogue=await response.json();
+   if(!Array.isArray(catalogue.products))throw Error('Catalogue invalide');
+   km16StageCatalogue=catalogue;
+  }catch{
+   km16StageCatalogue=null;
+  }finally{
+   km16StageCatalogueRequest=null;
+   km16UpdateStages();
+  }
+ })();
+ return km16StageCatalogueRequest;
+}
+function km16UpdateStageRegistration(card){
+ const current=card.querySelector('.stage-registration');
+ if(!current)return;
+ const date=card.dataset.stageDate;
+ const products=km16StageCatalogue?.products.filter(product=>product.category==='Stages'&&product.event_date===date&&!product.draft);
+ if(date&&km16StageCatalogue?.enabled&&products?.length===1){
+  if(current.tagName==='A')return;
+  const link=km16Text('a','S’inscrire et payer →','cta mini stage-registration');
+  const url=new URL('./adhesion.html',location.href);
+  url.searchParams.set('categorie','Stages');
+  url.searchParams.set('stage_date',date);
+  link.href=url.href;
+  link.dataset.stageSignup=date;
+  current.replaceWith(link);
+  return;
+ }
+ const message=km16StageCatalogue?'Inscriptions en ligne non ouvertes':km16StageCatalogue===null?'Inscriptions en ligne temporairement indisponibles':'Vérification des inscriptions…';
+ if(current.tagName==='A')current.replaceWith(km16Text('p',message,'stage-registration'));
+ else current.textContent=message;
+}
 function km16UpdateStages(){
  clearTimeout(km16StageTimer);
  const preview=document.getElementById('home-stage-preview');
@@ -310,6 +347,7 @@ function km16UpdateStages(){
  });
  const fallback=live.parentElement.querySelector('.fallback-cards');
  if(fallback)fallback.hidden=cards.length>0;
+ cards.forEach(km16UpdateStageRegistration);
  cards.slice(0,2).forEach(card=>preview.appendChild(card.cloneNode(true)));
  const next=Math.min(...cards.map(card=>KM16StageVisibility.cutoff(card.dataset.stageDate)).filter(time=>time!==null&&time>now));
  if(Number.isFinite(next))km16StageTimer=setTimeout(km16UpdateStages,Math.min(next-now,2147483647));

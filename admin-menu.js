@@ -5,25 +5,36 @@
   if (!panel) return;
   const courseAdmin = './course-admin.html#workspace';
   const sections = [
-    ['', [['Accueil du club', './', 'M3 10l9-7 9 7v10H3z M9 20v-7h6v7']]],
-    ['Gestion du club', [
-      ['Vue d’ensemble', './clients.html#km16-overview', 'M3 3h8v8H3z M13 3h8v5h-8z M13 10h8v11h-8z M3 13h8v8H3z'],
-      ['Dossiers à valider', './clients.html#km16-dossiers', 'M9 11l2 2 4-4 M12 2l8 4v6c0 5-3 8-8 10-5-2-8-5-8-10V6z'],
-      ['Ventes de tee-shirts', './tee-shirts.html#admin', 'M4 4l4-2 4 3 4-3 4 2v6l-3 2v12H7V8L4 6z'],
-      ['Actualités du club', './news-admin.html#workspace', 'M4 3h16v18H4z M8 7h8 M8 11h8 M8 15h5'],
-      ['Relances d’e-mails', './clients.html#km16-email-relances', 'M4 5h16v14H4z M4 7l8 6 8-6 M12 15v3 M12 20h.01'],
-      ['Finances et encaissements', './clients.html#money-summary', 'M3 3h7v7H3z M14 3h7v7h-7z M3 14h7v7H3z M14 14h7v7h-7z'],
-      ['Inscriptions aux cours', courseAdmin, 'M12 21H3v-3a5 5 0 0110 0v1 M8 11a4 4 0 100-8 4 4 0 000 8z M15 12l2 2 4-4'],
-      ['Horaires des cours', './#planning', 'M12 3a9 9 0 100 18 9 9 0 000-18z M12 7v5l4 2'],
-      ['Rappels de stages', './clients.html#km16-stage-reminders', 'M4 5h16v14H4z M4 7l8 6 8-6'],
-      ['Ventes de stages', './clients.html#stages-panel', 'M8 3h8v6a4 4 0 01-8 0z M8 5H4v3a4 4 0 004 4 M16 5h4v3a4 4 0 01-4 4 M12 13v7 M8 21h8'],
+    ["", [
+      ["Accueil du club", './', 'M3 10l9-7 9 7v10H3z M9 20v-7h6v7'],
     ]],
-    ['Adhérents et paiements', [
-      ['Équipe du club', './#equipe', 'M16 21v-3a4 4 0 00-4-4H7a4 4 0 00-4 4v3 M21 21v-3a4 4 0 00-3-4 M9.5 11a4 4 0 100-8 4 4 0 000 8z M17 3a4 4 0 010 8'],
-      ['Fichier des adhérents', './clients.html#workspace', 'M3 3h18v18H3z M7 17v-2a5 5 0 0110 0v2 M12 11a3 3 0 100-6 3 3 0 000 6z'],
-      ['Essais et relances', './trials.html#workspace', 'M4 5h16v16H4z M8 2v6 M16 2v6 M4 11h16 M8 15l3 3 5-5'],
-      ['Adhésions et paiements', './adhesion.html#admin', 'M2 5h20v14H2z M2 10h20'],
-      ['Créer un lien de paiement', './adhesion.html#link-form', 'M10 13a4 4 0 006 0l4-4a4 4 0 00-6-6l-2 2 M14 11a4 4 0 00-6 0l-4 4a4 4 0 006 6l2-2'],
+    ["Pilotage", [
+      ["Tableau de bord", './clients.html#workspace', 'M3 3h8v8H3z M13 3h8v5h-8z M13 10h8v11h-8z M3 13h8v8H3z'],
+      ["Vue d’ensemble", './clients.html#km16-overview', 'M3 3h8v8H3z M13 3h8v5h-8z M13 10h8v11h-8z M3 13h8v8H3z'],
+    ]],
+    ["Adhérents", [
+      ["Fichier des adhérents", './clients.html#km16-member-directory', 'M3 3h18v18H3z M7 17v-2a5 5 0 0110 0v2 M12 11a3 3 0 100-6 3 3 0 000 6z'],
+      ["Dossiers à valider", './clients.html#km16-dossiers', 'M9 11l2 2 4-4 M12 2l8 4v6c0 5-3 8-8 10-5-2-8-5-8-10V6z'],
+      ["Adhésions et paiements", './adhesion.html#admin', 'M2 5h20v14H2z M2 10h20'],
+      ["Essais et relances", './trials.html#workspace', 'M4 5h16v16H4z M8 2v6 M16 2v6 M4 11h16 M8 15l3 3 5-5'],
+    ]],
+    ["Cours et stages", [
+      ["Inscriptions aux cours", courseAdmin, 'M12 21H3v-3a5 5 0 0110 0v1 M8 11a4 4 0 100-8 4 4 0 000 8z M15 12l2 2 4-4'],
+      ["Horaires des cours", './#planning', 'M12 3a9 9 0 100 18 9 9 0 000-18z M12 7v5l4 2'],
+      ["Rappels de stages", './clients.html#km16-stage-reminders', 'M4 5h16v14H4z M4 7l8 6 8-6'],
+      ["Ventes de stages", './clients.html#stages-panel', 'M8 3h8v6a4 4 0 01-8 0z M8 5H4v3a4 4 0 004 4 M16 5h4v3a4 4 0 01-4 4 M12 13v7 M8 21h8'],
+      ["Équipe du club", './#equipe', 'M16 21v-3a4 4 0 00-4-4H7a4 4 0 00-4 4v3 M21 21v-3a4 4 0 00-3-4 M9.5 11a4 4 0 100-8 4 4 0 000 8z M17 3a4 4 0 010 8'],
+    ]],
+    ["Finances", [
+      ["Finances et encaissements", './clients.html#km16-finances', 'M3 3h7v7H3z M14 3h7v7h-7z M3 14h7v7H3z M14 14h7v7h-7z'],
+      ["Règlements au club", './clients.html#km16-club-registration', 'M2 5h20v14H2z M2 10h20 M6 15h4'],
+      ["Créer un lien de paiement", './adhesion.html#link-form', 'M10 13a4 4 0 006 0l4-4a4 4 0 00-6-6l-2 2 M14 11a4 4 0 00-6 0l-4 4a4 4 0 006 6l2-2'],
+      ["Ventes de tee-shirts", './tee-shirts.html#admin', 'M4 4l4-2 4 3 4-3 4 2v6l-3 2v12H7V8L4 6z'],
+    ]],
+    ["Communications", [
+      ["Écrire aux adhérents", './clients.html#comm-title', 'M4 5h16v14H4z M4 7l8 6 8-6'],
+      ["Actualités du club", './news-admin.html#workspace', 'M4 3h16v18H4z M8 7h8 M8 11h8 M8 15h5'],
+      ["Relances d’e-mails", './clients.html#km16-email-relances', 'M4 5h16v14H4z M4 7l8 6 8-6 M12 15v3 M12 20h.01'],
     ]],
   ];
   const node = (tag, label) => {
@@ -95,7 +106,8 @@
   }
   function revealTarget() {
     const id = location.hash.slice(1);
-    if (['admin','link-form','workspace','money-summary','stages-panel','km16-stage-reminders','km16-email-relances'].includes(id)) document.getElementById(id)?.scrollIntoView({block:'start'});
+    const target = document.getElementById(id);
+    if (target && !target.closest('[hidden]')) target.scrollIntoView({block:'start'});
   }
   function sync() {
     const wasHidden = shell.hidden;

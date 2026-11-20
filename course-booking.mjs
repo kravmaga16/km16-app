@@ -39,6 +39,9 @@ void accountSession().then(async session => {
  $('participant').replaceChildren(new Option('Choisir un participant', ''), ...options,
   new Option('Saisir un autre participant', 'manual'));
  $('participant-choice').hidden = false;
+ const requested=new URLSearchParams(location.search).get('participant');
+ const index=requested?participants.findIndex(p=>p.household_id===requested):-1;
+ if(index>=0&& !$('first').value && !$('last').value){$('participant').value=String(index);chooseParticipant();}
 }).catch(() => {});
 
 const endpoint='https://tlfewpbgbwesdriklxzb.supabase.co/functions/v1/km16-course-bookings';
@@ -70,7 +73,7 @@ function refreshSessionChoices(){
  else if($('status').textContent==='Aucune séance disponible pour ces filtres.')$('status').textContent='';
 }
 function setSessionFilters(rows){
- availableSessions=rows.filter(s=>s.session_date>=todayParis());
+ availableSessions=rows.filter(s=>s.session_date>=todayParis()).sort((a,b)=>(a.session_date+a.start_time).localeCompare(b.session_date+b.start_time));
  $('category-filter').replaceChildren(new Option('Toutes les catégories',''));
  const categories=[...new Set(availableSessions.map(s=>s.category))].sort((a,b)=>a.localeCompare(b,'fr'));
  for(const category of categories)$('category-filter').add(new Option(category,category));
@@ -104,7 +107,7 @@ if(group){
   $('category-filter').value=matchingCategories[0];
   refreshSessionChoices();
  }else if(matchingCategories.length>1){
-  availableSessions=data.sessions.filter(x=>categoryMatches(x.category));
+  availableSessions=availableSessions.filter(x=>categoryMatches(x.category));
   $('category-filter').replaceChildren(new Option(group,''));
   refreshSessionChoices();
  }
@@ -165,7 +168,7 @@ $('new-booking').onclick = () => {
 $('copy-link').onclick=async()=>{
  const url=$('cancel-link').href;
  try{await navigator.clipboard.writeText(url);$('copy-status').textContent='Lien copié. Conservez-le dans un endroit privé.';}
- catch{$('copy-status').textContent='Copie automatique indisponible : utilisez le lien « Ouvrir la page d’annulation » pour le conserver.';}
+ catch{$('copy-status').textContent='Copie automatique indisponible : utilisez le lien « Annuler ma réservation » pour le conserver.';}
 };
 $('cancel-link').onclick=e=>{e.preventDefault();const token=new URL(e.currentTarget.href).searchParams.get('cancel');if(token)showCancellation(token);};
 $('cancel-back').onclick=()=>{$('cancel-form').hidden=true;$('cancel-status').textContent='Votre inscription est conservée.';};

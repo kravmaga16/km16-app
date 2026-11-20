@@ -59,7 +59,7 @@ Deno.serve(async request => {
   const orderId = searchParams.get('order');
   const type = searchParams.get('type');
   if (!/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/.test(orderId ?? '') ||
-      !['list', 'upload', 'download'].includes(action) || (action !== 'list' && !TYPES.has(type))) {
+      !['list', 'upload', 'download', 'review'].includes(action) || (action !== 'list' && !TYPES.has(type))) {
     return reply({ error: 'Demande invalide.' }, 400);
   }
 
@@ -74,6 +74,7 @@ Deno.serve(async request => {
 
     const service = { apikey: key, Authorization: 'Bearer ' + key };
     const admin = user.email?.toLowerCase() === 'alexandre.marchat@gmail.com';
+    if (action === 'review' && !admin) return reply({ error: 'Accès privé.' }, 403);
     const ownerFilter = admin && action !== 'upload' ? '' : '&user_id=eq.' + user.id;
     const eligibility = action === 'upload' ? '&approval=neq.rejected' : '';
     const order = await fetch(base + '/rest/v1/km16_membership_orders?id=eq.' + orderId +
@@ -82,23 +83,61 @@ Deno.serve(async request => {
     if (!(await order.json()).length) return reply({ error: 'Dossier indisponible.' }, 404);
 
     const docs = await fetch(base + '/rest/v1/km16_membership_documents?order_id=eq.' + orderId +
-      '&select=order_id', { headers: service });
+      '&select=order_id,health_status', { headers: service });
     if (!docs.ok) throw Error('Document lookup failed');
-    if (!(await docs.json()).length) return reply({ error: 'Justificatifs indisponibles pour ce dossier.' }, 404);
+    const [document] = await docs.json();
+    if (!document) return reply({ error: 'Justificatifs indisponibles pour ce dossier.' }, 404);
 
     const storage = base + '/storage/v1/object';
-    const path = BUCKET + '/' + orderId + '/' + type;
-    if (action === 'list') {
-      const listed = await fetch(storage + '/list/' + BUCKET, {
+    const reviewsUrl = base + '/rest/v1/km16_document_file_reviews';
+    const [listed, reviewResponse] = await Promise.all([
+      fetch(storage + '/list/' + BUCKET, {
         method: 'POST',
         headers: { ...service, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prefix: orderId, limit: TYPES.size }),
-      });
-      if (!listed.ok) throw Error('Storage lookup failed');
-      const objects = await listed.json();
-      return reply({ types: objects.map(object => object.name).filter(name => TYPES.has(name)) });
+        body: JSON.stringify({ prefix: orderId, limit: 100 }),
+      }),
+      fetch(reviewsUrl + '?order_id=eq.' + orderId + '&select=id,object_name,state,reason', { headers: service }),
+    ]);
+    if (!listed.ok || !reviewResponse.ok) throw Error('File status unavailable');
+    const names = new Set((await listed.json()).map(object => object.name));
+    const reviews = new Map((await reviewResponse.json()).map(review => [review.object_name, review]));
+    function currentFile(kind) {
+      let name = kind;
+      let review = reviews.get(name);
+      while (review?.state === 'correction' && names.has(kind + '-' + review.id)) {
+        name = kind + '-' + review.id;
+        review = reviews.get(name);
+      }
+      const exists = names.has(name);
+      const state = review?.state ?? (kind === 'health' && document.health_status === 'validated'
+        ? 'validated' : exists || kind === 'health' && document.health_status === 'received' ? 'received' : 'missing');
+      return { name, exists, state, reason: review?.reason ?? '', review };
     }
+    if (action === 'list') {
+      const files = Object.fromEntries([...TYPES].map(kind => {
+        const { name, exists, state, reason } = currentFile(kind);
+        return [kind, { name, exists, state, reason }];
+      }));
+      return reply({ types: [...TYPES].filter(kind => files[kind].exists), files });
+    }
+    const current = currentFile(type);
+    if (action === 'review') {
+      const decision = await request.json().catch(() => null);
+      const reason = typeof decision?.reason === 'string' ? decision.reason.trim() : '';
+      if (!['validated', 'correction'].includes(decision?.state) || reason.length > 500 ||
+          (decision.state === 'correction' && !reason)) return reply({ error: 'Renseignez un motif de correction de 500 caractères maximum.' }, 400);
+      if (!current.exists || current.review || current.name !== decision.name) return reply({ error: 'Ce fichier a changé ou a déjà été traité. Actualisez le dossier.' }, 409);
+      const review = await fetch(reviewsUrl, {
+        method: 'POST', headers: { ...service, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ order_id: orderId, object_name: current.name, state: decision.state, reason, reviewed_by: user.id }),
+      });
+      if (review.status === 409) return reply({ error: 'Ce fichier a déjà été traité. Actualisez le dossier.' }, 409);
+      if (!review.ok) throw Error('Review failed');
+      return reply({ ok: true });
+    }
+    const path = BUCKET + '/' + orderId + '/' + current.name;
     if (action === 'download') {
+      if (!current.exists) return reply({ error: 'Aucun fichier déposé.' }, 404);
       const downloaded = await fetch(storage + '/authenticated/' + path, { headers: service });
       if (downloaded.status === 404) return reply({ error: 'Aucun fichier déposé.' }, 404);
       if (!downloaded.ok) throw Error('Storage download failed');
@@ -109,13 +148,16 @@ Deno.serve(async request => {
       } });
     }
 
+    if (current.exists && current.state !== 'correction') return reply({ error: 'Une pièce a déjà été déposée.' }, 409);
+    const nextName = current.state === 'correction' ? type + '-' + current.review.id : type;
+    if (names.size >= 90) return reply({ error: 'Contactez KM16 pour déposer une autre version.' }, 409);
     const mime = request.headers.get('content-type');
     const signature = signatures.get(mime);
     if (!signature) return reply({ error: 'Choisissez un fichier PDF, JPEG ou PNG.' }, 415);
     const bytes = await readUpload(request);
     if (!bytes || bytes.length === 0) return reply({ error: 'Choisissez un fichier de 5 Mo maximum.' }, 413);
     if (!signature.every((byte, index) => bytes[index] === byte)) return reply({ error: 'Le contenu du fichier ne correspond pas au format annoncé.' }, 415);
-    const uploaded = await fetch(storage + '/' + path, {
+    const uploaded = await fetch(storage + '/' + BUCKET + '/' + orderId + '/' + nextName, {
       method: 'POST',
       headers: { ...service, 'Content-Type': mime, 'Cache-Control': 'no-store', 'x-upsert': 'false' },
       body: bytes,

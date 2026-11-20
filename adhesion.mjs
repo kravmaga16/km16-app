@@ -21,6 +21,7 @@ const trialJourney=paymentReturn.has('apres_essai')||paymentReturn.has('essai');
 const renewalJourney=paymentReturn.has('renouveler');
 const reuseOrder=paymentReturn.get(renewalJourney?'renouveler':'essai');
 let reusedMember=null;
+let trialReuseAttempt='';
 const requestedCategory=new URLSearchParams(location.search).get('categorie')||'Tous';
 const requestedProduct=new URLSearchParams(location.search).get('produit')||'';
 let stageCatalogueLoaded=false;
@@ -196,6 +197,8 @@ function showMembershipJourney(){
   }catch(error){$('membership-journey-status').textContent=error.message;}
   finally{button.disabled=false;}
  };
+ const attempt=trialJourney&&reuseOrder&&session?.user?.id?session.user.id+':'+reuseOrder:'';
+ if(attempt&&trialReuseAttempt!==attempt&&!reusedMember&&!button.disabled){trialReuseAttempt=attempt;void button.onclick();}
 }
 function isFreeTrial(id,amount){return ['essai','essai-saint-jean'].includes(id)&&Number(amount)===0;}
 function updateCheckoutSummary(){
@@ -482,7 +485,7 @@ function renderFirstCourse(){
    text('p',[upcomingDate(course.session_date),course.start_time.slice(0,5)+'–'+course.end_time.slice(0,5),course.venue].join(' · '),item);
    const actions=text('div','',item,'row');
    const book=text('a','Réserver',actions);
-   book.href='./course-booking.html?session='+encodeURIComponent(course.id);
+   book.href=memberBookingUrl(order,course);
    appendDojoDirections(actions,course.venue);
   }
  }
@@ -503,6 +506,17 @@ function appendOrderHelp(card,order){
  update();
  card.append(help);
 }
+function memberBookingUrl(order, course){
+ const params=new URLSearchParams();
+ if(course)params.set('session',course.id);
+ if(order.household_id)params.set('participant',order.household_id);
+ const product=products.find(p=>p.id===order.product_id);
+ const category=product&&firstCourseCategory(product);
+ if(!course&&category){
+  params.set('groupe',category.test('Enfants')?'Enfants':category.test('Adolescents')?'Adolescents':'Adultes tous niveaux');
+ }
+ return './course-booking.html'+(params.size?'?'+params:'');
+}
 function renderMemberActions() {
  if (!accountView) return;
  const panel = $('member-actions');
@@ -521,12 +535,18 @@ function renderMemberActions() {
   }
 
   if (orderGroup(order) === 'Adhésions' && paid > 0 && !unsettled) {
-   if (order.approval === 'pending') actions.push('Vérifier votre licence FEKM. Si elle reste à souscrire, le lien est dans le dossier.');
    const docs = myOrderData.documents?.find(d => d.order_id === order.id);
-   if (docs?.health_status === 'missing') {
-    actions.push(docs.health_kind === 'attestation' ? 'Déposer l’attestation de santé dans le dossier.' : 'Déposer le certificat médical dans le dossier.');
+   if(docs){
+    if(docs.health_status!=='validated')actions.push({label:docs.health_kind==='attestation'?'Déposer ou suivre mon attestation':'Déposer ou suivre mon certificat',type:'health'});
+    actions.push({label:'Déposer ou suivre ma licence',type:'license'});
+   }
+   if(order.approval==='approved'&&memberCourses&&!memberCourses.some(course=>course.status==='Inscrit'&&participantKey(course)===participantKey(order))){
+    actions.push({label:'Voir les prochains cours',href:memberBookingUrl(order)});
    }
    if (docs?.school_required && docs.school_status === 'missing') actions.push('Présenter le justificatif Saint-Jean au club.');
+  }
+  if(myOrderData.trial_attended_ids?.includes(order.id)){
+   actions.push({label:'Choisir mon adhésion après l’essai',href:'./adhesion.html?apres_essai=1&essai='+encodeURIComponent(order.id)});
   }
   if (!actions.length) continue;
 
@@ -535,7 +555,17 @@ function renderMemberActions() {
   const participant = [order.first_name, order.last_name].filter(Boolean).join(' ');
   text('h3', participant ? participant + ' · ' + order.title : order.title, box);
   const steps = text('ul', '', box);
-  for (const action of actions) text('li', action, steps);
+  for (const action of actions) {
+   if(typeof action==='string'){text('li',action,steps);continue;}
+   const item=text('li','',steps), shortcut=text('a',action.label,item);
+   shortcut.href=action.href||'#'+memberOrderAnchor(order)+'-'+action.type;
+   if(action.type)shortcut.onclick=event=>{
+    event.preventDefault();
+    if(myOrderGroup!=='Tous les achats'){myOrderGroup='Tous les achats';renderMyOrders();}
+    const target=$(memberOrderAnchor(order)+'-documents');
+    if(target){target.dataset.focusType=action.type;target.open=true;($(memberOrderAnchor(order)+'-'+action.type)||target.querySelector('summary')).focus();target.scrollIntoView({block:'start'});}
+   };
+  }
   const link = text('a', 'Voir le dossier', box);
   link.href = '#' + memberOrderAnchor(order);
   link.onclick = event => {
@@ -582,7 +612,7 @@ async function loadUpcomingCourses(){
   const {data,error}=await client.rpc('km16_my_course_bookings',{p_cancel:null});
   if(gen!==generation)return;
   if(error||!Array.isArray(data))throw Error('Réservations indisponibles');
-  memberCourses=data;renderMemberFamily();renderUpcomingCourses();renderFirstCourse();
+  memberCourses=data;renderMemberFamily();renderMemberActions();renderUpcomingCourses();renderFirstCourse();
  }catch{
   if(gen!==generation)return;
   memberCourses=null;
@@ -831,34 +861,40 @@ async function orders(){
 const docStatus={missing:'Manquant',received:'Reçu — à vérifier',validated:'Validé',not_required:'Non demandé'};
 const mailStatus={pending:'Programmé',sending:'En cours',sent:'Accepté par la messagerie',skipped:'Non nécessaire',failed:'Configuration à vérifier',uncertain:'Envoi à vérifier — aucun renvoi automatique'};
 const memberDocumentsEndpoint = endpoint.replace(/km16-adhesions$/, 'km16-member-documents');
-async function requestMemberDocument(orderId, action, type, file) {
+async function requestMemberDocument(orderId, action, type, file, decision) {
  const active = (await accountTimeout(client.auth.getSession())).data?.session;
  if(!verifiedAccount(active))throw Error('Reconnectez-vous à votre compte KM16.');
  const url = new URL(memberDocumentsEndpoint);
  url.search = new URLSearchParams({action, order: orderId, ...(type ? {type} : {})});
  const response = await fetch(url, {
-  method:'POST', headers:{Authorization:'Bearer '+active.access_token,...(file?{'Content-Type':file.type}:{})},
-  body:file, cache:'no-store',
+  method:'POST', headers:{Authorization:'Bearer '+active.access_token,...(file?{'Content-Type':file.type}:decision?{'Content-Type':'application/json'}:{})},
+  body:file||(decision?JSON.stringify(decision):undefined), cache:'no-store',
  });
  if(!response.ok)throw Error((await response.json().catch(()=>null))?.error || 'Service de dépôt indisponible.');
  return response;
 }
 function appendMemberDocuments(parent, order, documents, adminView=false) {
  const details=text('details','',parent);
- text('summary',adminView?'Fichiers déposés par l’adhérent':'Déposer mes justificatifs',details);
+ if(!adminView)details.id=memberOrderAnchor(order)+'-documents';
+ text('summary',adminView?'Fichiers déposés par l’adhérent':'Mes justificatifs',details);
  const status=text('p','',details,'muted');status.setAttribute('role','status');
  const fields=text('div','',details);
  const labels={health:documents.health_kind==='attestation'?'Attestation de santé':'Certificat médical',license:'Licence FEKM'};
  const canUpload=!adminView && order.approval!=='rejected';
  let loaded=false, loading=false;
- const draw=types=>{
+ const draw=files=>{
   fields.replaceChildren();
-  if(canUpload)text('p','PDF, JPEG ou PNG, 5 Mo maximum par pièce. Pour remplacer un dépôt, contacte contact@km16.fr.',fields,'muted');
+  if(canUpload)text('p','PDF, JPEG ou PNG, 5 Mo maximum par pièce.',fields,'muted');
   for(const [type,label] of Object.entries(labels)){
    const group=text('div','',fields,'summary');
    text('strong',label,group);
    const feedback=text('p','',group,'muted');feedback.setAttribute('role','status');
-   if(types.includes(type)){
+   if(!adminView){group.id=memberOrderAnchor(order)+'-'+type;group.tabIndex=-1;}
+   const fileInfo=files[type];
+   const labelsByState={missing:'À déposer',received:'Reçu · à vérifier',validated:'Validé',correction:'À corriger'};
+   text('p',labelsByState[fileInfo.state],group);
+   if(fileInfo.reason)text('p','Motif de correction : '+fileInfo.reason,group);
+   if(fileInfo.exists){
     const download=text('button','Télécharger',group);download.type='button';
     download.onclick=async()=>{
      download.disabled=true;feedback.textContent='';
@@ -871,8 +907,25 @@ function appendMemberDocuments(parent, order, documents, adminView=false) {
      }catch(error){feedback.textContent=error.message;}
      finally{download.disabled=false;}
     };
-    feedback.textContent='Fichier déposé.';
-   }else if(canUpload){
+    if(adminView&&!['validated','correction'].includes(fileInfo.state)){
+     const controls=text('div','',group,'row');
+     const reason=document.createElement('textarea');reason.maxLength=500;reason.placeholder='Motif communiqué à l’adhérent';reason.setAttribute('aria-label','Motif de correction pour '+label);controls.append(reason);
+     const validate=text('button','Valider la pièce',controls);validate.type='button';
+     const correct=text('button','Demander une correction',controls);correct.type='button';
+     async function review(state){
+      if(state==='correction'&&!reason.value.trim()){feedback.textContent='Indiquez le motif de correction.';reason.focus();return;}
+      validate.disabled=correct.disabled=true;
+      try{
+       await requestMemberDocument(order.id,'review',type,null,{name:fileInfo.name,state,reason:state==='correction'?reason.value.trim():''});
+       await reload();status.textContent='Décision enregistrée dans le dossier.';
+      }catch(error){feedback.textContent=error.message;}
+      finally{validate.disabled=correct.disabled=false;}
+     }
+     validate.onclick=()=>review('validated');
+     correct.onclick=()=>review('correction');
+    }
+   }
+   if(canUpload&&['missing','correction'].includes(fileInfo.state)){
     const form=text('form','',group);
     const input=document.createElement('input');
     input.type='file';input.accept='application/pdf,image/jpeg,image/png';input.required=true;input.setAttribute('aria-label',label);
@@ -886,28 +939,30 @@ function appendMemberDocuments(parent, order, documents, adminView=false) {
      button.disabled=true;input.disabled=true;feedback.textContent='Envoi en cours…';
      try{
       await requestMemberDocument(order.id,'upload',type,file);
-      types.push(type);draw(types);status.textContent=label+' : fichier déposé. Vérification par KM16.';
+      await reload();status.textContent=label+' : fichier déposé. Vérification par KM16.';
      }catch(error){feedback.textContent=error.message;}
      finally{button.disabled=false;input.disabled=false;}
     };
-   }else feedback.textContent='Aucun fichier déposé.';
+   }
   }
  };
+ async function reload(){
+  const response=await requestMemberDocument(order.id,'list');
+  draw((await response.json()).files);
+  status.textContent='';loaded=true;
+  if(details.dataset.focusType)$(memberOrderAnchor(order)+'-'+details.dataset.focusType)?.focus();
+ }
  details.ontoggle=async()=>{
   if(!details.open||loaded||loading)return;
   loading=true;status.textContent='Chargement des justificatifs…';
-  try{
-   const response=await requestMemberDocument(order.id,'list');
-   draw((await response.json()).types);
-   status.textContent='';loaded=true;
-  }catch(error){status.textContent=error.message+' Refermez puis rouvrez la rubrique pour réessayer.';}
+  try{await reload();}
+  catch(error){status.textContent=error.message+' Refermez puis rouvrez la rubrique pour réessayer.';}
   finally{loading=false;}
  };
 }
 function documentSummary(parent,d,order){
  if(!d)return;
  const box=document.createElement('div');box.className='summary';text('strong','Vos justificatifs',box);
- text('div',(d.health_kind==='attestation'?'Attestation de santé':'Certificat médical')+' : '+docStatus[d.health_status],box);
  if(d.school_required)text('div','Justificatif Saint-Jean : '+docStatus[d.school_status],box);
  text('p','KM16 vérifie les pièces après leur dépôt. Si un justificatif Saint-Jean est demandé, présente-le au club.',box,'muted');
  appendMemberDocuments(box,order,d);
@@ -1029,7 +1084,7 @@ async function authState(s){
  const differentEmail=!previous&&s&&enteredEmail&&enteredEmail!==normalizeEmail(s.user.email);
  session=s;
  generation++;
- if(identityChanged||differentEmail){clearMemberFirstCourse();reusedMember=null;await checkoutAccess.clear();resetRegistration();if(differentEmail)note('Une autre adresse a été confirmée. Renseignez la demande pour le compte affiché ou déconnectez-vous.',true);}
+ if(identityChanged||differentEmail){clearMemberFirstCourse();reusedMember=null;trialReuseAttempt='';await checkoutAccess.clear();resetRegistration();if(differentEmail)note('Une autre adresse a été confirmée. Renseignez la demande pour le compte affiché ou déconnectez-vous.',true);}
  km16AdminLoaded=null;km16AdminNextPage=0;km16AdminHasMore=false;km16AdminServerSearch='';km16AdminServerApproval='all';
  syncAccountForm();checkoutAccess.sync(s);$('login').hidden=!!s;$('connected').hidden=!s;$('identity').textContent=s?.user.email||'';$('my-orders').hidden=!s;
  showMembershipJourney();

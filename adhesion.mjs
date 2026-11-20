@@ -524,7 +524,7 @@ function renderMemberActions() {
    if (order.approval === 'pending') actions.push('Vérifier votre licence FEKM. Si elle reste à souscrire, le lien est dans le dossier.');
    const docs = myOrderData.documents?.find(d => d.order_id === order.id);
    if (docs?.health_status === 'missing') {
-    actions.push(docs.health_kind === 'attestation' ? 'Présenter l’attestation de santé au club.' : 'Présenter le certificat médical au club.');
+    actions.push(docs.health_kind === 'attestation' ? 'Déposer l’attestation de santé dans le dossier.' : 'Déposer le certificat médical dans le dossier.');
    }
    if (docs?.school_required && docs.school_status === 'missing') actions.push('Présenter le justificatif Saint-Jean au club.');
   }
@@ -745,9 +745,9 @@ function renderMyOrders(){
   for(const p of payments)text('div',money(p.amount_cents)+' · '+({paid:'payé',failed:'à régulariser',pending:'en attente',refunded:'remboursé',disputed:'en litige'}[p.status]),box);
   const photoButton=text('button','Voir la photo du dossier',box);photoButton.type='button';photoButton.onclick=async()=>{photoButton.disabled=true;try{const r=await api({action:'photo-view',order_id:o.id});const image=document.createElement('img');image.src=r.url;image.alt='Photo du pratiquant';image.style.cssText='display:block;max-width:160px;max-height:180px;margin-top:12px';box.append(image);photoButton.remove();}catch(e){note(e.message,true);photoButton.disabled=false;}};
   if(orderGroup(o)==='Adhésions'&&paid>0&&!payments.some(p=>['disputed','refunded'].includes(p.status))){
-   const step=document.createElement('div');step.className='notice';text('strong','Étape obligatoire : votre licence FEKM',step);text('p','Votre règlement KM16 ne comprend pas la licence. Souscrivez-la directement auprès de la FEKM, puis présentez votre justificatif à KM16 pour validation du dossier. L’ouverture du site ne prouve pas le paiement de la licence.',step);const a=text('a','Acheter ma licence sur le site FEKM ↗',step);a.href='https://www.krav-maga.net/connexion/';a.target='_blank';a.rel='noopener noreferrer';box.append(step);
+   const step=document.createElement('div');step.className='notice';text('strong','Étape obligatoire : votre licence FEKM',step);text('p','Votre règlement KM16 ne comprend pas la licence. Souscrivez-la directement auprès de la FEKM, puis déposez votre justificatif dans votre dossier pour validation par KM16. L’ouverture du site ne prouve pas le paiement de la licence.',step);const a=text('a','Acheter ma licence sur le site FEKM ↗',step);a.href='https://www.krav-maga.net/connexion/';a.target='_blank';a.rel='noopener noreferrer';box.append(step);
   }
-  documentSummary(box,(myOrderData.documents||[]).find(d=>d.order_id===o.id));
+  documentSummary(box,(myOrderData.documents||[]).find(d=>d.order_id===o.id),o);
   appendHouseholdLink(box,o,'order');
   if(o.count>1){
    const schedule=text('details','',box);
@@ -830,17 +830,93 @@ async function orders(){
 
 const docStatus={missing:'Manquant',received:'Reçu — à vérifier',validated:'Validé',not_required:'Non demandé'};
 const mailStatus={pending:'Programmé',sending:'En cours',sent:'Accepté par la messagerie',skipped:'Non nécessaire',failed:'Configuration à vérifier',uncertain:'Envoi à vérifier — aucun renvoi automatique'};
-function documentSummary(parent,d){
+const memberDocumentsEndpoint = endpoint.replace(/km16-adhesions$/, 'km16-member-documents');
+async function requestMemberDocument(orderId, action, type, file) {
+ const active = (await accountTimeout(client.auth.getSession())).data?.session;
+ if(!verifiedAccount(active))throw Error('Reconnectez-vous à votre compte KM16.');
+ const url = new URL(memberDocumentsEndpoint);
+ url.search = new URLSearchParams({action, order: orderId, ...(type ? {type} : {})});
+ const response = await fetch(url, {
+  method:'POST', headers:{Authorization:'Bearer '+active.access_token,...(file?{'Content-Type':file.type}:{})},
+  body:file, cache:'no-store',
+ });
+ if(!response.ok)throw Error((await response.json().catch(()=>null))?.error || 'Service de dépôt indisponible.');
+ return response;
+}
+function appendMemberDocuments(parent, order, documents, adminView=false) {
+ const details=text('details','',parent);
+ text('summary',adminView?'Fichiers déposés par l’adhérent':'Déposer mes justificatifs',details);
+ const status=text('p','',details,'muted');status.setAttribute('role','status');
+ const fields=text('div','',details);
+ const labels={health:documents.health_kind==='attestation'?'Attestation de santé':'Certificat médical',license:'Licence FEKM'};
+ const canUpload=!adminView && order.approval!=='rejected';
+ let loaded=false, loading=false;
+ const draw=types=>{
+  fields.replaceChildren();
+  if(canUpload)text('p','PDF, JPEG ou PNG, 5 Mo maximum par pièce. Pour remplacer un dépôt, contacte contact@km16.fr.',fields,'muted');
+  for(const [type,label] of Object.entries(labels)){
+   const group=text('div','',fields,'summary');
+   text('strong',label,group);
+   const feedback=text('p','',group,'muted');feedback.setAttribute('role','status');
+   if(types.includes(type)){
+    const download=text('button','Télécharger',group);download.type='button';
+    download.onclick=async()=>{
+     download.disabled=true;feedback.textContent='';
+     try{
+      const response=await requestMemberDocument(order.id,'download',type);
+      const url=URL.createObjectURL(await response.blob());
+      const link=document.createElement('a');
+      link.href=url;link.download=response.headers.get('Content-Disposition')?.match(/filename="([^"]+)"/)?.[1] || type;
+      group.append(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),30000);
+     }catch(error){feedback.textContent=error.message;}
+     finally{download.disabled=false;}
+    };
+    feedback.textContent='Fichier déposé.';
+   }else if(canUpload){
+    const form=text('form','',group);
+    const input=document.createElement('input');
+    input.type='file';input.accept='application/pdf,image/jpeg,image/png';input.required=true;input.setAttribute('aria-label',label);
+    form.append(input);
+    const button=text('button','Déposer',form);button.type='submit';
+    form.onsubmit=async event=>{
+     event.preventDefault();
+     const file=input.files[0];
+     if(!file)return;
+     if(file.size>5*1024*1024){feedback.textContent='Choisissez un fichier de 5 Mo maximum.';return;}
+     button.disabled=true;input.disabled=true;feedback.textContent='Envoi en cours…';
+     try{
+      await requestMemberDocument(order.id,'upload',type,file);
+      types.push(type);draw(types);status.textContent=label+' : fichier déposé. Vérification par KM16.';
+     }catch(error){feedback.textContent=error.message;}
+     finally{button.disabled=false;input.disabled=false;}
+    };
+   }else feedback.textContent='Aucun fichier déposé.';
+  }
+ };
+ details.ontoggle=async()=>{
+  if(!details.open||loaded||loading)return;
+  loading=true;status.textContent='Chargement des justificatifs…';
+  try{
+   const response=await requestMemberDocument(order.id,'list');
+   draw((await response.json()).types);
+   status.textContent='';loaded=true;
+  }catch(error){status.textContent=error.message+' Refermez puis rouvrez la rubrique pour réessayer.';}
+  finally{loading=false;}
+ };
+}
+function documentSummary(parent,d,order){
  if(!d)return;
  const box=document.createElement('div');box.className='summary';text('strong','Vos justificatifs',box);
  text('div',(d.health_kind==='attestation'?'Attestation de santé':'Certificat médical')+' : '+docStatus[d.health_status],box);
  if(d.school_required)text('div','Justificatif Saint-Jean : '+docStatus[d.school_status],box);
- text('p','Présentez les documents au président lors d’un cours. Ils ne bloquent pas le paiement. Une demande par e-mail, puis une relance à J+7, sont prévues pour les pièces manquantes.',box,'muted');
+ text('p','KM16 vérifie les pièces après leur dépôt. Si un justificatif Saint-Jean est demandé, présente-le au club.',box,'muted');
+ appendMemberDocuments(box,order,d);
  parent.append(box);
 }
 function editDocuments(td,d,o){
  const status=document.createElement('div');status.className='km16-document-status';status.setAttribute('role','status');td.append(status);
  if(!d){status.textContent='Justificatifs non disponibles · vérifier le premier paiement annuel';status.dataset.state='missing';return;}
+ appendMemberDocuments(td,o,d,true);
  const describe=(label,value)=>label+' : '+(docStatus[value]||'À vérifier');
  const updateStatus=()=>{const items=[describe('Santé',d.health_status)];if(d.school_required)items.push(describe('Saint-Jean',d.school_status));status.textContent=items.join(' · ');status.dataset.state=d.health_status==='validated'&&(!d.school_required||d.school_status==='validated')?'validated':'pending';};
  const editor=document.createElement('details');editor.className='km16-document-editor';const summary=document.createElement('summary');summary.textContent='Vérifier ou modifier les justificatifs';editor.append(summary);td.append(editor);

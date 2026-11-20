@@ -102,19 +102,38 @@ Deno.serve(async req=>{
   if(!ar.ok)return reply({error:'Session expirée, reconnectez-vous'},401);
   const user=await ar.json();if(!user.email_confirmed_at||user.is_anonymous)return reply({error:'Confirmez votre adresse e-mail'},403);
   const admin=user.email?.toLowerCase()==='alexandre.marchat@gmail.com';
-  if(data.action==='photo-upload'){
+  if(data.action==='photo-upload'||data.action==='member-photo-add'){
    if(!/^[0-9a-f-]{36}$/i.test(data.request_id))return reply({error:'Demande invalide'},400);
    const existing=(await db('km16_member_photos?id=eq.'+data.request_id))[0];
    if(existing&&existing.user_id!==user.id)return reply({error:'Demande indisponible'},403);
-   if((await db('km16_membership_orders?id=eq.'+data.request_id+'&select=id')).length){if(existing?.user_id===user.id)return reply({ok:true});return reply({error:'Ce dossier existe déjà. Contactez KM16 pour modifier sa photo.'},409);}
+   const order=(await db('km16_membership_orders?id=eq.'+data.request_id+'&select=id,user_id,approval,livemode,total_cents'))[0];
+   if(data.action==='member-photo-add'){
+    if(!order||order.user_id!==user.id||!order.livemode||order.approval==='rejected'||order.total_cents<=0)
+     return reply({error:'Dossier indisponible dans votre espace.'},404);
+    const paid=await db('km16_membership_payments?order_id=eq.'+order.id+'&status=eq.paid&select=amount_cents,refunded_cents');
+    if(!paid.some(p=>p.amount_cents>(p.refunded_cents||0)))return reply({error:'Le paiement doit être confirmé avant d’ajouter la photo.'},409);
+    if(existing)return reply({ok:true});
+   }else if(order){
+    if(existing?.user_id===user.id)return reply({ok:true});
+    return reply({error:'Ouvrez le dossier dans votre espace pour ajouter la photo.'},409);
+   }
    const recent=await db('km16_member_photos?user_id=eq.'+user.id+'&created_at=gte.'+encodeURIComponent(new Date(Date.now()-86400000).toISOString())+'&select=id');
    if(recent.length>=20)return reply({error:'Trop de photos envoyées. Contactez KM16.'},429);
    const input=String(data.photo||'');
    if(input.length>2000000||!/^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/.test(input))return reply({error:'Photo JPEG convertie requise'},400);
    let bytes;try{bytes=Uint8Array.from(atob(input.split(',')[1]),c=>c.charCodeAt(0));const image=jpeg.decode(bytes,{useTArray:true,maxResolutionInMP:2,maxMemoryUsageInMB:64});if(image.width<100||image.height<100||image.width>1200||image.height>1200)throw Error();bytes=jpeg.encode(image,85).data;if(bytes.length>1500000)throw Error();}catch{return reply({error:'Photo non valide : utilisez une photo de 100 à 1200 pixels après conversion.'},400);}
    const path=user.id+'/'+data.request_id+'.jpg';
-   const upload=await fetch(base+'/storage/v1/object/km16-member-photos/'+path,{method:'POST',headers:{apikey:key,Authorization:'Bearer '+key,'Content-Type':'image/jpeg','x-upsert':'true'},body:bytes});
-   if(!upload.ok)throw Error('Stockage photo indisponible');
+   const upload=await fetch(base+'/storage/v1/object/km16-member-photos/'+path,{method:'POST',headers:{apikey:key,Authorization:'Bearer '+key,'Content-Type':'image/jpeg','x-upsert':data.action==='member-photo-add'?'false':'true'},body:bytes});
+   if(!upload.ok){
+    if(data.action==='member-photo-add'){
+     const error=await upload.json().catch(()=>({}));
+     if(error.error==='Duplicate'||upload.status===409||String(error.statusCode)==='409'){
+      await db('km16_member_photos','POST',{id:data.request_id,user_id:user.id,path},'resolution=ignore-duplicates');
+      return reply({ok:true});
+     }
+    }
+    throw Error('Stockage photo indisponible');
+   }
    await db('km16_member_photos','POST',{id:data.request_id,user_id:user.id,path},'resolution=merge-duplicates');
    return reply({ok:true});
   }
@@ -207,7 +226,8 @@ Deno.serve(async req=>{
    const today=parisToday();
    const trials=orders.filter(o=>o.livemode&&['essai','essai-saint-jean'].includes(o.product_id)&&o.approval!=='rejected').map(o=>o.id);
    const attended=trials.length?await db('km16_trial_attendance?order_id=in.('+trials.join(',')+')&attended_on=lte.'+today+'&select=order_id'):[];
-   return reply({orders,season_end:config.season_end,trial_attended_ids:attended.map(t=>t.order_id),renewal_window:renewalWindow(config,today),payments:await db('km16_membership_payments?user_id=eq.'+user.id+'&select=order_id,reference,amount_cents,refunded_cents,status,created_at&order=created_at.desc'),documents:ids.length?await db('km16_membership_documents?order_id=in.('+ids.join(',')+')&select=order_id,health_kind,health_status,school_required,school_status,paid_at,updated_at'):[]});
+   const photos=ids.length?await db('km16_member_photos?user_id=eq.'+user.id+'&select=id'):[];
+   return reply({orders,photo_order_ids:photos.map(photo=>photo.id),season_end:config.season_end,trial_attended_ids:attended.map(t=>t.order_id),renewal_window:renewalWindow(config,today),payments:await db('km16_membership_payments?user_id=eq.'+user.id+'&select=order_id,reference,amount_cents,refunded_cents,status,created_at&order=created_at.desc'),documents:ids.length?await db('km16_membership_documents?order_id=in.('+ids.join(',')+')&select=order_id,health_kind,health_status,school_required,school_status,paid_at,updated_at'):[]});
   }
   if(data.action==='admin-diagnostics'){
    if(!admin)return reply({error:'Accès privé'},403);
@@ -358,7 +378,7 @@ Deno.serve(async req=>{
   if(Deno.env.get('KM16_ADHESIONS_STRIPE_SECRET_KEY')?.startsWith('sk_live_')&&Deno.env.get('KM16_ADHESIONS_ALLOW_LIVE')!=='true')return reply({error:'Paiements réels non activés'},503);
   const id=data.request_id;
   if(!user.email||! /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(user.email))return reply({error:'E-mail confirmé obligatoire'},400);
-  if(!(await db('km16_member_photos?id=eq.'+id+'&user_id=eq.'+user.id+'&select=id')).length)return reply({error:'Ajoutez obligatoirement une photo du pratiquant avant de payer.'},400);
+  if(product.amount===0&&!(await db('km16_member_photos?id=eq.'+id+'&user_id=eq.'+user.id+'&select=id')).length)return reply({error:'Ajoutez obligatoirement une photo du pratiquant avant de payer.'},400);
   let participantKey=null;
   if(product.kind==='annual'){
    const normalized=[Deno.env.get('KM16_ADHESIONS_STRIPE_SECRET_KEY').startsWith('sk_live_')?'live':'test',user.id,config.season_end,data.first_name.trim().toLowerCase(),data.last_name.trim().toLowerCase(),data.birth_date].join('|');

@@ -77,3 +77,22 @@ export async function trackStageCheckout(stage, source) {
     });
   } catch {}
 }
+
+const purchaseSteps = new Set(['formula_chosen','form_completed','checkout_opened','payment_confirmed']);
+export async function trackMembershipStep(step) {
+  if (!purchaseSteps.has(step) || !hasStageAnalyticsConsent()) return;
+  try {
+    prepareStageAnalytics();
+    if (step !== 'checkout_opened') {
+      window.gtag('event', 'km16_membership_' + step, {send_to: measurementId});
+      return;
+    }
+    await new Promise(resolve => {
+      const timeout = setTimeout(resolve, 400);
+      window.gtag('event', 'km16_membership_' + step, {
+        send_to: measurementId, event_timeout:400,
+        event_callback: () => { clearTimeout(timeout); resolve(); },
+      });
+    });
+  } catch {}
+}

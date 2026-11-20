@@ -361,7 +361,7 @@ export function createCheckoutAccess({client, kind, host, emailInput, getDraft, 
     emailInput.value = record.email;
     if (retryAfter > Date.now()) show('Patientez une minute avant de demander un nouveau lien.', true);
     else if (lastSentAt) waiting();
-    else show('Votre demande a été retrouvée. Validez-la pour recevoir un lien de vérification.');
+    else show(account?'Votre demande a été retrouvée. Vérifiez-la avant de continuer.':'Votre demande a été retrouvée. Validez-la pour recevoir un lien de vérification.');
     sync(account);
     return true;
   }
@@ -380,5 +380,24 @@ export function createCheckoutAccess({client, kind, host, emailInput, getDraft, 
   }
   resend.onclick = async () => { try { await send(true); } catch {} };
   edit.onclick = async () => { await clear(); emailInput.focus(); emailInput.select?.(); };
-  return {ensure: () => send(false), restore, sync, clear};
+  async function save() {
+    if (sending) throw Error('Une vérification est en cours.');
+    const email = normalizeEmail(emailInput.value);
+    if (!validEmail(email)) throw Error('Renseignez votre adresse e-mail pour enregistrer la demande.');
+    const account = await readSession();
+    if (account && normalizeEmail(account.user.email) !== email)
+      throw Error('Cette adresse ne correspond pas au compte connecté.');
+    const pointer = readPointer();
+    const previous = timely(pointer) && pointer.kind === kind && pointer.email === email && pointer.url === url ? pointer : null;
+    const draft = await getDraft({manual:true});
+    const next = {version: 1, id: previous?.id || crypto.randomUUID(), kind, email, url,
+      expiresAt: Date.now() + TTL, lastSentAt: previous?.lastSentAt || 0, retryAfter: previous?.retryAfter || 0, draft};
+    if (!await persist(next)) throw Error('Ce navigateur ne permet pas d’enregistrer la demande.');
+    record = next; saved = true; expireDraftLater();
+  }
+  async function resumeAvailable() {
+    const pointer = readPointer();
+    return Boolean(timely(pointer) && pointer.kind === kind && pointer.url === url && !pointer.lastSentAt && await readDraft(pointer));
+  }
+  return {ensure: () => send(false), restore, sync, clear, save, resumeAvailable};
 }

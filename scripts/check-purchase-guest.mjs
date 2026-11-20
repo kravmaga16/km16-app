@@ -61,21 +61,29 @@ for(const [name,engine]of engines){
     return route.abort();
    });
    const page=await context.newPage();
-   await page.goto(ORIGIN+(kind==='shirts'?'/tee-shirts.html':'/#videos'));
+   await page.goto(ORIGIN+(kind==='shirts'?'/tee-shirts.html'+(width===390?'?sizes=XXS,2XL':'?sizes=M,L,XXS'):'/#videos'));
    const input=kind==='shirts'?'#purchase-email':'#kv-purchase-email';
    const button=kind==='shirts'?'#pay':'#kv-purchase-submit';
    const host=kind==='shirts'?'#shirt-email-verification':'#kv-purchase-verification';
+   const reminder=kind==='shirts'?'#checkout-reminder':'#kv-checkout-reminder';
+   const optedIn=width===390;
    const ready=kind==='shirts'?'#pay':'#kv-catalog button';
    await page.locator(ready).first().waitFor();
    if(kind==='shirts'){
     await page.waitForFunction(()=>window.notifyAuth&&typeof document.getElementById('shirt-order').onsubmit==='function');
+    assert.equal(await page.locator('#quantity').inputValue(),width===390?'2':'1','only one or two whitelisted sizes can be preselected');
+    assert.equal(await page.locator('#size1').inputValue(),width===390?'XXS':'M');
+    if(width===390)assert.equal(await page.locator('#size2').inputValue(),'2XL');
     await page.locator('#quantity').selectOption('2');await page.locator('#size1').selectOption('XS');await page.locator('#size2').selectOption('XL');
    }else await page.locator('#kv-catalog button').first().click();
    assert.equal(await page.locator(input).isEditable(),true);
+   assert.equal(await page.locator(reminder).isChecked(),false,'reminder opt-in starts unchecked');
+   assert.equal(await page.locator(reminder).getAttribute('required'),null,'reminder is always optional');
    assert.equal(await page.locator(button).isEnabled(),true);
    await page.locator(input).fill('invalid');await page.locator(button).click();
    assert.equal(await page.evaluate(()=>window.TEST_OTP.length),0,'invalid email must not request identity');
    await page.locator(input).fill('first@example.invalid');
+   if(optedIn)await page.locator(reminder).check();
    await page.locator(button).click();
    await page.waitForFunction(()=>window.TEST_OTP.length===1);
    await page.waitForFunction(()=>document.querySelector('[data-checkout-access-status]')?.textContent.includes('Ouvrez le lien'));
@@ -99,26 +107,40 @@ for(const [name,engine]of engines){
     assert.match(await returning.locator('#kv-purchase-summary').textContent(),/Vidéo test/);
    }
    assert.equal(await returning.locator(input).isEditable(),false);
+   assert.equal(await returning.locator(reminder).isChecked(),false,'OTP draft restores the choice of product, never stale reminder consent');
    assert.equal(await returning.evaluate(()=>window.TEST_CALLS.some(c=>c.action==='checkout'||c.video_id)),false);
    // A different account appearing between verification and checkout must never receive this purchase.
    await returning.evaluate(({confirmed})=>{window.TEST_SESSION_READS=0;window.TEST_SWITCH_ACCOUNT={...confirmed,user:{...confirmed.user,id:'other-user',email:'other@example.invalid'}};},{confirmed});
    await returning.locator(button).click();
    await returning.waitForFunction(()=>window.TEST_SESSION?.user.id==='other-user');
    await returning.waitForFunction(selector=>!document.querySelector(selector).disabled,button);
+   await returning.waitForFunction(selector=>document.querySelector(selector).value==='other@example.invalid',input);
    assert.equal(await returning.evaluate(()=>window.TEST_CALLS.some(c=>c.action==='checkout'||c.video_id)),false,'account switch must block checkout');
+   assert.equal(await returning.locator(reminder).isChecked(),false,'an account switch clears reminder consent');
    await returning.evaluate(({confirmed})=>{window.TEST_SWITCH_ACCOUNT=null;window.notifyAuth(confirmed);},{confirmed});
    await returning.waitForFunction(selector=>document.querySelector(selector).value==='first@example.invalid',input);
+   if(optedIn)await returning.locator(reminder).check();
    await returning.locator(button).dblclick();
    await returning.waitForFunction(()=>window.TEST_CALLS.some(c=>c.action==='checkout'||c.video_id));
    await returning.waitForFunction(selector=>!document.querySelector(selector).disabled,button);
    assert.equal(await returning.evaluate(()=>window.TEST_CALLS.filter(c=>c.action==='checkout'||c.video_id).length),1);
+   assert.equal(await returning.evaluate(()=>window.TEST_CALLS.find(c=>c.action==='checkout'||c.video_id).reminder_opt_in),optedIn,'checkout sends the explicit boolean, including false');
    if(kind==='shirts')assert.deepEqual(await returning.evaluate(()=>window.TEST_CALLS.find(c=>c.action==='checkout').sizes),['XS','XL']);
    else assert.equal(await returning.evaluate(()=>window.TEST_CALLS.find(c=>c.video_id).video_id),'video-1');
    assert.equal(await returning.locator(button).isEnabled(),true,'payment failure can be retried');
+   // Even a replacement account with the same email cannot inherit the old opt-in.
+   await returning.locator(reminder).check();
+   await returning.evaluate(({confirmed})=>{window.TEST_SESSION_READS=1;window.TEST_SWITCH_ACCOUNT={...confirmed,user:{...confirmed.user,id:'replacement-user'}};},{confirmed});
+   await returning.locator(button).click();
+   await returning.waitForFunction(()=>window.TEST_CALLS.filter(c=>c.action==='checkout'||c.video_id).length===2);
+   await returning.waitForFunction(selector=>!document.querySelector(selector).disabled,button);
+   assert.equal(await returning.evaluate(()=>window.TEST_CALLS.filter(c=>c.action==='checkout'||c.video_id).at(-1).reminder_opt_in),false,'consent belongs to the account present when the form was submitted');
    // Explicit logout clears account and pending draft without disabling guest email entry.
+   await returning.locator(reminder).check();
    await returning.locator(kind==='shirts'?'#logout':'#kv-logout').click();
    await returning.waitForFunction(selector=>!document.querySelector(selector).readOnly,input);
    assert.equal(await returning.locator(input).inputValue(),'');
+   assert.equal(await returning.locator(reminder).isChecked(),false,'logout clears reminder consent');
    assert.equal(await returning.evaluate(()=>localStorage.getItem('km16-pending-checkout')),null);
    // A failing email request must leave the choice intact and a working retry control.
    await returning.evaluate(()=>{window.TEST_OTP_ERROR=true;});

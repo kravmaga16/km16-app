@@ -19,7 +19,7 @@ while IFS= read -r -d '' file; do
  esac
 done < <(git ls-tree -rz --name-only "$commit")
 git archive --format=tar "$commit" -- "${files[@]}" > "$tmp"
-for required in index.html CNAME manifest.webmanifest sw.js clients.html clients.mjs club-payments.mjs; do
+for required in index.html CNAME manifest.webmanifest sw.js clients.html clients.mjs club-payments.mjs checkout-reminder-stop.html checkout-reminder-stop.mjs; do
  tar -tf "$tmp" "$required" >/dev/null
 done
 [[ $(tar -xOf "$tmp" CNAME) == app.km16.fr ]]

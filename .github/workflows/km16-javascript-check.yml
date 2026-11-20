@@ -66,6 +66,8 @@ jobs:
         run: node scripts/check-phase14-review-adapter.mjs
       - name: Tester la protection des comptes et des brouillons
         run: node --test tests/checkout-account.test.mjs
+      - name: Tester la désinscription des rappels de paiement
+        run: node --test tests/checkout-reminder-stop.test.mjs
       - name: Installer Playwright
         # Browsers and OS dependencies are already provided by the job container.
         # Allow npm to recover from transient registry/network delays.

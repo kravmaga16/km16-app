@@ -1,0 +1,77 @@
+name: KM16 checkout reminders
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'supabase/functions/km16-checkout-reminders/**'
+      - 'supabase/functions/_shared/checkout-reminders.mjs'
+      - 'supabase/functions/km16-adhesions/**'
+      - 'supabase/functions/km16-shirts/**'
+      - 'supabase/functions/km16-create-checkout/**'
+      - 'supabase/migrations/*checkout_reminders.sql'
+      - 'tests/checkout-reminder*'
+      - '.github/workflows/checkout-reminders.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'supabase/functions/km16-checkout-reminders/**'
+      - 'supabase/functions/_shared/checkout-reminders.mjs'
+      - 'supabase/functions/km16-adhesions/**'
+      - 'supabase/functions/km16-shirts/**'
+      - 'supabase/functions/km16-create-checkout/**'
+      - 'supabase/migrations/*checkout_reminders.sql'
+      - 'tests/checkout-reminder*'
+      - '.github/workflows/checkout-reminders.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: km16-checkout-reminders-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checkout-reminders:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: checkout-test-only
+          POSTGRES_DB: checkout_reminder_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d checkout_reminder_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      PGHOST: localhost
+      PGPORT: '5432'
+      PGUSER: postgres
+      PGPASSWORD: checkout-test-only
+      PGDATABASE: checkout_reminder_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Test creators, Stripe checks, SMTP outcomes and unsubscribe without network
+        run: node --test tests/checkout-reminder-creators.test.mjs tests/checkout-reminder-worker.test.mjs tests/checkout-reminder-stop.test.mjs
+      - name: Prepare isolated PostgreSQL fixtures
+        run: psql -X -v ON_ERROR_STOP=1 -f tests/checkout-reminders-fixture.sql
+      - name: Apply registry migration without scheduling or HTTP
+        run: |
+          set -eu
+          for migration in supabase/migrations/*_checkout_reminders.sql; do
+            case "$migration" in *_schedule_checkout_reminders.sql) continue ;; esac
+            psql -X -v ON_ERROR_STOP=1 -1 -f "$migration"
+          done
+      - name: Test consent, eligibility, permissions, leases and opt-out in PostgreSQL
+        run: psql -X -v ON_ERROR_STOP=1 -f tests/checkout-reminders-postgres.sql
+      - name: Test two simultaneous workers
+        run: node tests/checkout-reminders-concurrency.mjs

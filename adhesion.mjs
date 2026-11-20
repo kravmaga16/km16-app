@@ -138,7 +138,7 @@ function render(){
  $('filters').replaceChildren();for(const c of ['Tous',...new Set(offered.map(p=>p.category))]){const b=text('button',c,$('filters'));b.type='button';b.setAttribute('aria-pressed',String(c===category));b.onclick=()=>{category=c;render();};}
  $('catalogue').replaceChildren();for(const p of offered.filter(p=>category==='Tous'||p.category===category)){const a=document.createElement('article');a.className='card';text('span',p.draft?'En préparation':p.category,a,'tag');text('h3',p.title,a);text('span',p.amount?money(p.amount)+(p.kind==='monthly'?' / mois':''):'Gratuit',a,'price');text('p',p.note,a);const b=text('button',p.draft?'Bientôt disponible':'Choisir cette formule',a);b.disabled=!!p.draft;b.onclick=()=>choose(p);$('catalogue').append(a);}
 }
-function choose(p,{focus=true}={}){if(busy)return;selected=p;if(p.category==='Stages'&&!linkToken&&!embedded)prepareStageAnalytics();requestId=crypto.randomUUID();$('chosen').textContent=p.title;syncAccountForm();$('count').value=String(specialOffer?.count||1);$('count').disabled=!!specialOffer;$('payment-mode').hidden=p.kind!=='annual'||!!specialOffer;for(const o of $('count').options)o.disabled=p.kind!=='annual'&&o.value!=='1';$('eligibility-wrap').hidden=!p.review;$('eligibility').required=p.review;updateSchedule();if(focus){if(reusedMember)fillMemberDetails(reusedMember);$('selection').scrollIntoView({behavior:'smooth',block:'start'});$('first_name').focus({preventScroll:true});}}
+function choose(p,{focus=true}={}){if(busy)return;if(selected?.id!==p.id||Number(p.amount)<=0)$('checkout-reminder').checked=false;selected=p;$('checkout-reminder-wrap').hidden=!(Number(p.amount)>0);if(p.category==='Stages'&&!linkToken&&!embedded)prepareStageAnalytics();requestId=crypto.randomUUID();$('chosen').textContent=p.title;syncAccountForm();$('count').value=String(specialOffer?.count||1);$('count').disabled=!!specialOffer;$('payment-mode').hidden=p.kind!=='annual'||!!specialOffer;for(const o of $('count').options)o.disabled=p.kind!=='annual'&&o.value!=='1';$('eligibility-wrap').hidden=!p.review;$('eligibility').required=p.review;updateSchedule();if(focus){if(reusedMember)fillMemberDetails(reusedMember);$('selection').scrollIntoView({behavior:'smooth',block:'start'});$('first_name').focus({preventScroll:true});}}
 function updateSchedule(){if(!selected)return;const n=Number($('count').value),a=splitAmount(selected.amount,n);$('schedule').replaceChildren();text('strong',(n===1?'À régler : ':'Total : ')+money(selected.amount),$('schedule'));if(n>1)text('div','Aujourd’hui : '+money(a[0])+' · Puis '+(n-1)+' mensualités de '+money(a[1]),$('schedule'));if(selected.kind==='annual'||selected.kind==='monthly')text('div','Sans supplément · Licence non comprise',$('schedule'));$('installments-wrap').hidden=n===1;$('installments').required=n>1;updateCheckoutSummary();buttonState();}
 $('count').onchange=()=>{requestId=crypto.randomUUID();updateSchedule();};
 $('birth_date').onchange=()=>{let minor=true;try{minor=ageOn($('birth_date').value,today())<18;}catch{}$('guardian').hidden=!minor;$('guardian_name').required=minor;};
@@ -162,6 +162,7 @@ $('login').onsubmit=async e=>{
  }finally{$('password').value='';accountLoginBusy=false;$('login-submit').disabled=false;syncAccountForm();}
 };
 function fillMemberDetails(member){
+ $('checkout-reminder').checked=false;
  for(const field of ['first_name','last_name','birth_date','phone','guardian_name'])$(field).value=member[field]||'';
  $('birth_date-display').value=member.birth_date;
  $('birth_date-display').dispatchEvent(new Event('input',{bubbles:true}));
@@ -209,6 +210,10 @@ function updateCheckoutSummary(){
  else if(selected.category==='Stages')text('p','Après validation du paiement, retrouvez la confirmation et les informations du stage dans Mes inscriptions.',summary);
 }
 $('order').addEventListener('input',updateCheckoutSummary);
+for(const id of ['first_name','last_name','birth_date','contact_email'])$(id).addEventListener('input',()=>{$('checkout-reminder').checked=false;});
+// Date entry is displayed by the date helper; a change also covers that control.
+$('birth_date').addEventListener('change',()=>{$('checkout-reminder').checked=false;});
+$('km16-reuse-apply').addEventListener('click',()=>{$('checkout-reminder').checked=false;});
 const draftFields=['first_name','last_name','birth_date','phone','guardian_name','contact_email'];
 const draftChecks=['license','terms','privacy','eligibility','installments'];
 function resetRegistration(){
@@ -235,6 +240,8 @@ const checkoutAccess=createCheckoutAccess({
   if([1,3,4].includes(draft.count)&&(product.kind==='annual'||draft.count===1)&&!specialOffer)$('count').value=String(draft.count);
   if(typeof draft.photo==='string'&&/^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/.test(draft.photo)&&draft.photo.length<=2000000){photoData=draft.photo;$('member_photo').required=false;$('photo-preview').src=photoData;$('photo-preview').hidden=false;$('photo-status').textContent='Votre photo a été conservée avec votre demande.';}
   $('birth_date').dispatchEvent(new Event('change'));syncAccountForm();updateSchedule();
+  // A saved OTP draft can predate a later opt-out in another tab. Ask again.
+  $('checkout-reminder').checked=false;
   note('Votre demande a été retrouvée. Vérifiez les informations conservées, puis continuez vers le paiement.');
   $('selection').scrollIntoView({behavior:'smooth',block:'start'});
   $('chosen').tabIndex=-1;$('chosen').focus({preventScroll:true});
@@ -255,9 +262,10 @@ $('order').onsubmit=async e=>{
  e.preventDefault();if(busy||photoPreparing||$('member-camera-dialog').open||!selected||!enabled||!$('order').reportValidity())return;
  const controls=[...$('order').querySelectorAll('input,select')].map(element=>({element,disabled:element.disabled}));
  const photoToUpload=photoData;
+ const reminderAccountId=session?.user?.id||null;
  for(const {element} of controls)element.disabled=true;
  busy=true;buttonState();note('Préparation de votre demande…');
- const payload={action:'checkout',request_id:requestId,product_id:selected.id,...($('purchase-profile').value?{household_id:$('purchase-profile').value}:{}),...(linkToken?{link_token:linkToken}:{}),count:Number($('count').value)};
+ const payload={action:'checkout',request_id:requestId,product_id:selected.id,reminder_opt_in:Number(selected.amount)>0&&$('checkout-reminder').checked,...($('purchase-profile').value?{household_id:$('purchase-profile').value}:{}),...(linkToken?{link_token:linkToken}:{}),count:Number($('count').value)};
  for(const id of ['first_name','last_name','birth_date','phone','guardian_name'])payload[id]=$(id).value;
  for(const id of draftChecks)payload[id]=$(id).checked;
  try{
@@ -265,6 +273,7 @@ $('order').onsubmit=async e=>{
   if(!photoToUpload)throw Error('Ajoutez une photo et attendez la fin de sa préparation.');
   const verified=await checkoutAccess.ensure();
   if(!verified){note('Consultez votre e-mail pour confirmer cette adresse. Votre demande est conservée.');return;}
+  payload.reminder_opt_in=payload.reminder_opt_in&&$('checkout-reminder').checked&&(!reminderAccountId||reminderAccountId===verified.user.id);
   session=verified;syncAccountForm();
   await api({action:'photo-upload',request_id:payload.request_id,photo:photoToUpload},verified.user);
   const r=await api(payload,verified.user);
@@ -691,13 +700,17 @@ function renderMyOrders(){
   const paid=payments.filter(p=>p.status==='paid').reduce((s,p)=>s+p.amount_cents-(p.refunded_cents||0),0);
   text('div',money(paid)+' encaissés sur '+money(o.total_cents)+' · Dossier : '+({pending:'en attente de validation',approved:'validé',rejected:'refusé'}[o.approval]),box);
   if(o.approval!=='rejected'&&o.total_cents>0&&o.stripe_session_id&&!payments.some(p=>['paid','refunded','disputed'].includes(p.status))){
+   const reminderLabel=text('label','',box,'check');
+   const reminder=document.createElement('input');reminder.type='checkbox';reminder.checked=false;
+   const reminderText=document.createElement('span');reminderText.textContent='Je souhaite recevoir un seul rappel par e-mail si je ne termine pas ce paiement.';
+   reminderLabel.append(reminder,reminderText);
    const resume=text('button','Reprendre le paiement',box);
    resume.type='button';
    const feedback=text('p','',box,'muted');feedback.setAttribute('role','status');
    resume.onclick=async()=>{
-    resume.disabled=true;feedback.textContent='Vérification du paiement…';
+    resume.disabled=true;reminder.disabled=true;feedback.textContent='Vérification du paiement…';
     try{
-     const result=await api({action:'resume-checkout',order_id:o.id},session?.user);
+     const result=await api({action:'resume-checkout',order_id:o.id,reminder_opt_in:reminder.checked},session?.user);
      if(result.status==='open'){
       const url=new URL(result.url);
       if(url.protocol!=='https:'||url.hostname!=='checkout.stripe.com')throw Error('Adresse de paiement invalide.');
@@ -709,7 +722,7 @@ function renderMyOrders(){
       unavailable:'Le paiement ne peut pas être repris ici. Contactez contact@km16.fr.',
      }[result.status]||'Le statut du paiement est indisponible.';
     }catch(error){feedback.textContent=error.message;}
-    finally{resume.disabled=false;}
+    finally{resume.disabled=false;reminder.disabled=false;}
    };
   }
   if(orderGroup(o)==='Stages' && o.approval!=='rejected' && paid>0 && paid>=o.total_cents && !payments.some(p=>p.status==='disputed')){

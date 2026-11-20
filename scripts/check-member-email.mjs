@@ -558,6 +558,9 @@ try{
      await fill(page);await submitEmail(page,events);await notify(page);
      await page.locator('#pay').click();
      await page.waitForFunction(()=>document.querySelector('#status').textContent.includes('demande gratuite a été enregistrée'));
+     assert.match(await page.locator('#status').textContent(),/Vous pouvez venir quand vous le souhaitez/);
+     assert.doesNotMatch(await page.locator('#registration-validation-note').textContent(),/soumise à la validation/);
+     assert.equal(await page.getByRole('link',{name:'Consulter le planning pour mon cours d’essai'}).getAttribute('href'),'./#planning');
      assert.equal(writes(events).find(event=>event.body.action==='checkout').body.reminder_opt_in,false,'free trials cannot opt in');
     }else if(scenario==='minor'){
      await fill(page,{minor:true});await page.locator('#guardian_name').fill('');await page.locator('#pay').click();assert.equal(otpCalls(events).length,0,'minor requires guardian');

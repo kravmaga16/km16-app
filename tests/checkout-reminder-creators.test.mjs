@@ -191,7 +191,7 @@ async function creatorHarness(kind, options = {}) {
     }
     if (parsed.pathname === '/rest/v1/km16_membership_config') {
       return json([{ enabled: true, terms_url: SITE + '/terms', privacy_url: SITE + '/privacy',
-        terms_version: 'terms-fixture', season_end: '2099-06-30' }]);
+        terms_version: 'terms-fixture', season_end: '2099-06-30', ...options.config }]);
     }
     if (parsed.pathname === '/rest/v1/km16_membership_products') {
       return json([{ id: 'stage-fixture', title: 'Cours fixture', amount: options.free ? 0 : 999, kind: 'stage', draft: false }]);
@@ -219,7 +219,7 @@ async function creatorHarness(kind, options = {}) {
     throw Error('Unexpected outbound operation: ' + parsed.origin + parsed.pathname);
   };
   let handler;
-  const source = (await readFile(new URL('../supabase/functions/' + slug + '/index.ts', import.meta.url), 'utf8'))
+  const source = (await readFile(new URL(options.legacy ? '../server/adhesions/index.ts' : '../supabase/functions/' + slug + '/index.ts', import.meta.url), 'utf8'))
     .replace(/^import .*;\r?\n/gm, '');
   const context = {
     Deno: { env: { get: name => env[name] }, serve: value => { handler = value; } },
@@ -345,3 +345,36 @@ test('ordinary creator metadata, Stripe idempotency and source identity remain u
     }
   }
 });
+
+for (const legacy of [false, true]) {
+  test((legacy ? 'legacy ' : '') + 'membership resume keeps V5 paid orders valid after trial-only V6 without changing accepted terms', async () => {
+    const h = await creatorHarness('membership', { legacy, action: 'resume-checkout',
+      session: { status: 'expired', url: null },
+      order: { terms_version: 'km16-2026-11-10-v5' },
+      config: { terms_version: 'km16-2026-11-20-v6' } });
+    const result = await h.call();
+    assert.equal(result.status, 200);
+    assert.equal(result.body.status, 'open');
+    assert.equal(h.calls.filter(call => call.op === 'stripe-create').length, 1);
+    assert.equal(h.order.terms_version, 'km16-2026-11-10-v5');
+    assert.equal(h.calls.find(call => call.op === 'order-patch').body.terms_version, undefined);
+  });
+  test((legacy ? 'legacy ' : '') + 'membership resume rejects unrelated stale versions and trial IDs from the V5/V6 exception', async () => {
+    for (const [accepted, current, product] of [
+      ['km16-2026-11-09-v4', 'km16-2026-11-20-v6', 'stage-fixture'],
+      ['km16-2026-11-10-v5', 'km16-future-v7', 'stage-fixture'],
+      ['km16-2026-11-20-v6', 'km16-2026-11-10-v5', 'stage-fixture'],
+      ['km16-2026-11-10-v5', 'km16-2026-11-20-v6', 'essai'],
+      ['km16-2026-11-10-v5', 'km16-2026-11-20-v6', 'essai-saint-jean'],
+    ]) {
+      const h = await creatorHarness('membership', { legacy, action: 'resume-checkout',
+        session: { status: 'expired', url: null },
+        order: { terms_version: accepted, product_id: product },
+        config: { terms_version: current } });
+      const result = await h.call();
+      assert.equal(result.status, 200);
+      assert.equal(result.body.status, 'expired');
+      assert.equal(h.calls.some(call => ['begin', 'stripe-create', 'order-patch'].includes(call.op)), false);
+    }
+  });
+}

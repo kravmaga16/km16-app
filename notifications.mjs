@@ -20,8 +20,19 @@ const choices=Object.entries({cours:'Infos cours et fermetures',stages:'Stages e
  label.append(input,document.createTextNode(title));group.append(label);return input;
 });
 box.append(title,info,label,group,status);document.querySelector('#notification-settings')?.append(box);
-if(!('serviceWorker'in navigator)||!('PushManager'in window)||!('Notification'in window)){
- status.textContent='Sur iPhone : ouvre KM16 depuis son icône sur l’écran d’accueil (iOS 16.4 minimum).';label.hidden=true;label.style.display='none';
+const appleMobile=/iPhone|iPad|iPod/.test(navigator.userAgent)||(
+ navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1
+);
+const standalone=navigator.standalone===true||window.matchMedia('(display-mode: standalone)').matches;
+const supported='serviceWorker'in navigator&&'PushManager'in window&&'Notification'in window;
+const blockedMessage='Active les notifications pour KM16 dans les réglages de notifications de ton appareil, puis reviens ici.';
+if((appleMobile&&!standalone)||!supported){
+ label.style.display='none';
+ status.textContent=appleMobile
+  ? standalone
+   ? 'Les notifications KM16 nécessitent iOS ou iPadOS 16.4 ou une version plus récente.'
+   : 'Dans Safari, ouvre app.km16.fr, touche Partager puis Sur l’écran d’accueil. Ouvre ensuite KM16 depuis son icône et reviens dans Paramètres pour activer les notifications.'
+  : 'Les notifications ne sont pas disponibles dans ce navigateur.';
 }else{
  let reg,key,token,subscription,working=false,categories=null;
  function paint(){window.dispatchEvent(new Event('km16-push-change'));button.checked=!!subscription;button.disabled=working||!key;group.hidden=!subscription||!categories;for(const c of choices){c.checked=categories?.includes(c.value)||false;c.disabled=working;}}
@@ -29,10 +40,11 @@ if(!('serviceWorker'in navigator)||!('PushManager'in window)||!('Notification'in
   token=localStorage.getItem('km16-push-token');
   if(!token){token=b64(crypto.getRandomValues(new Uint8Array(32)));localStorage.setItem('km16-push-token',token);}
   const config=await call({action:'config'});key=config.publicKey;
-  reg=await navigator.serviceWorker.register('./sw.js');await navigator.serviceWorker.ready;
+  await navigator.serviceWorker.register('./sw.js');
+  reg=await navigator.serviceWorker.ready;
   subscription=await reg.pushManager.getSubscription();
   if(subscription){await call({action:'subscribe',token,subscription:subscription.toJSON()});categories=(await call({action:'preferences',token})).categories;status.textContent='Notifications activées sur ce téléphone.';}
-  else if(Notification.permission==='denied')status.textContent='Les notifications sont bloquées. Autorise-les dans les réglages de notification de ton téléphone.';
+  else if(Notification.permission==='denied')status.textContent=blockedMessage;
   paint();
  }catch(e){status.textContent=e.message||'Notifications indisponibles pour le moment.';button.checked=!!subscription;}
  button.onchange=async()=>{
@@ -42,15 +54,18 @@ if(!('serviceWorker'in navigator)||!('PushManager'in window)||!('Notification'in
     await call({action:'unsubscribe',token});
     await subscription.unsubscribe();subscription=null;categories=null;status.textContent='Notifications désactivées sur ce téléphone.';
    }else{
-    // Autorisation demandée directement depuis le clic de l’utilisateur.
-    const permission=await Notification.requestPermission();
-    if(permission!=='granted')throw Error('Notifications non autorisées. Tu peux continuer à consulter les news dans l’app.');
+    if(Notification.permission==='denied')throw Error(blockedMessage);
+    // La demande d’autorisation et l’abonnement partent du même geste.
     subscription=await reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:bytes(key)});
     try{await call({action:'subscribe',token,subscription:subscription.toJSON()});}
     catch(e){await subscription.unsubscribe();subscription=null;throw e;}
     categories=(await call({action:'preferences',token})).categories;status.textContent='Notifications activées sur ce téléphone.';
    }
-  }catch(e){status.textContent=e.message||'Activation impossible.';}finally{working=false;paint();}
+  }catch(e){
+   status.textContent=e.name==='NotAllowedError'
+    ? Notification.permission==='denied'?blockedMessage:'Autorise les notifications pour KM16 lorsque ton appareil te le demande.'
+    : e.message||'Activation impossible.';
+  }finally{working=false;paint();}
  };
  for(const choice of choices)choice.onchange=async()=>{
   if(working||!subscription||!categories)return;

@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="robots" content="noindex,nofollow">
+  <meta name="referrer" content="no-referrer">
+  <title>KM16 · Arrêter les rappels de paiement</title>
+  <style>
+    *{box-sizing:border-box}body{margin:0;padding:24px;font:17px/1.6 system-ui;background:#f5f3ef;color:#222}main{max-width:600px;margin:40px auto;padding:30px;background:#fff;border:1px solid #e5e1db;border-radius:15px}h1{font-size:clamp(26px,6vw,34px);line-height:1.2}button{font:inherit;font-weight:650;background:#b31c28;color:#fff;padding:14px;border:0;border-radius:8px;cursor:pointer;min-height:44px}button:disabled{opacity:.6;cursor:default}a{color:#a41319}button:focus-visible,a:focus-visible{outline:3px solid #222;outline-offset:4px}[hidden]{display:none!important}#status{min-height:27px}@media(max-width:480px){body{padding:16px}main{padding:22px;margin:20px auto}button{width:100%}}
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Arrêter les rappels de paiement</h1>
+    <p>Confirmez pour ne plus recevoir de rappels concernant les paiements non terminés à cette adresse.</p>
+    <p>Les confirmations de vos achats et les messages liés à vos cours d’essai restent indépendants.</p>
+    <button id="stop" type="button" disabled>Ne plus recevoir de rappels de paiement</button>
+    <p id="status" role="status" aria-live="polite"></p>
+    <noscript><p>Activez JavaScript pour confirmer votre choix, ou contactez <a href="mailto:contact@km16.fr">contact@km16.fr</a>.</p></noscript>
+    <a href="./">Retour à KM16</a>
+  </main>
+  <script type="module" src="./checkout-reminder-stop.mjs?v=1"></script>
+</body>
+</html>

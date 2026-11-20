@@ -7,13 +7,21 @@ const sizesAllowed=['XXS','XS','S','M','L','XL','2XL'];
 let session=null,busy=false,authRevision=0,draftRestored=false;
 for(const id of ['size1','size2'])for(const size of sizesAllowed)$(id).add(new Option(size,size));
 $('size1').value='M';$('size2').value='M';
+// Reminder links contain product choices only, never an email or account identity.
+const sizeParameters=new URLSearchParams(location.search).getAll('sizes');
+const requestedSizes=sizeParameters.length===1?sizeParameters[0].split(','):[];
+const reminderSizes=[1,2].includes(requestedSizes.length)&&requestedSizes.every(size=>sizesAllowed.includes(size))?requestedSizes:null;
+function applySizes(sizes){$('quantity').value=String(sizes.length);$('size1').value=sizes[0];$('size2').value=sizes[1]||'M';}
+if(reminderSizes)applySizes(reminderSizes);
+$('purchase-email').addEventListener('input',()=>{$('checkout-reminder').checked=false;});
+for(const id of ['quantity','size1','size2'])$(id).addEventListener('change',()=>{$('checkout-reminder').checked=false;});
 function message(s){$('message').textContent=s;}
 function update(){
  const n=Number($('quantity').value);
  $('second').hidden=n===1;
  $('total').textContent='Total : '+(n===1?'18':'30')+' €';
  $('pay').disabled=busy;
- for(const id of ['quantity','size1','size2','purchase-email'])$(id).disabled=busy;
+ for(const id of ['quantity','size1','size2','purchase-email','checkout-reminder'])$(id).disabled=busy;
  $('pay').textContent=busy?'Préparation de votre demande…':session?'Continuer vers le paiement':'Valider ma commande';
 }
 function withDeadline(promise){
@@ -25,16 +33,21 @@ const access=createCheckoutAccess({
  getDraft:()=>({quantity:$('quantity').value,size1:$('size1').value,size2:$('size2').value,email:$('purchase-email').value.trim()}),
  applyDraft:d=>{
   if(!['1','2'].includes(d.quantity)||!sizesAllowed.includes(d.size1)||!sizesAllowed.includes(d.size2))return;
-  $('quantity').value=d.quantity;$('size1').value=d.size1;$('size2').value=d.size2;$('purchase-email').value=d.email||'';update();
+  $('quantity').value=d.quantity;$('size1').value=d.size1;$('size2').value=d.size2;$('purchase-email').value=d.email||'';
+  // A saved OTP draft must not reinstate a later opt-out from another tab.
+  $('checkout-reminder').checked=false;
+  if(reminderSizes)applySizes(reminderSizes);
+  update();
   message('Votre choix a été conservé. Vérifiez votre commande avant de continuer.');
  },
  onVerified:()=>message('Votre adresse e-mail est confirmée. Vous pouvez continuer vers le paiement.')
 });
 function account(next){
  const previous=session;session=verifiedAccount(next);
- if(previous&&!session){void access.clear();$('purchase-email').value='';}
+ if(previous&&!session){void access.clear();$('purchase-email').value='';$('checkout-reminder').checked=false;}
+ if(previous&&session&&previous.user.id!==session.user.id)$('checkout-reminder').checked=false;
  const previousEmail=normalizeEmail($('purchase-email').value);
- if(session&&previousEmail&&previousEmail!==normalizeEmail(session.user.email)){void access.clear();message('Vous êtes connecté avec '+session.user.email+'. Vérifiez cette adresse avant de valider votre commande.');}
+ if(session&&previousEmail&&previousEmail!==normalizeEmail(session.user.email)){void access.clear();$('checkout-reminder').checked=false;message('Vous êtes connecté avec '+session.user.email+'. Vérifiez cette adresse avant de valider votre commande.');}
  $('admin').hidden=session?.user?.email?.toLowerCase()!=='alexandre.marchat@gmail.com';
  $('stripe-diagnostic').hidden=$('admin').hidden;
  $('guest-account').hidden=!!session;$('connected').hidden=!session;$('my-orders').hidden=!session;
@@ -91,6 +104,8 @@ $('shirt-order').onsubmit=async e=>{
  e.preventDefault();if(busy||!$('shirt-order').reportValidity())return;
  const submittedEmail=normalizeEmail($('purchase-email').value);
  const sizes=[$('size1').value,...(Number($('quantity').value)===2?[$('size2').value]:[])];
+ const reminderOptIn=$('checkout-reminder').checked;
+ const reminderAccountId=session?.user?.id||null;
  busy=true;update();message('Préparation de votre demande…');
  try{
   const verified=await access.ensure();
@@ -98,7 +113,7 @@ $('shirt-order').onsubmit=async e=>{
   const expectedAccount={id:verified.user.id,email:normalizeEmail(verified.user.email)};
   if(expectedAccount.email!==submittedEmail)throw Error('Utilisez l’adresse du compte connecté ou déconnectez-vous pour changer d’adresse.');
   account(verified);
-  const r=await api({action:'checkout',sizes},expectedAccount);
+  const r=await api({action:'checkout',sizes,reminder_opt_in:reminderOptIn&&$('checkout-reminder').checked&&(!reminderAccountId||reminderAccountId===expectedAccount.id)},expectedAccount);
   const u=new URL(r.url);if(u.hostname!=='checkout.stripe.com'||u.protocol!=='https:')throw Error('Lien de paiement invalide');
   await access.clear();location.assign(u.href);
  }catch(e){message(e.message||'La commande n’a pas pu aboutir. Réessayez.');}

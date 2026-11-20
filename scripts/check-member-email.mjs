@@ -23,7 +23,7 @@ const server=createServer(async(req,res)=>{try{
 await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
 const origin='http://127.0.0.1:'+server.address().port;
 const engines=process.env.KM16_CHROMIUM_ONLY?[['Chromium',chromium]]:[['Chromium',chromium],['WebKit',webkit]];
-const allScenarios=['guest','session','anonymous','unconfirmed','slow-catalogue','guest-refresh','network-error','network-reload','rate-limit','wrong-identity','draft-new-tab','logout','minor','identity-switch-before-checkout','camera','camera-errors','camera-cancel-pending','camera-embed','camera-desktop-devices','camera-device-recovery','camera-framing'];
+const allScenarios=['guest','session','anonymous','unconfirmed','slow-catalogue','guest-refresh','network-error','network-reload','rate-limit','wrong-identity','draft-new-tab','logout','minor','identity-switch-before-checkout','reminder-free','camera','camera-errors','camera-cancel-pending','camera-embed','camera-desktop-devices','camera-device-recovery','camera-framing'];
 const scenarios=process.env.KM16_CAMERA_ONLY?allScenarios.filter(name=>name.startsWith('camera')):allScenarios;
 const otpCalls=events=>events.filter(e=>e.type==='otp');
 const writes=events=>events.filter(e=>e.type==='api'&&['photo-upload','checkout'].includes(e.body.action));
@@ -140,7 +140,7 @@ async function harness(browser,width,scenario){
     if(scenario==='identity-switch-before-checkout')window.TEST_SESSION={...confirmed,user:{...confirmed.user,id:'other-fixture',email:'other@example.invalid'}};
     data={ok:true};
    }
-   else if(body.action==='checkout'){if(window.TEST_CHECKOUT_DELAY)await new Promise(resolve=>setTimeout(resolve,window.TEST_CHECKOUT_DELAY));data={url:'https://checkout.stripe.com/c/pay/simulated-only'};}
+   else if(body.action==='checkout'){if(window.TEST_CHECKOUT_DELAY)await new Promise(resolve=>setTimeout(resolve,window.TEST_CHECKOUT_DELAY));data=scenario==='reminder-free'?{free:true}:{url:'https://checkout.stripe.com/c/pay/simulated-only'};}
    else if(body.action==='orders')data={orders:[],payments:[],documents:[]};
    else throw Error('Unexpected action: '+body.action);
    return new Response(JSON.stringify(data),{status:200,headers:{'Content-Type':'application/json'}});
@@ -263,6 +263,8 @@ try{
    const {context,page,hostPage,events,errors,unexpected}=await harness(browser,width,scenario);
    try{
     assert.equal(await page.locator('#order').isVisible(),true,'form opens before account creation');
+    assert.equal(await page.locator('#checkout-reminder').isChecked(),false,'payment reminders are opt-in only');
+    assert.equal(await page.locator('#checkout-reminder').getAttribute('required'),null,'reminder consent is independent of required terms');
     assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),true,'no horizontal overflow');
     if(!['session','slow-catalogue','logout','identity-switch-before-checkout'].includes(scenario)){
      assert.equal(await page.locator('#contact_email').isEditable(),true,'guest email editable');
@@ -503,15 +505,16 @@ try{
      await fill(page,{photo:false});await page.locator('#pay').click();assert.equal(otpCalls(events).length,0,'photo required');
      await addPhoto(page);await page.locator('#terms').uncheck();await page.locator('#pay').click();assert.equal(otpCalls(events).length,0,'consent required');
      await page.locator('#terms').check();
+     await page.locator('#checkout-reminder').check();
      if(process.env.KM16_SCREENSHOTS&&width===390){await page.locator('#contact_email').scrollIntoViewIfNeeded();await page.screenshot({path:resolve(process.env.KM16_SCREENSHOTS,`member-guest-${engineName}-${width}.png`)});}
      await submitEmail(page,events);
      if(process.env.KM16_SCREENSHOTS&&width===1280){await page.locator('#checkout-access').scrollIntoViewIfNeeded();await page.screenshot({path:resolve(process.env.KM16_SCREENSHOTS,`member-verification-${engineName}-${width}.png`)});}
      await page.locator('#pay').click();assert.equal(otpCalls(events).length,1,'waiting does not resend email');
      await notify(page);assert.equal(await page.locator('#first_name').inputValue(),'Camille');assert.equal(await page.locator('#photo-preview').isVisible(),true);
-     assert.deepEqual(writes(events),[],'verification does not submit automatically');await checkout(page,events);
+     assert.deepEqual(writes(events),[],'verification does not submit automatically');assert.equal((await checkout(page,events)).reminder_opt_in,true,'explicit choice is sent after verification');
     }else if(scenario==='session'){
      assert.equal(await page.locator('#contact_email').inputValue(),confirmed.user.email);assert.equal(await page.locator('#contact_email').isEditable(),false);
-     await fill(page);await checkout(page,events);assert.equal(otpCalls(events).length,0);
+     await fill(page);assert.equal((await checkout(page,events)).reminder_opt_in,false,'accepting terms does not opt in to reminders');assert.equal(otpCalls(events).length,0);
     }else if(['anonymous','unconfirmed'].includes(scenario)){
      await fill(page);await submitEmail(page,events);
     }else if(scenario==='slow-catalogue'){
@@ -532,18 +535,30 @@ try{
       assert.equal(otpCalls(events).length,2,'failed send can retry after restoring draft');
      }else if(scenario==='network-error'){await page.evaluate(()=>{window.TEST_OTP_BEHAVIOR='ok';});await page.locator('#pay').click();await page.waitForFunction(()=>!document.querySelector('#checkout-access').hidden&&!document.querySelector('#pay').disabled);assert.equal(otpCalls(events).length,2);}
     }else if(scenario==='wrong-identity'){
-     await fill(page);await submitEmail(page,events);await notify(page,'other@example.invalid');assert.deepEqual(writes(events),[]);
+     await fill(page);await page.locator('#checkout-reminder').check();await submitEmail(page,events);await notify(page,'other@example.invalid');assert.deepEqual(writes(events),[]);
+     assert.equal(await page.locator('#checkout-reminder').isChecked(),false,'a different identity never inherits consent');
      assert.equal(await page.locator('#first_name').inputValue(),'','different account clears personal data');assert.equal(await page.locator('#photo-preview').isVisible(),false);
     }else if(scenario==='draft-new-tab'){
-     await fill(page);await page.locator('#count').selectOption('3');await page.locator('#installments').check();await submitEmail(page,events);
+     await fill(page);await page.locator('#count').selectOption('3');await page.locator('#installments').check();await page.locator('#checkout-reminder').check();await submitEmail(page,events);
      const photo=await page.locator('#photo-preview').getAttribute('src');await page.evaluate(s=>localStorage.setItem('km16-test-auth',JSON.stringify(s)),confirmed);
      const next=await context.newPage();await next.goto(origin+'/adhesion.html');await next.waitForFunction(()=>document.querySelector('#first_name').value==='Camille'&&!document.querySelector('#order').hidden);
      assert.equal(await next.locator('#last_name').inputValue(),'Exemple');assert.equal(await next.locator('#birth_date-display').inputValue(),'01/01/1990');assert.equal(await next.locator('#count').inputValue(),'3');
      assert.equal(await next.locator('#photo-preview').getAttribute('src'),photo);assert.equal(await next.locator('#terms').isChecked(),true);assert.equal(await next.locator('#installments').isChecked(),true);assert.equal(await next.locator('#contact_email').inputValue(),confirmed.user.email);assert.deepEqual(writes(events),[]);
-     assert.equal((await checkout(next,events)).count,3);
+     assert.equal(await next.locator('#checkout-reminder').isChecked(),false,'a saved draft cannot reinstate reminder consent');
+     const body=await checkout(next,events);assert.equal(body.count,3);assert.equal(body.reminder_opt_in,false);
     }else if(scenario==='logout'){
-     await fill(page);await page.locator('#logout').click();await page.waitForFunction(()=>!document.querySelector('#contact_email').readOnly);
+     await fill(page);await page.locator('#checkout-reminder').check();await page.locator('#logout').click();await page.waitForFunction(()=>!document.querySelector('#contact_email').readOnly);
+     assert.equal(await page.locator('#checkout-reminder').isChecked(),false,'logout clears the opt-in');
      assert.equal(await page.locator('#first_name').inputValue(),'');assert.equal(await page.locator('#contact_email').inputValue(),'');assert.equal(await page.locator('#photo-preview').isVisible(),false);assert.deepEqual(writes(events),[]);
+    }else if(scenario==='reminder-free'){
+     await page.locator('#checkout-reminder').check();
+     await page.locator('#catalogue .card').filter({has:page.getByRole('heading',{name:'Cours d’essai offert',exact:true})}).getByRole('button').click();
+     assert.equal(await page.locator('#checkout-reminder-wrap').isVisible(),false,'free trials never offer payment reminders');
+     assert.equal(await page.locator('#checkout-reminder').isChecked(),false,'choosing a free trial clears earlier consent');
+     await fill(page);await submitEmail(page,events);await notify(page);
+     await page.locator('#pay').click();
+     await page.waitForFunction(()=>document.querySelector('#status').textContent.includes('demande gratuite a été enregistrée'));
+     assert.equal(writes(events).find(event=>event.body.action==='checkout').body.reminder_opt_in,false,'free trials cannot opt in');
     }else if(scenario==='minor'){
      await fill(page,{minor:true});await page.locator('#guardian_name').fill('');await page.locator('#pay').click();assert.equal(otpCalls(events).length,0,'minor requires guardian');
      await page.locator('#guardian_name').fill('Parent Exemple');await submitEmail(page,events);await notify(page);const body=await checkout(page,events);assert.equal(body.guardian_name,'Parent Exemple');assert.equal(body.first_name,'Camille');

@@ -150,6 +150,7 @@ Deno.serve(async req=>{
   if(['checkout.session.completed','checkout.session.async_payment_succeeded'].includes(event.type))await sessionPaid(obj.id);
   else if(event.type.startsWith('invoice.'))await invoiceChanged(obj.id);
   else if(event.type==='charge.refunded')await chargeChanged(obj.id);
+  else if((event.type==='refund.updated'||event.type==='charge.refund.updated')&&oid(obj.charge))await chargeChanged(oid(obj.charge));
   else if(event.type.startsWith('charge.dispute.'))await chargeChanged(oid(obj.charge));
   return new Response(JSON.stringify({received:true}),{headers:{'Content-Type':'application/json'}});
  }catch(e){console.error('KM16 adhésion webhook',event.id,e?.type||e?.name);return new Response('Traitement à réessayer',{status:500});}

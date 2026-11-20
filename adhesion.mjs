@@ -343,11 +343,12 @@ $('order').onsubmit=async e=>{
   else{const u=new URL(r.url);if(u.protocol!=='https:'||u.hostname!=='checkout.stripe.com')throw Error('Adresse de paiement invalide');await checkoutAccess.clear();if(selected.kind==='annual')await trackMembershipStep('checkout_opened');if(!linkToken&&!embedded)await trackStageCheckout(selected, stageDetail && selected.id===requestedProduct ? reminderSource : undefined);(embedded?window.top:window).location.assign(u.href);}
  }catch(error){note(error.message,true);}finally{for(const {element,disabled} of controls)element.disabled=disabled;busy=false;buttonState();}
 };
+let familyCheckoutEnabled=false;
 const familyCart=new Map();
 let familyCartRequest='';
 function renderFamilyCart(){
  const host=$('family-cart'),list=$('family-cart-lines');
- host.hidden=!session||!!linkToken||embedded||accountView;
+ host.hidden=!familyCheckoutEnabled||!session||!!linkToken||embedded||accountView;
  $('family-cart-add').hidden=host.hidden||selected?.kind!=='annual'||selected.review||Number($('count').value)!==1;
  list.replaceChildren();
  for(const [id,line] of familyCart){
@@ -867,6 +868,24 @@ function renderMyOrders(){
     const planning=text('a','Choisir ma séance dans le planning',box);planning.href='./#planning';
    }
   }else text('div',money(paid)+' encaissés sur '+money(o.total_cents)+' · Dossier : '+({pending:'en attente de validation',approved:'validé',rejected:'refusé'}[o.approval]),box);
+  const family=myOrderData.family_payments?.find(group=>group.id===o.family_payment_id);
+  if(family?.state==='pending'&&familyCheckoutEnabled){
+   const button=text('button','Reprendre le paiement familial',box);button.type='button';
+   const feedback=text('p','',box,'muted');feedback.setAttribute('role','status');
+   button.onclick=async()=>{
+    const account=session?.user;
+    if(!account)return;
+    button.disabled=true;feedback.textContent='Vérification du paiement…';
+    try{
+     const result=await api({action:'family-checkout',request_id:family.id},account);
+     const url=new URL(result.url);
+     if(url.protocol!=='https:'||url.hostname!=='checkout.stripe.com')throw Error('Adresse de paiement invalide.');
+     location.assign(url.href);
+    }catch(error){feedback.textContent=error.message;}
+    finally{button.disabled=false;}
+   };
+  }
+  if(family?.state==='review')text('p','Un remboursement sur ce paiement familial est en cours de vérification par KM16.',box,'notice');
   if(o.approval!=='rejected'&&o.total_cents>0&&o.stripe_session_id&&!payments.some(p=>['paid','refunded','disputed'].includes(p.status))){
    const reminderLabel=text('label','',box,'check');
    const reminder=document.createElement('input');reminder.type='checkbox';reminder.checked=false;
@@ -1164,7 +1183,27 @@ let km16AdminLoaded=null,km16AdminNextPage=0,km16AdminHasMore=false,km16AdminLoa
 const km16HasUnsavedDocuments=()=>Boolean(document.querySelector('#admin-orders [data-unsaved-documents="true"],#km16-followup-inline-body [data-unsaved-documents="true"]'));
 const km16ConfirmDiscardDocuments=()=>!km16HasUnsavedDocuments()||confirm('Des modifications de justificatifs ne sont pas enregistrées. Les abandonner et actualiser les dossiers ?');
 window.addEventListener('beforeunload',event=>{if(km16HasUnsavedDocuments()){event.preventDefault();event.returnValue='';}});
-async function admin(loadMore=false){if(km16AdminLoading)return;if(!km16ConfirmDiscardDocuments())return;km16AdminLoading=true;const gen=generation;const refreshButton=$('admin-refresh'),followupRefresh=$('km16-followup-refresh'),moreButton=$('km16-admin-more');if(refreshButton)refreshButton.disabled=true;if(followupRefresh)followupRefresh.disabled=true;if(moreButton){moreButton.disabled=true;moreButton.textContent=loadMore?'Chargement des dossiers…':'Charger 25 dossiers supplémentaires';}$('km16-followup-status').textContent='Actualisation des dossiers et de leurs historiques…';try{
+async function loadFamilyPaymentReviews(){
+ const account=session?.user;
+ if(!account||!familyCheckoutEnabled)return;
+ const host=$('km16-family-review'),list=$('km16-family-review-list'),status=$('km16-family-review-status');
+ try{
+  const {groups}=await api({action:'family-payment-reviews'},account);
+  if(session?.user.id!==account.id)return;
+  list.replaceChildren();host.hidden=!groups.length;status.textContent='';
+  for(const group of groups){
+   const row=text('li','',list);
+   text('span',money(group.stripe_total_refunded)+' remboursés sur '+money(group.total_cents)+' · ',row);
+   const link=text('a','Vérifier dans Stripe',row);
+   link.href='https://dashboard.stripe.com/payments/'+encodeURIComponent(group.payment_intent_id);
+   link.target='_blank';link.rel='noopener noreferrer';
+  }
+ }catch{
+  if(session?.user.id!==account.id)return;
+  host.hidden=false;status.textContent='Suivi des remboursements familiaux indisponible.';
+ }
+}
+async function admin(loadMore=false){if(km16AdminLoading)return;if(!km16ConfirmDiscardDocuments())return;if(!loadMore)void loadFamilyPaymentReviews();km16AdminLoading=true;const gen=generation;const refreshButton=$('admin-refresh'),followupRefresh=$('km16-followup-refresh'),moreButton=$('km16-admin-more');if(refreshButton)refreshButton.disabled=true;if(followupRefresh)followupRefresh.disabled=true;if(moreButton){moreButton.disabled=true;moreButton.textContent=loadMore?'Chargement des dossiers…':'Charger 25 dossiers supplémentaires';}$('km16-followup-status').textContent='Actualisation des dossiers et de leurs historiques…';try{
  const page=loadMore?km16AdminNextPage:0;const result=await api({action:'admin-page',page,page_size:25,search:km16AdminServerSearch,approval:km16AdminServerApproval});if(gen!==generation)return;
  const r=loadMore&&km16AdminLoaded?{orders:[...km16AdminLoaded.orders,...result.orders],payments:[...km16AdminLoaded.payments,...result.payments],documents:[...km16AdminLoaded.documents,...result.documents],mails:[...km16AdminLoaded.mails,...result.mails]}:result;
  km16AdminLoaded=r;if(!loadMore)$('km16-admin-sync-after-decision').hidden=true;km16AdminNextPage=page+1;km16AdminHasMore=result.has_more===true;$('km16-admin-active-filter').textContent='Vue : '+$('km16-admin-server-approval').selectedOptions[0].textContent+(km16AdminServerSearch?' · recherche « '+km16AdminServerSearch+' »':'')+(km16AdminHasMore?' · résultats partiels':'');$('km16-admin-server-filter-status').textContent='Dossiers récupérés : '+$('km16-admin-server-approval').selectedOptions[0].textContent+' · '+r.orders.length+' chargé(s).';
@@ -1308,7 +1347,7 @@ if(returnedOrder){showPaymentReturn();$('payment-return-title').focus();}
 
 try{
  const fallback=await fetch('./catalogue.json').then(r=>r.json());products=fallback;category=categoryFor(requestedCategory);render();
- try{const c=await api({action:'catalogue'});products=c.products;stageCatalogueLoaded=true;enabled=c.enabled;for(const [id,value] of [['terms-link',c.terms_url],['privacy-link',c.privacy_url]]){try{const u=new URL(value);if(u.protocol==='https:')$(id).href=u.href;}catch{enabled=false;}}$('opening').textContent=enabled?'Inscriptions ouvertes · Paiement en 1, 3 ou 4 fois pour les cotisations annuelles.':'Les paiements en ligne ne sont pas encore ouverts.';render();
+ try{const c=await api({action:'catalogue'});products=c.products;stageCatalogueLoaded=true;enabled=c.enabled;familyCheckoutEnabled=c.family_checkout===true;renderFamilyCart();for(const [id,value] of [['terms-link',c.terms_url],['privacy-link',c.privacy_url]]){try{const u=new URL(value);if(u.protocol==='https:')$(id).href=u.href;}catch{enabled=false;}}$('opening').textContent=enabled?'Inscriptions ouvertes · Paiement en 1, 3 ou 4 fois pour les cotisations annuelles.':'Les paiements en ligne ne sont pas encore ouverts.';render();
  if(stageDetail&&reminderSource&&!linkToken){
   const stage=products.find(p=>p.id===requestedProduct&&!p.draft&&!p.review&&p.event_date>=today());
   if(stage)trackStageReminderVisit(stage,reminderSource);

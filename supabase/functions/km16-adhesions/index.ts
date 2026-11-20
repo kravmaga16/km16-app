@@ -88,7 +88,7 @@ Deno.serve(async req=>{
   if(!base||!key||!Deno.env.get('KM16_ADHESIONS_STRIPE_SECRET_KEY'))throw Error('Configuration absente');
   const config=(await db('km16_membership_config?id=eq.1'))[0];
   let data;try{data=await req.json();}catch{return reply({error:'Requête invalide'},400);}
-  if(data.action==='catalogue')return reply({products:await db('km16_membership_products?order=position'),enabled:config.enabled,terms_url:config.terms_url,privacy_url:config.privacy_url});
+  if(data.action==='catalogue')return reply({products:await db('km16_membership_products?order=position'),enabled:config.enabled,family_checkout:Deno.env.get('KM16_FAMILY_CHECKOUT_ENABLED')==='true',terms_url:config.terms_url,privacy_url:config.privacy_url});
   if(data.action==='link-preview'){
    const l=await offerFor(data.link_token);
    if(!l||l.revoked_at||l.order_id||Date.parse(l.expires_at)<=Date.now())return reply({error:'Ce lien n’est plus disponible. Contactez KM16.'},409);
@@ -106,46 +106,60 @@ Deno.serve(async req=>{
    if(Deno.env.get('KM16_FAMILY_CHECKOUT_ENABLED')!=='true')return reply({error:'Le paiement groupé est indisponible.'},503);
    if(!config.enabled||live()&&Deno.env.get('KM16_ADHESIONS_ALLOW_LIVE')!=='true')return reply({error:'Paiement indisponible.'},503);
    const id=String(data.request_id||'');
-   if(!/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(id)||!Array.isArray(data.lines)||data.lines.length<2||data.lines.length>8)
+   if(!/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(id))
     return reply({error:'Sélectionnez de deux à huit pratiquants.'},400);
-   const today=parisToday(), rows=[];
-   if(today>config.season_end)return reply({error:'Saison terminée.'},409);
-   for(const item of data.lines){
-    const profile=String(item.household_id||'');
-    if(!/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(profile))return reply({error:'Sélectionnez un profil du foyer pour chaque inscription.'},400);
-    const offer=(await db('km16_membership_products?id=eq.'+encodeURIComponent(item.product_id)))[0];
-    if(offer?.kind!=='annual'||offer.review||offer.draft||offer.amount<=0)return reply({error:'Cette formule ne peut pas être réglée en groupe.'},400);
-    let validated;
-    try{validated=validateOrder(offer,{...item,count:1},today);}catch(error){return reply({error:error.message},400);}
-    rows.push({id:crypto.randomUUID(),household_id:profile,product_id:offer.id,email:user.email,
-     first_name:item.first_name.trim(),last_name:item.last_name.trim(),birth_date:item.birth_date,phone:item.phone,
-     guardian_name:validated.age<18?item.guardian_name.trim():null,
-     participant_key:await participantKeyFor(user.id,config.season_end,item)});
+   let group=(await db('km16_family_payments?id=eq.'+id+'&user_id=eq.'+user.id))[0];
+   if(!group){
+    if(!Array.isArray(data.lines)||data.lines.length<2||data.lines.length>8)return reply({error:'Sélectionnez de deux à huit pratiquants.'},400);
+    const today=parisToday(), rows=[];
+    if(today>config.season_end)return reply({error:'Saison terminée.'},409);
+    for(const item of data.lines){
+     const profile=String(item.household_id||'');
+     if(!/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(profile))return reply({error:'Sélectionnez un profil du foyer pour chaque inscription.'},400);
+     const offer=(await db('km16_membership_products?id=eq.'+encodeURIComponent(item.product_id)))[0];
+     if(offer?.kind!=='annual'||offer.review||offer.draft||offer.amount<=0)return reply({error:'Cette formule ne peut pas être réglée en groupe.'},400);
+     let validated;
+     try{validated=validateOrder(offer,{...item,count:1},today);}catch(error){return reply({error:error.message},400);}
+     rows.push({id:crypto.randomUUID(),household_id:profile,product_id:offer.id,email:user.email,
+      first_name:item.first_name.trim(),last_name:item.last_name.trim(),birth_date:item.birth_date,phone:item.phone,
+      guardian_name:validated.age<18?item.guardian_name.trim():null,
+      participant_key:await participantKeyFor(user.id,config.season_end,item)});
+    }
+    const recent=await db('km16_membership_orders?user_id=eq.'+user.id+'&created_at=gte.'+encodeURIComponent(new Date(Date.now()-3600000).toISOString())+'&select=id');
+    if(recent.length+rows.length>8)return reply({error:'Trop de demandes. Contactez KM16.'},429);
+
+    try{group=await db('rpc/km16_create_family_payment','POST',{p_id:id,p_user:user.id,p_livemode:live(),p_orders:rows});}
+    catch{return reply({error:'Un profil ou une formule est indisponible, ou un dossier existe déjà cette saison.'},409);}
    }
-   const own=(await db('km16_family_payments?id=eq.'+id+'&user_id=eq.'+user.id))[0];
-   const recent=own?[]:await db('km16_membership_orders?user_id=eq.'+user.id+'&created_at=gte.'+encodeURIComponent(new Date(Date.now()-3600000).toISOString())+'&select=id');
-   if(!own&&recent.length+rows.length>8)return reply({error:'Trop de demandes. Contactez KM16.'},429);
-   let group;
-   try{group=await db('rpc/km16_create_family_payment','POST',{p_id:id,p_user:user.id,p_livemode:live(),p_orders:rows});}
-   catch{return reply({error:'Un profil ou une formule est indisponible, ou un dossier existe déjà cette saison.'},409);}
-   if(group.state!=='pending')return reply({error:'Ce paiement a déjà été traité. Consultez votre espace.'},409);
-   if(group.stripe_session_id){
-    const prior=await stripe.checkout.sessions.retrieve(group.stripe_session_id);
-    return prior.status==='open'&&prior.url?reply({url:prior.url}):reply({error:'Cette session n’est plus disponible.'},409);
+   if(group.livemode!==live()||group.state!=='pending')return reply({error:'Ce paiement a déjà été traité. Consultez votre espace.'},409);
+   const previous=group.stripe_session_id;
+   if(previous){
+    const prior=await stripe.checkout.sessions.retrieve(previous);
+    if(prior.metadata?.km16_family!==id||prior.livemode!==group.livemode)throw Error('Family session mismatch');
+    if(prior.status==='open'&&prior.url)return reply({url:prior.url});
+    if(prior.status!=='expired')return reply({error:'Ce paiement est en cours de vérification. Consultez votre espace.'},409);
    }
    const orders=await db('km16_membership_orders?family_payment_id=eq.'+id+'&order=id.asc');
-   if(orders.length!==rows.length||orders.reduce((sum,o)=>sum+o.total_cents,0)!==group.total_cents)throw Error('Invalid group total');
+   if(orders.length<2||orders.length>8||orders.reduce((sum,o)=>sum+o.total_cents,0)!==group.total_cents)throw Error('Invalid group total');
    const key='km16-family-'+id;
    const customer=await stripe.customers.create({email:user.email,preferred_locales:['fr']},{idempotencyKey:key+'-customer'});
    const metadata={km16_source:'km16-family-v1',km16_family:id};
    const checkout=await stripe.checkout.sessions.create({
     mode:'payment',customer:customer.id,billing_address_collection:'required',customer_update:{name:'auto',address:'auto'},
-    payment_method_types:['card'],metadata,payment_intent_data:{metadata},
+    payment_method_types:['card'],metadata,payment_intent_data:{metadata,receipt_email:user.email},
+    consent_collection:{terms_of_service:'required'},custom_text:{terms_of_service_acceptance:{message:'J’accepte les [conditions KM16]('+config.terms_url+').'}},locale:'fr',
     line_items:orders.map(o=>({quantity:1,price_data:{currency:'eur',unit_amount:o.total_cents,product_data:{name:o.title}}})),
     success_url:SITE+'/adhesion.html?espace=1&paid=1&order='+orders[0].id,
     cancel_url:SITE+'/adhesion.html?espace=1',
-   },{idempotencyKey:key+'-checkout'});
-   await db('km16_family_payments?id=eq.'+id+'&user_id=eq.'+user.id,'PATCH',{stripe_session_id:checkout.id});
+   },{idempotencyKey:key+'-checkout-'+(previous||'initial')});
+   const swapped=await db('km16_family_payments?id=eq.'+id+'&user_id=eq.'+user.id+
+    '&state=eq.pending&stripe_session_id='+(previous?'eq.'+previous:'is.null'),
+    'PATCH',{stripe_session_id:checkout.id},'return=representation');
+   if(!swapped?.length){
+    const current=(await db('km16_family_payments?id=eq.'+id+'&user_id=eq.'+user.id))[0];
+    if(current?.state!=='pending'||current.stripe_session_id!==checkout.id)
+     return reply({error:'Le paiement est en cours de vérification.'},409);
+   }
    return reply({url:checkout.url});
   }
   if(data.action==='photo-upload'||data.action==='member-photo-add'){
@@ -267,13 +281,19 @@ Deno.serve(async req=>{
    return reply({bill});
   }
   if(data.action==='orders'){
-   const orders=await db('km16_membership_orders?user_id=eq.'+user.id+'&select=id,product_id,title,first_name,last_name,household_id,livemode,total_cents,count,amounts,approval,created_at,stripe_session_id,schedule_id&order=created_at.desc');
+   const orders=await db('km16_membership_orders?user_id=eq.'+user.id+'&select=id,product_id,title,first_name,last_name,household_id,family_payment_id,livemode,total_cents,count,amounts,approval,created_at,stripe_session_id,schedule_id&order=created_at.desc');
    const ids=orders.map(o=>o.id);
    const today=parisToday();
    const trials=orders.filter(o=>o.livemode&&['essai','essai-saint-jean'].includes(o.product_id)&&o.approval!=='rejected').map(o=>o.id);
    const attended=trials.length?await db('km16_trial_attendance?order_id=in.('+trials.join(',')+')&attended_on=lte.'+today+'&select=order_id'):[];
    const photos=ids.length?await db('km16_member_photos?user_id=eq.'+user.id+'&select=id'):[];
-   return reply({orders,photo_order_ids:photos.map(photo=>photo.id),season_end:config.season_end,trial_attended_ids:attended.map(t=>t.order_id),renewal_window:renewalWindow(config,today),payments:await db('km16_membership_payments?user_id=eq.'+user.id+'&select=order_id,reference,amount_cents,refunded_cents,status,created_at&order=created_at.desc'),documents:ids.length?await db('km16_membership_documents?order_id=in.('+ids.join(',')+')&select=order_id,health_kind,health_status,school_required,school_status,paid_at,updated_at'):[]});
+   const familyPayments=orders.some(o=>o.family_payment_id)?await db('km16_family_payments?user_id=eq.'+user.id+'&select=id,state,total_cents,stripe_total_refunded'):[];
+   return reply({orders,family_payments:familyPayments,photo_order_ids:photos.map(photo=>photo.id),season_end:config.season_end,trial_attended_ids:attended.map(t=>t.order_id),renewal_window:renewalWindow(config,today),payments:await db('km16_membership_payments?user_id=eq.'+user.id+'&select=order_id,reference,amount_cents,refunded_cents,status,created_at&order=created_at.desc'),documents:ids.length?await db('km16_membership_documents?order_id=in.('+ids.join(',')+')&select=order_id,health_kind,health_status,school_required,school_status,paid_at,updated_at'):[]});
+  }
+  if(data.action==='family-payment-reviews'){
+   if(!admin)return reply({error:'Accès privé'},403);
+   const groups=await db('km16_family_payments?livemode=eq.true&state=eq.review&order=created_at.desc&limit=100&select=id,total_cents,stripe_total_refunded,payment_intent_id');
+   return reply({groups});
   }
   if(data.action==='admin-diagnostics'){
    if(!admin)return reply({error:'Accès privé'},403);

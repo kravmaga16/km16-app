@@ -197,8 +197,13 @@ function showMembershipJourney(){
   finally{button.disabled=false;}
  };
 }
+function isFreeTrial(id,amount){return ['essai','essai-saint-jean'].includes(id)&&Number(amount)===0;}
 function updateCheckoutSummary(){
  if(!selected)return;
+ const trial=isFreeTrial(selected.id,selected.amount);
+ $('registration-validation-note').textContent=trial
+  ?'Après l’enregistrement de votre demande de cours d’essai, choisissez librement une séance adaptée au pratiquant dans le planning. Présentez-vous à l’enseignant à votre arrivée.'
+  :'L’inscription est soumise à la validation de KM16. Pour une formule réservée, faites confirmer votre éligibilité au club avant de payer.';
  const summary=$('checkout-summary');
  summary.replaceChildren();
  const participant=[$('first_name').value.trim(),$('last_name').value.trim()].filter(Boolean).join(' ');
@@ -206,6 +211,7 @@ function updateCheckoutSummary(){
  const amounts=splitAmount(selected.amount,Number($('count').value));
  text('p',amounts[0]===0?'Aucun paiement à effectuer.':'À régler aujourd’hui : '+money(amounts[0]),summary);
  if(amounts.length>1)text('p','Puis '+(amounts.length-1)+' échéances mensuelles de '+money(amounts[1])+' · Total '+money(selected.amount),summary);
+ if(trial){const planning=text('a','Consulter le planning pour mon cours d’essai',summary);planning.href='./#planning';}
  if(selected.kind==='annual')text('p','Après le paiement, retrouvez dans votre espace la licence FEKM et les justificatifs éventuels.',summary);
  else if(selected.category==='Stages')text('p','Après validation du paiement, retrouvez la confirmation et les informations du stage dans Mes inscriptions.',summary);
 }
@@ -242,11 +248,11 @@ const checkoutAccess=createCheckoutAccess({
   $('birth_date').dispatchEvent(new Event('change'));syncAccountForm();updateSchedule();
   // A saved OTP draft can predate a later opt-out in another tab. Ask again.
   $('checkout-reminder').checked=false;
-  note('Votre demande a été retrouvée. Vérifiez les informations conservées, puis continuez vers le paiement.');
+  note(Number(selected?.amount)===0?'Votre demande a été retrouvée. Vérifiez les informations conservées, puis envoyez votre demande gratuite.':'Votre demande a été retrouvée. Vérifiez les informations conservées, puis continuez vers le paiement.');
   $('selection').scrollIntoView({behavior:'smooth',block:'start'});
   $('chosen').tabIndex=-1;$('chosen').focus({preventScroll:true});
  },
- onVerified:next=>{session=next;syncAccountForm();buttonState();note('Votre e-mail est confirmé. Vérifiez votre demande puis continuez vers le paiement.');}
+ onVerified:next=>{session=next;syncAccountForm();buttonState();note(Number(selected?.amount)===0?'Votre e-mail est confirmé. Vérifiez puis envoyez votre demande gratuite.':'Votre e-mail est confirmé. Vérifiez votre demande puis continuez vers le paiement.');}
 });
 $('reset-request').onclick=async()=>{await checkoutAccess.clear();resetRegistration();note('Votre demande a été effacée de ce navigateur.');};
 $('email-link-login').onsubmit=async event=>{
@@ -277,7 +283,7 @@ $('order').onsubmit=async e=>{
   session=verified;syncAccountForm();
   await api({action:'photo-upload',request_id:payload.request_id,photo:photoToUpload},verified.user);
   const r=await api(payload,verified.user);
-  if(r.free){await checkoutAccess.clear();note('Votre demande gratuite a été enregistrée dans votre espace KM16. Le club doit la valider.');requestId=crypto.randomUUID();await orders();}
+  if(r.free){await checkoutAccess.clear();note(isFreeTrial(selected.id,selected.amount)?'Votre demande gratuite a été enregistrée dans votre espace KM16. Vous pouvez venir quand vous le souhaitez sur une séance adaptée dans le planning. Présentez-vous à l’enseignant à votre arrivée.':'Votre demande gratuite a été enregistrée dans votre espace KM16. Le club doit la valider.');requestId=crypto.randomUUID();await orders();}
   else{const u=new URL(r.url);if(u.protocol!=='https:'||u.hostname!=='checkout.stripe.com')throw Error('Adresse de paiement invalide');await checkoutAccess.clear();if(!linkToken&&!embedded)await trackStageCheckout(selected, stageDetail && selected.id===requestedProduct ? reminderSource : undefined);(embedded?window.top:window).location.assign(u.href);}
  }catch(error){note(error.message,true);}finally{for(const {element,disabled} of controls)element.disabled=disabled;busy=false;buttonState();}
 };
@@ -698,7 +704,13 @@ function renderMyOrders(){
   }
   const payments=myOrderData.payments.filter(p=>p.order_id===o.id);
   const paid=payments.filter(p=>p.status==='paid').reduce((s,p)=>s+p.amount_cents-(p.refunded_cents||0),0);
-  text('div',money(paid)+' encaissés sur '+money(o.total_cents)+' · Dossier : '+({pending:'en attente de validation',approved:'validé',rejected:'refusé'}[o.approval]),box);
+  if(isFreeTrial(o.product_id,o.total_cents)&&o.approval!=='rejected'){
+   if(myOrderData.trial_attended_ids?.includes(o.id))text('p','Cours d’essai effectué.',box);
+   else{
+    text('p','Cours d’essai offert · Demande enregistrée. Choisissez une séance adaptée au pratiquant et présentez-vous à l’enseignant à votre arrivée.',box);
+    const planning=text('a','Choisir ma séance dans le planning',box);planning.href='./#planning';
+   }
+  }else text('div',money(paid)+' encaissés sur '+money(o.total_cents)+' · Dossier : '+({pending:'en attente de validation',approved:'validé',rejected:'refusé'}[o.approval]),box);
   if(o.approval!=='rejected'&&o.total_cents>0&&o.stripe_session_id&&!payments.some(p=>['paid','refunded','disputed'].includes(p.status))){
    const reminderLabel=text('label','',box,'check');
    const reminder=document.createElement('input');reminder.type='checkbox';reminder.checked=false;

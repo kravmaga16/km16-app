@@ -293,7 +293,10 @@ Deno.serve(async req=>{
     return reply({status:'open',url:checkout.url});
    }
    if(checkout.status!=='expired')return reply({status:'unavailable'});
-   if(!order.customer_id||order.terms_version!==config.terms_version||!config.terms_url||!config.privacy_url)
+   // V6 changes only the free-trial welcome. Paid orders retain their accepted V5 archive.
+   const paidTermsUnchanged=order.total_cents>0&&!['essai','essai-saint-jean'].includes(order.product_id)
+    &&order.terms_version==='km16-2026-11-10-v5'&&config.terms_version==='km16-2026-11-20-v6';
+   if(!order.customer_id||(order.terms_version!==config.terms_version&&!paidTermsUnchanged)||!config.terms_url||!config.privacy_url)
     return reply({status:'expired'});
    const product=(await db('km16_membership_products?id=eq.'+encodeURIComponent(order.product_id)))[0];
    const today=parisToday();

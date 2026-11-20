@@ -129,7 +129,7 @@
     "amount": 0,
     "kind": "single",
     "review": false,
-    "note": "Offert à tous · Date du cours à convenir avec KM16 · Demande soumise à validation du club"
+    "note": "Un cours d’essai offert à tous · Venez quand vous le souhaitez sur une séance adaptée au pratiquant dans le planning"
   },
   {
     "id": "essai-saint-jean",
@@ -137,8 +137,8 @@
     "category": "Découverte",
     "amount": 0,
     "kind": "single",
-    "review": true,
-    "note": "Demande gratuite, validation par KM16"
+    "review": false,
+    "note": "Un cours d’essai offert à tous · Venez quand vous le souhaitez sur une séance adaptée au pratiquant dans le planning"
   },
   {
     "id": "cours-deux-heures",

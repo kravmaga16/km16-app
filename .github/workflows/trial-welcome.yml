@@ -1,0 +1,71 @@
+name: KM16 trial welcome
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'supabase/functions/km16-trial-welcome/**'
+      - 'supabase/migrations/*trial_welcome*.sql'
+      - 'tests/trial-welcome*'
+      - '.github/workflows/trial-welcome.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'supabase/functions/km16-trial-welcome/**'
+      - 'supabase/migrations/*trial_welcome*.sql'
+      - 'tests/trial-welcome*'
+      - '.github/workflows/trial-welcome.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: km16-trial-welcome-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  trial-welcome:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: trial-test-only
+          POSTGRES_DB: trial_welcome_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d trial_welcome_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      PGHOST: localhost
+      PGPORT: '5432'
+      PGUSER: postgres
+      PGPASSWORD: trial-test-only
+      PGDATABASE: trial_welcome_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Test welcome content, access checks and SMTP outcomes without network
+        run: node --test tests/trial-welcome-worker.test.mjs
+      - name: Install isolated PostgreSQL runtime for the terms transition
+        run: npm install --no-save --package-lock=false --no-audit --no-fund @electric-sql/pglite@0.5.17
+      - name: Verify archive preservation and the trial-only terms change
+        run: node tests/trial-welcome-terms.test.mjs
+      - name: Prepare isolated PostgreSQL fixtures
+        run: psql -X -v ON_ERROR_STOP=1 -f tests/trial-welcome-fixture.sql
+      - name: Apply welcome registry without scheduling or HTTP
+        run: |
+          set -eu
+          for migration in supabase/migrations/*_trial_welcome.sql; do
+            case "$migration" in *_schedule_trial_welcome.sql) continue ;; esac
+            psql -X -v ON_ERROR_STOP=1 -1 -f "$migration"
+          done
+      - name: Test new trials, deduplication, permissions and claim handling
+        run: psql -X -v ON_ERROR_STOP=1 -f tests/trial-welcome-postgres.sql

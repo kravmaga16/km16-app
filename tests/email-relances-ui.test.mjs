@@ -43,9 +43,26 @@ async function harness(browser){
   };
   const readRpcs=new Set(['km16_admin_action_progress_list','km16_admin_scheduled_campaigns_list','km16_admin_followup_dashboard','km16_admin_external_payment_summary','km16_admin_external_payment_statuses']);
   const readTables=new Set(['km16_booking_member_links','km16_course_attendance','km16_booking_external_links']);
+  // The client dashboard also reads the selected season's club payments on login.
+  // Only this bounded read is simulated; writes and other tables remain rejected.
+  const clubRegistrationRead=()=>{
+   const expected=[
+    ['select',['id,client_id,first_name,last_name,email,method,amount_cents,received_on']],
+    ['match',[{season_id:document.querySelector('#season').value,test:document.querySelector('#test').checked}]],
+    ['order',['created_at',{ascending:false}]],['order',['id']],['range',[0,499]]
+   ];
+   const query=Object.fromEntries(['select','match','order','range'].map(method=>[method,(...args)=>{
+    const next=expected.shift();
+    if(!next||next[0]!==method||JSON.stringify(next[1])!==JSON.stringify(args)){
+     state.violations.push('table:km16_club_registrations:'+method);throw Error('Unexpected club registration read');
+    }
+    return method==='range'?Promise.resolve({data:[],error:null}):query;
+   }]));
+   return query;
+  };
   window.supabase={createClient:()=>({auth,
    rpc:async(name)=>{if(!readRpcs.has(name)){state.violations.push('rpc:'+name);throw Error('Unexpected RPC');}return {data:[],error:null};},
-   from:table=>({select:async()=>{if(!readTables.has(table)){state.violations.push('table:'+table);throw Error('Unexpected table');}return {data:[],error:null};}})
+   from:table=>table==='km16_club_registrations'?clubRegistrationRead():({select:async()=>{if(!readTables.has(table)){state.violations.push('table:'+table);throw Error('Unexpected table');}return {data:[],error:null};}})
   })};
   const row=(id,action,reference='fixture-'+id)=>({categorie:id===3?'emails_programmes':'achats',notification_id:id,reference,destinataire:'test@example.invalid',statut:action==='validation_requise'?'failed':action==='verification_manuelle'?'uncertain':'sending',derniere_tentative:'2026-11-18T08:00:00Z',action_requise:action});
   const first=[row(1,'validation_requise','<img src=x onerror="window.__emailInjected=true">'),row(2,'blocage_a_verifier'),row(3,'verification_manuelle')];

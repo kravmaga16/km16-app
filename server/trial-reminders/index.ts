@@ -9,7 +9,12 @@ const uuid=s=>typeof s==='string'&&/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f
 const email=s=>typeof s==='string'&&s.length<=254&&/^[^\s@<>;,]+@[^\s@<>;,]+\.[^\s@<>;,]+$/.test(s);
 const date=s=>typeof s==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(s)&&Number.isFinite(Date.parse(s))&&new Date(s).toISOString().slice(0,10)===s;
 const today=()=>new Intl.DateTimeFormat('sv-SE',{timeZone:'Europe/Paris',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
-export function trialMessage(day,stopUrl,joinUrl=SITE+'/adhesion.html?apres_essai=1'){return {
+export function trialMessage(day,stopUrl,joinUrl=SITE+'/adhesion.html?apres_essai=1'){
+ if(day===1)return {
+  subject:'Votre cours d’essai KM16 · Et si on continuait ?',
+  text:['Bonjour,','','J’espère que votre cours d’essai chez KM16 vous a plu. Si vous souhaitez continuer, vous pouvez consulter la formule adaptée, le prix et les prochains créneaux ici :',joinUrl,'','Une question avant de vous inscrire ? Répondez directement à ce message et je vous aiderai.','','À bientôt,','Alexandre · KM16','','Ne plus recevoir ces rappels : '+stopUrl].join('\n')
+ };
+ return {
  subject:day===3?'KM16 – Et si vous poursuiviez après votre cours d’essai ?':'KM16 – Un dernier rappel après votre cours d’essai',
  text:['Bonjour,','',day===3?'Nous espérons que votre cours d’essai chez KM16 vous a plu !':'Nous espérons que votre cours d’essai vous a donné envie de poursuivre l’entraînement avec KM16.','',
  'Pour continuer à progresser avec nous, retrouvez les formules d’abonnement dans l’application :',joinUrl,'',
@@ -40,7 +45,7 @@ export function createHandler(env,fetcher=fetch,mail=nodemailer,push=webpush){re
       let join=SITE+'/adhesion.html?apres_essai=1';
       if(date(t.birth_date)){
        const now=today();const age=Number(now.slice(0,4))-Number(t.birth_date.slice(0,4))-Number(now.slice(5)<t.birth_date.slice(5));
-       join+='&categorie='+(age>=15?'Adultes':age>=10?'Ados':'Enfants');
+       join+='&categorie='+(age>=15?'Adultes':age>=9?'Ados':'Enfants');
       }
       if(uuid(t.order_id))join+='&essai='+t.order_id;
       const stopUrl=SITE+'/trial-stop.html#'+t.id+'.'+await signature(t),message=trialMessage(job.day,stopUrl,join);message.text=message.text.replace('Bonjour,\n\n','Bonjour,\n\nPratiquant : '+t.first_name+' '+t.last_name+'\n\n');

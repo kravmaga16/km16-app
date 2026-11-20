@@ -19,6 +19,8 @@ const returnedOrder=paymentReturn.get('paid')==='1' ? requestedOrder : '';
 let focusedRequestedOrder=false;
 const trialJourney=paymentReturn.has('apres_essai')||paymentReturn.has('essai');
 const renewalJourney=paymentReturn.has('renouveler');
+const familyProfile=!accountView&&!embedded&&/^[0-9a-f-]{36}$/i.test(paymentReturn.get('profil')||'')?paymentReturn.get('profil'):'';
+const FEKM_LICENSE_CENTS=3300;
 const reuseOrder=paymentReturn.get(renewalJourney?'renouveler':'essai');
 let reusedMember=null;
 let trialReuseAttempt='';
@@ -112,9 +114,9 @@ function buttonState(){ $('pay').disabled=busy||photoPreparing||!enabled||!selec
 function render(){
  if(linkToken){$('catalogue').replaceChildren();$('filters').replaceChildren();return;}
  let offered=products.filter(p=>p.category!=='Interne'&&p.category!=='Équipement'&&(!p.event_date||p.event_date>=today())&&(!embedded||!p.draft));
- if(trialJourney||renewalJourney){
+ if(trialJourney||renewalJourney||familyProfile){
   offered=offered.filter(p=>p.kind==='annual'&&!p.draft);
-  if(reusedMember){
+  if(reusedMember?.birth_date){
    const age=ageOn(reusedMember.birth_date,today());
    offered=offered.filter(p=>(p.min_age==null||age>=p.min_age)&&(p.max_age==null||age<=p.max_age));
    if(renewalJourney)offered.sort((a,b)=>Number(b.id===reusedMember.product_id)-Number(a.id===reusedMember.product_id));
@@ -136,10 +138,39 @@ function render(){
   const back=text('a','Voir tous les stages',card);back.href='./#stages';
   return;
  }
+ renderRecommendedMembership(offered);
  $('filters').replaceChildren();for(const c of ['Tous',...new Set(offered.map(p=>p.category))]){const b=text('button',c,$('filters'));b.type='button';b.setAttribute('aria-pressed',String(c===category));b.onclick=()=>{category=c;render();};}
  $('catalogue').replaceChildren();for(const p of offered.filter(p=>category==='Tous'||p.category===category)){const a=document.createElement('article');a.className='card';text('span',p.draft?'En préparation':p.category,a,'tag');text('h3',p.title,a);text('span',p.amount?money(p.amount)+(p.kind==='monthly'?' / mois':''):'Gratuit',a,'price');text('p',p.note,a);const b=text('button',p.draft?'Bientôt disponible':'Choisir cette formule',a);b.disabled=!!p.draft;b.onclick=()=>choose(p);$('catalogue').append(a);}
 }
-function choose(p,{focus=true}={}){if(busy)return;if(selected?.id!==p.id||Number(p.amount)<=0)$('checkout-reminder').checked=false;selected=p;$('checkout-reminder-wrap').hidden=!(Number(p.amount)>0);if(p.category==='Stages'&&!linkToken&&!embedded)prepareStageAnalytics();requestId=crypto.randomUUID();$('chosen').textContent=p.title;syncAccountForm();$('count').value=String(specialOffer?.count||1);$('count').disabled=!!specialOffer;$('payment-mode').hidden=p.kind!=='annual'||!!specialOffer;for(const o of $('count').options)o.disabled=p.kind!=='annual'&&o.value!=='1';$('eligibility-wrap').hidden=!p.review;$('eligibility').required=p.review;updateSchedule();if(focus){if(reusedMember)fillMemberDetails(reusedMember);$('selection').scrollIntoView({behavior:'smooth',block:'start'});$('first_name').focus({preventScroll:true});}}
+function standardMembership(age, categoryHint=''){
+ return products.find(p=>p.kind==='annual'&&!p.draft&&!p.review&&p.id.endsWith('-premiere')
+  && (age===null?p.category===categoryHint:(p.min_age==null||age>=p.min_age)&&(p.max_age==null||age<=p.max_age)));
+}
+function renderRecommendedMembership(offered=products){
+ const host=$('membership-recommendation');host.replaceChildren();
+ if((!trialJourney&&!familyProfile)||renewalJourney||accountView||embedded)return;
+ const age=reusedMember?.birth_date?ageOn(reusedMember.birth_date,today()):null;
+ // A linked trial is authenticated before recommending a formula for its participant.
+ if(age===null&&reuseOrder)return;
+ const product=standardMembership(age,categoryFor(requestedCategory));
+ if(!product||!offered.includes(product))return;
+ const card=text('article','',host,'summary');
+ text('h3','Formule recommandée'+(reusedMember?.first_name?' pour '+reusedMember.first_name:''),card);
+ text('strong',product.title,card);
+ text('p',money(product.amount)+' au club. Avec une nouvelle licence FEKM à '+money(FEKM_LICENSE_CENTS)+', le total est de '+money(product.amount+FEKM_LICENSE_CENTS)+'. La licence se règle séparément.',card);
+ const pattern=firstCourseCategory(product);
+ if(pattern&&firstCourseSessions===null){text('p','Chargement des prochains créneaux…',card);void fetchFirstCourseSessions();}
+ else if(pattern){
+  const now=parisClock.format(new Date()).replace(' ','T');
+  const upcoming=(firstCourseSessions||[]).filter(course=>pattern.test(course.category)&&course.session_date+'T'+course.start_time.slice(0,5)>now)
+   .sort((a,b)=>(a.session_date+a.start_time).localeCompare(b.session_date+b.start_time)).slice(0,3);
+  if(upcoming.length){const list=text('ul','',card);for(const course of upcoming)text('li',upcomingDate(course.session_date)+' · '+course.start_time.slice(0,5)+' · '+course.venue,list);}
+ }
+ const actions=text('div','',card,'row');
+ const button=text('button','M’inscrire à cette formule',actions);button.type='button';button.onclick=()=>choose(product);
+ const planning=text('a','Voir tous les horaires et dojos',actions);planning.href='./#planning';
+}
+function choose(p,{focus=true}={}){if(busy)return;if(selected?.id!==p.id||Number(p.amount)<=0)$('checkout-reminder').checked=false;selected=p;$('checkout-reminder-wrap').hidden=!(Number(p.amount)>0);if(p.category==='Stages'&&!linkToken&&!embedded)prepareStageAnalytics();requestId=crypto.randomUUID();$('chosen').textContent=p.title;syncAccountForm();$('count').value=String(specialOffer?.count||1);$('count').disabled=!!specialOffer;$('payment-mode').hidden=p.kind!=='annual'||!!specialOffer;for(const o of $('count').options)o.disabled=p.kind!=='annual'&&o.value!=='1';$('eligibility-wrap').hidden=!p.review;$('eligibility').required=p.review;updateSchedule();if(focus){if(reusedMember&&!familyProfile)fillMemberDetails(reusedMember);$('selection').scrollIntoView({behavior:'smooth',block:'start'});$('first_name').focus({preventScroll:true});}}
 function updateSchedule(){if(!selected)return;const n=Number($('count').value),a=splitAmount(selected.amount,n);$('schedule').replaceChildren();text('strong',(n===1?'À régler : ':'Total : ')+money(selected.amount),$('schedule'));if(n>1)text('div','Aujourd’hui : '+money(a[0])+' · Puis '+(n-1)+' mensualités de '+money(a[1]),$('schedule'));if(selected.kind==='annual'||selected.kind==='monthly')text('div','Sans supplément · Licence non comprise',$('schedule'));$('installments-wrap').hidden=n===1;$('installments').required=n>1;updateCheckoutSummary();buttonState();}
 $('count').onchange=()=>{requestId=crypto.randomUUID();updateSchedule();};
 $('birth_date').onchange=()=>{let minor=true;try{minor=ageOn($('birth_date').value,today())<18;}catch{}$('guardian').hidden=!minor;$('guardian_name').required=minor;};
@@ -171,16 +202,16 @@ function fillMemberDetails(member){
  updateCheckoutSummary();
 }
 function showMembershipJourney(){
- if((!trialJourney&&!renewalJourney)||accountView||embedded)return;
+ if((!trialJourney&&!renewalJourney&&!familyProfile)||accountView||embedded)return;
  const panel=$('membership-journey');
  panel.hidden=false;
- if(reuseOrder&&!session)$('account-access').open=true;
- $('membership-journey-title').textContent=renewalJourney?'Renouveler une adhésion':'Choisir mon adhésion après l’essai';
+ if((reuseOrder||familyProfile)&&!session)$('account-access').open=true;
+ $('membership-journey-title').textContent=renewalJourney?'Renouveler une adhésion':familyProfile?'Inscrire un membre du foyer':'Choisir mon adhésion après l’essai';
  const button=$('membership-journey-reuse');
  button.hidden=!reuseOrder||!session||!!reusedMember;
  $('membership-journey-status').textContent=reusedMember
   ?'Formules adaptées à '+reusedMember.first_name+'. Vérifiez ses coordonnées après avoir choisi une formule.'
-  :reuseOrder&&!session?'Connectez-vous pour reprendre les coordonnées du pratiquant. Vous pouvez aussi remplir le formulaire.'
+  :(reuseOrder||familyProfile)&&!session?'Connectez-vous pour reprendre les coordonnées du pratiquant. Vous pouvez aussi remplir le formulaire.'
   :'Choisissez une formule annuelle adaptée au pratiquant.';
  button.onclick=async()=>{
   const current=session?.user;
@@ -215,7 +246,13 @@ function updateCheckoutSummary(){
  text('p',amounts[0]===0?'Aucun paiement à effectuer.':'À régler aujourd’hui : '+money(amounts[0]),summary);
  if(amounts.length>1)text('p','Puis '+(amounts.length-1)+' échéances mensuelles de '+money(amounts[1])+' · Total '+money(selected.amount),summary);
  if(trial){const planning=text('a','Consulter le planning pour mon cours d’essai',summary);planning.href='./#planning';}
- if(selected.kind==='annual')text('p','Après le paiement, retrouvez dans votre espace la licence FEKM et les justificatifs éventuels.',summary);
+ if(selected.kind==='annual'){
+  text('p','Licence FEKM saison 2026/2027 : '+money(FEKM_LICENSE_CENTS)+' à régler séparément auprès de la fédération si nécessaire.',summary);
+  const faq=text('details','',summary);text('summary','Avant de m’inscrire',faq);
+  text('p','Vous pouvez commencer en cours de saison tant que la formule est ouverte. Le montant applicable est celui affiché ici.',faq);
+  text('p','Pour votre premier cours, prévoyez un tee-shirt blanc et un bas de kimono noir.',faq);
+  const equipment=text('a','Voir la tenue et les protections',faq);equipment.href='./#equipement';
+ }
  else if(selected.category==='Stages')text('p','Après validation du paiement, retrouvez la confirmation et les informations du stage dans Mes inscriptions.',summary);
 }
 $('order').addEventListener('input',updateCheckoutSummary);
@@ -333,6 +370,20 @@ function renderMemberFamily(){
  select.replaceChildren(new Option('Tout le foyer',''));
  for(const [key,name] of [...people].sort((a,b)=>a[1].localeCompare(b[1],'fr')))select.add(new Option(name,key));
  select.value=memberPerson;
+ const shortcuts=$('member-family-join');shortcuts.replaceChildren();
+ for(const profile of householdProfiles){
+  const annualOrders=myOrderData.orders.filter(order=>order.livemode===true&&order.household_id===profile.id&&order.approval!=='rejected'&&orderGroup(order)==='Adhésions');
+  const seasonStart=myOrderData.season_end?(Number(myOrderData.season_end.slice(0,4))-1)+'-06-01':'';
+  if(seasonStart&&annualOrders.some(order=>order.created_at?.slice(0,10)>=seasonStart
+   && myOrderData.payments.some(payment=>payment.order_id===order.id&&payment.status==='paid'&&payment.amount_cents>(payment.refunded_cents||0))))continue;
+  const previous=myOrderData.orders.find(order=>order.livemode===true&&order.household_id===profile.id&&order.birth_date);
+  const birth=profile.birth_date||previous?.birth_date;
+  const formula=birth?standardMembership(ageOn(birth,today())):null;
+  const row=text('div','',shortcuts,'summary');
+  const link=text('a','Inscrire '+profile.label,row);
+  link.href='./adhesion.html?profil='+encodeURIComponent(profile.id);
+  if(formula)text('p',formula.title+' · '+money(formula.amount)+' hors licence FEKM',row,'muted');
+ }
  $('member-family').hidden=!session;
 }
 $('member-person').onchange=()=>{
@@ -355,7 +406,12 @@ function renderPurchaseProfiles(){
 }
 $('purchase-profile').onchange=()=>{
  const profile=householdProfiles.find(p=>p.id===$('purchase-profile').value);
+ const guardian=$('guardian_name').value.trim();
+ const parentPhone=guardian?$('phone').value:'';
+ const parentEmail=$('contact_email').value;
+ if(familyProfile){reusedMember=profile||null;selected=null;$('chosen').textContent='Choisissez une formule pour ce pratiquant.';}
  resetRegistration();
+ if(familyProfile){showMembershipJourney();render();}
  if(profile){
   $('purchase-profile').value=profile.id;
   queueMicrotask(()=>{
@@ -366,12 +422,24 @@ $('purchase-profile').onchange=()=>{
     $('last_name').value=profile.last_name||'';
     updateCheckoutSummary();
    }
+   if(guardian&&(!$('birth_date').value||ageOn($('birth_date').value,today())<18)){
+    $('guardian_name').value=guardian;if(parentPhone)$('phone').value=parentPhone;
+   }
+   if(parentEmail&&!$('contact_email').readOnly)$('contact_email').value=parentEmail;
+   updateCheckoutSummary();
   });
  }
 };
 async function loadHouseholdProfiles(){
  const gen=generation;
- try{const profiles=await householdRpc();if(gen!==generation)return;householdProfiles=profiles;renderPurchaseProfiles();if(accountView){renderMemberFamily();renderMyOrders();renderUpcomingCourses();}}
+ try{
+  const profiles=await householdRpc();if(gen!==generation)return;householdProfiles=profiles;renderPurchaseProfiles();
+  if(familyProfile&&$('purchase-profile').value===''&&!$('first_name').value&&!$('last_name').value){
+   const profile=profiles.find(p=>p.id===familyProfile);
+   if(profile){$('purchase-profile').value=profile.id;$('purchase-profile').onchange();}
+  }
+  if(accountView){renderMemberFamily();renderMyOrders();renderUpcomingCourses();}
+ }
  catch{if(gen===generation)$('household-status').textContent='Les profils du foyer sont temporairement indisponibles.';}
 }
 $('household-form').onsubmit=async event=>{
@@ -438,7 +506,7 @@ async function fetchFirstCourseSessions(){
   firstCourseSessions=[];
  }finally{
   clearTimeout(timer);
-  if(firstCourseRequest===controller){firstCourseRequest=null;renderFirstCourse();}
+  if(firstCourseRequest===controller){firstCourseRequest=null;renderFirstCourse();renderRecommendedMembership();}
  }
 }
 const parisClock=new Intl.DateTimeFormat('sv-SE',{timeZone:'Europe/Paris',dateStyle:'short',timeStyle:'short',hourCycle:'h23'});
@@ -1084,7 +1152,7 @@ async function authState(s){
  const differentEmail=!previous&&s&&enteredEmail&&enteredEmail!==normalizeEmail(s.user.email);
  session=s;
  generation++;
- if(identityChanged||differentEmail){clearMemberFirstCourse();reusedMember=null;trialReuseAttempt='';await checkoutAccess.clear();resetRegistration();if(differentEmail)note('Une autre adresse a été confirmée. Renseignez la demande pour le compte affiché ou déconnectez-vous.',true);}
+ if(identityChanged||differentEmail){clearMemberFirstCourse();$('membership-recommendation').replaceChildren();reusedMember=null;trialReuseAttempt='';await checkoutAccess.clear();resetRegistration();if(differentEmail)note('Une autre adresse a été confirmée. Renseignez la demande pour le compte affiché ou déconnectez-vous.',true);}
  km16AdminLoaded=null;km16AdminNextPage=0;km16AdminHasMore=false;km16AdminServerSearch='';km16AdminServerApproval='all';
  syncAccountForm();checkoutAccess.sync(s);$('login').hidden=!!s;$('connected').hidden=!s;$('identity').textContent=s?.user.email||'';$('my-orders').hidden=!s;
  showMembershipJourney();

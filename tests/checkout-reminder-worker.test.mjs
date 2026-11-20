@@ -14,6 +14,27 @@ const SERVICE = 'service-fixture-not-real';
 const NOW = Date.parse('2026-11-20T12:00:00Z');
 const uuid = (prefix, n = 1) => `${prefix.repeat(8)}-${prefix.repeat(4)}-4${prefix.repeat(3)}-8${prefix.repeat(3)}-${String(n).padStart(12, '0')}`;
 const json = (value, status = 200) => new Response(JSON.stringify(value), { status });
+function observableSmtpTimer() {
+  let notifyRegistration;
+  const registration = new Promise(resolve => { notifyRegistration = resolve; });
+  return {
+    timers: {
+      setTimeout(callback) { notifyRegistration(callback); return 1; },
+      clearTimeout() {},
+    },
+    async waitForRegistration() {
+      let deadline;
+      try {
+        return await Promise.race([
+          registration,
+          new Promise((_, reject) => {
+            deadline = setTimeout(() => reject(Error('SMTP timeout was not registered within 2 seconds')), 2000);
+          }),
+        ]);
+      } finally { clearTimeout(deadline); }
+    },
+  };
+}
 const sourceFor = kind => ({
   membership: ['KM16_ADHESIONS_STRIPE_SECRET_KEY', 'km16-membership-v1', 'km16_order'],
   shirts: ['KM16_SHIRTS_STRIPE_LIVE_SECRET_KEY', 'km16-shirts-v1', 'km16_shirt_order'],
@@ -609,14 +630,10 @@ test('run budget stops before Stripe or prepare; no send begins without a time r
 });
 
 test('the absolute SMTP deadline closes a stalled transport and records uncertainty without a resend', async () => {
-  let timerCallback;
-  const timers = {
-    setTimeout(callback) { timerCallback = callback; return 1; },
-    clearTimeout() {},
-  };
-  const h = harness({ smtpNeverResolves: true, dependencies: { timers } });
+  const clock = observableSmtpTimer();
+  const h = harness({ smtpNeverResolves: true, dependencies: { timers: clock.timers } });
   const pending = h.call();
-  for (let i = 0; i < 20 && !timerCallback; i++) await new Promise(resolve => setImmediate(resolve));
+  const timerCallback = await clock.waitForRegistration();
   assert.equal(typeof timerCallback, 'function');
   timerCallback();
   const result = await pending;
@@ -629,17 +646,13 @@ test('the absolute SMTP deadline closes a stalled transport and records uncertai
 });
 
 test('a subsequent job creates a fresh SMTP transport after a stalled transport is closed', async () => {
-  let timerCallback;
-  const timers = {
-    setTimeout(callback) { timerCallback = callback; return 1; },
-    clearTimeout() {},
-  };
+  const clock = observableSmtpTimer();
   const h = harness({
     rows: [attempt('membership', 1), attempt('shirts', 2)],
-    smtpNeverResolvesAt: [1], rejectClosedMailer: true, dependencies: { timers },
+    smtpNeverResolvesAt: [1], rejectClosedMailer: true, dependencies: { timers: clock.timers },
   });
   const pending = h.call();
-  for (let i = 0; i < 20 && !timerCallback; i++) await new Promise(resolve => setImmediate(resolve));
+  const timerCallback = await clock.waitForRegistration();
   assert.equal(typeof timerCallback, 'function');
   timerCallback();
   const result = await pending;

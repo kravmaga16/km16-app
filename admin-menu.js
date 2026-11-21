@@ -15,7 +15,7 @@
     ["Adhérents", [
       ["Fichier des adhérents", './clients.html#km16-member-directory', 'M3 3h18v18H3z M7 17v-2a5 5 0 0110 0v2 M12 11a3 3 0 100-6 3 3 0 000 6z'],
       ["Dossiers à valider", './clients.html#km16-dossiers', 'M9 11l2 2 4-4 M12 2l8 4v6c0 5-3 8-8 10-5-2-8-5-8-10V6z'],
-      ["Adhésions et paiements", './adhesion.html#admin', 'M2 5h20v14H2z M2 10h20'],
+      ["Adhésions et paiements", './adhesion-admin.html#admin', 'M2 5h20v14H2z M2 10h20'],
       ["Essais et relances", './trials.html#workspace', 'M4 5h16v16H4z M8 2v6 M16 2v6 M4 11h16 M8 15l3 3 5-5'],
     ]],
     ["Cours et stages", [
@@ -28,7 +28,7 @@
     ["Finances", [
       ["Finances et encaissements", './clients.html#km16-finances', 'M3 3h7v7H3z M14 3h7v7h-7z M3 14h7v7H3z M14 14h7v7h-7z'],
       ["Règlements au club", './clients.html#km16-club-registration', 'M2 5h20v14H2z M2 10h20 M6 15h4'],
-      ["Créer un lien de paiement", './adhesion.html#link-form', 'M10 13a4 4 0 006 0l4-4a4 4 0 00-6-6l-2 2 M14 11a4 4 0 00-6 0l-4 4a4 4 0 006 6l2-2'],
+      ["Créer un lien de paiement", './adhesion-admin.html#link-form', 'M10 13a4 4 0 006 0l4-4a4 4 0 00-6-6l-2 2 M14 11a4 4 0 00-6 0l-4 4a4 4 0 006 6l2-2'],
       ["Ventes de tee-shirts", './tee-shirts.html#admin', 'M4 4l4-2 4 3 4-3 4 2v6l-3 2v12H7V8L4 6z'],
     ]],
     ["Communications", [

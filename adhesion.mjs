@@ -10,6 +10,7 @@ import {createCheckoutAccess,verifiedAccount,normalizeEmail,saveOrderLoginReturn
 const $=id=>document.getElementById(id),money=n=>new Intl.NumberFormat('fr-FR',{style:'currency',currency:'EUR'}).format(n/100);
 const client=window.supabase?.createClient('https://tlfewpbgbwesdriklxzb.supabase.co','sb_publishable_OGRSgobOGf54jlfmXGmS8g_04Ftvfsn',{auth:{storageKey:'km16-video-auth',detectSessionInUrl:false,flowType:'implicit'}});
 const endpoint='https://tlfewpbgbwesdriklxzb.supabase.co/functions/v1/km16-adhesions';
+const adminPanel=$('admin');
 const embedded=new URLSearchParams(location.search).get('embed')==='1'&&parent!==window;
 const accountView=new URLSearchParams(location.search).get('espace')==='1'&&!embedded&&!location.hash.includes('offre=');
 const paymentReturn=new URLSearchParams(location.search);
@@ -49,13 +50,13 @@ async function selectMemberPhoto(input,file=input?.files?.[0]){
  try{
   const value=await preparePhoto(file);
   if(revision!==photoRevision)return;
-  photoData=value;$('member_photo').required=false;
+  photoData=value;
   for(const id of ['member_photo','member_camera'])if(id!==input?.id)$(id).value='';
   $('photo-preview').src=value;$('photo-preview').hidden=false;
   $('photo-status').textContent='Photo prête. Elle sera envoyée avec votre demande.';
  }catch(error){
   if(revision!==photoRevision)return;
-  if(input)input.value='';syncPhotoRequirement();
+  if(input)input.value='';
   $('photo-status').textContent=error.message+(photoData?' Votre photo précédente est conservée.':'');
  }finally{
   if(revision===photoRevision){photoPreparing=false;buttonState();}
@@ -110,7 +111,6 @@ async function restoreAccount(){
  try{const {data,error}=await accountTimeout(client.auth.getSession());if(revision!==accountRevision)return;if(error)throw error;await authState(data.session);}
  catch{if(revision===accountRevision)accountMessage('Votre connexion n’a pas pu être rétablie. Connectez-vous ci-dessous.',true);}
 }
-function syncPhotoRequirement(){$('member_photo').required=selected?.amount===0&&!photoData;}
 function buttonState(){ $('save-request').disabled=busy||!selected;$('pay').disabled=busy||photoPreparing||!enabled||!selected||selected.draft;$('reset-request').disabled=busy;$('pay').textContent=busy?'Préparation de votre demande…':photoPreparing?'Préparation de la photo…':!enabled?'Paiement indisponible':!accountSession(session)?'Valider ma demande':selected?.amount===0?'Envoyer ma demande gratuite':'Continuer vers le paiement';for(const id of ['member_photo','member_camera','take-photo'])$(id).disabled=busy||photoPreparing;$('take-photo').textContent=photoData?'Reprendre une photo':'Prendre une photo';}
 function render(){
  if(linkToken){$('catalogue').replaceChildren();$('filters').replaceChildren();return;}
@@ -171,7 +171,7 @@ function renderRecommendedMembership(offered=products){
  const button=text('button','M’inscrire à cette formule',actions);button.type='button';button.onclick=()=>choose(product);
  const planning=text('a','Voir tous les horaires et dojos',actions);planning.href='./#planning';
 }
-function choose(p,{focus=true}={}){if(busy)return;if(selected?.id!==p.id||Number(p.amount)<=0)$('checkout-reminder').checked=false;selected=p;syncPhotoRequirement();if(focus&&p.kind==='annual')void trackMembershipStep('formula_chosen');$('checkout-reminder-wrap').hidden=!(Number(p.amount)>0);if(p.category==='Stages'&&!linkToken&&!embedded)prepareStageAnalytics();requestId=crypto.randomUUID();$('chosen').textContent=p.title;syncAccountForm();$('count').value=String(specialOffer?.count||1);$('count').disabled=!!specialOffer;$('payment-mode').hidden=p.kind!=='annual'||!!specialOffer;for(const o of $('count').options)o.disabled=p.kind!=='annual'&&o.value!=='1';$('eligibility-wrap').hidden=!p.review;$('eligibility').required=p.review;updateSchedule();if(focus){if(reusedMember&&!familyProfile)fillMemberDetails(reusedMember);$('selection').scrollIntoView({behavior:'smooth',block:'start'});$('first_name').focus({preventScroll:true});}}
+function choose(p,{focus=true}={}){if(busy)return;if(selected?.id!==p.id||Number(p.amount)<=0)$('checkout-reminder').checked=false;selected=p;if(focus&&p.kind==='annual')void trackMembershipStep('formula_chosen');$('checkout-reminder-wrap').hidden=!(Number(p.amount)>0);if(p.category==='Stages'&&!linkToken&&!embedded)prepareStageAnalytics();requestId=crypto.randomUUID();$('chosen').textContent=p.title;syncAccountForm();$('count').value=String(specialOffer?.count||1);$('count').disabled=!!specialOffer;$('payment-mode').hidden=p.kind!=='annual'||!!specialOffer;for(const o of $('count').options)o.disabled=p.kind!=='annual'&&o.value!=='1';$('eligibility-wrap').hidden=!p.review;$('eligibility').required=p.review;updateSchedule();if(focus){if(reusedMember&&!familyProfile)fillMemberDetails(reusedMember);$('selection').scrollIntoView({behavior:'smooth',block:'start'});$('first_name').focus({preventScroll:true});}}
 function updateSchedule(){if(!selected)return;const n=Number($('count').value),a=splitAmount(selected.amount,n);$('schedule').replaceChildren();text('strong',(n===1?'À régler : ':'Total : ')+money(selected.amount),$('schedule'));if(n>1)text('div','Aujourd’hui : '+money(a[0])+' · Puis '+(n-1)+' mensualités de '+money(a[1]),$('schedule'));if(selected.kind==='annual'||selected.kind==='monthly')text('div','Sans supplément · Licence non comprise',$('schedule'));$('installments-wrap').hidden=n===1;$('installments').required=n>1;updateCheckoutSummary();buttonState();}
 $('count').onchange=()=>{requestId=crypto.randomUUID();updateSchedule();};
 $('birth_date').onchange=()=>{let minor=true;try{minor=ageOn($('birth_date').value,today())<18;}catch{}$('guardian').hidden=!minor;$('guardian_name').required=minor;};
@@ -266,7 +266,7 @@ const draftChecks=['license','terms','privacy','eligibility','installments'];
 function resetRegistration(){
  memberCamera.close();
  $('order').reset();photoData='';photoRevision++;photoPreparing=false;requestId=crypto.randomUUID();
- syncPhotoRequirement();$('photo-preview').removeAttribute('src');$('photo-preview').hidden=true;$('photo-status').textContent='';
+ $('photo-preview').removeAttribute('src');$('photo-preview').hidden=true;$('photo-status').textContent='';
  $('birth_date').dispatchEvent(new Event('change'));
  if(selected){$('count').value=String(specialOffer?.count||1);updateSchedule();}
  syncAccountForm();
@@ -286,7 +286,7 @@ const checkoutAccess=createCheckoutAccess({
   $('birth_date-display').value=$('birth_date').value;$('birth_date-display').dispatchEvent(new Event('input',{bubbles:true}));
   for(const id of draftChecks)$(id).checked=draft.checks?.[id]===true;
   if([1,3,4].includes(draft.count)&&(product.kind==='annual'||draft.count===1)&&!specialOffer)$('count').value=String(draft.count);
-  if(typeof draft.photo==='string'&&/^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/.test(draft.photo)&&draft.photo.length<=2000000){photoData=draft.photo;$('member_photo').required=false;$('photo-preview').src=photoData;$('photo-preview').hidden=false;$('photo-status').textContent='Votre photo a été conservée avec votre demande.';}
+  if(typeof draft.photo==='string'&&/^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/.test(draft.photo)&&draft.photo.length<=2000000){photoData=draft.photo;$('photo-preview').src=photoData;$('photo-preview').hidden=false;$('photo-status').textContent='Votre photo a été conservée avec votre demande.';}
   $('birth_date').dispatchEvent(new Event('change'));syncAccountForm();updateSchedule();
   // A saved OTP draft can predate a later opt-out in another tab. Ask again.
   $('checkout-reminder').checked=false;
@@ -331,7 +331,6 @@ $('order').onsubmit=async e=>{
  for(const id of draftChecks)payload[id]=$(id).checked;
  try{
   validateOrder(selected,payload,today());
-  if(selected.amount===0&&!photoToUpload)throw Error('Ajoutez une photo et attendez la fin de sa préparation.');
   if(selected.kind==='annual')void trackMembershipStep('form_completed');
   const verified=await checkoutAccess.ensure();
   if(!verified){note('Consultez votre e-mail pour confirmer cette adresse. Votre demande est conservée.');return;}
@@ -907,7 +906,7 @@ function renderMyOrders(){
  if(focusedCard)$(focusedCard)?.focus({preventScroll:true});
  if(!visible.length)text('p','Aucune inscription enregistrée.',$('orders'));
 }
-function renderKm16Reuse(){const box=$('km16-reuse-member'),select=$('km16-reuse-select');if(!box||!select)return;const candidates=(myOrderData.orders||[]).filter(o=>o.first_name&&o.last_name&&o.birth_date);const seen=new Set();const unique=candidates.filter(o=>{const key=[o.first_name,o.last_name,o.birth_date].join('|').toLowerCase();if(seen.has(key))return false;seen.add(key);return true;});box.hidden=!session||!unique.length;if(box.hidden)return;select.replaceChildren();const placeholder=document.createElement('option');placeholder.value='';placeholder.textContent='Choisir un pratiquant déjà enregistré';select.append(placeholder);unique.forEach((o,i)=>{const option=document.createElement('option');option.value=String(i);option.textContent=[o.first_name,o.last_name,o.birth_date].join(' · ');select.append(option);});$('km16-reuse-apply').onclick=()=>{if(!select.value){$('km16-reuse-status').textContent='Choisissez d’abord un dossier.';return;}const o=unique[Number(select.value)];if(!o)return;for(const id of ['first_name','last_name','birth_date','phone','guardian_name']){if(typeof o[id]==='string'&&o[id].trim())$(id).value=o[id].trim();}$('birth_date').dispatchEvent(new Event('change'));$('km16-reuse-status').textContent='Informations reprises. Vérifiez les coordonnées, fournissez une photo et confirmez les conditions avant de continuer.';};}
+function renderKm16Reuse(){const box=$('km16-reuse-member'),select=$('km16-reuse-select');if(!box||!select)return;const candidates=(myOrderData.orders||[]).filter(o=>o.first_name&&o.last_name&&o.birth_date);const seen=new Set();const unique=candidates.filter(o=>{const key=[o.first_name,o.last_name,o.birth_date].join('|').toLowerCase();if(seen.has(key))return false;seen.add(key);return true;});box.hidden=!session||!unique.length;if(box.hidden)return;select.replaceChildren();const placeholder=document.createElement('option');placeholder.value='';placeholder.textContent='Choisir un pratiquant déjà enregistré';select.append(placeholder);unique.forEach((o,i)=>{const option=document.createElement('option');option.value=String(i);option.textContent=[o.first_name,o.last_name,o.birth_date].join(' · ');select.append(option);});$('km16-reuse-apply').onclick=()=>{if(!select.value){$('km16-reuse-status').textContent='Choisissez d’abord un dossier.';return;}const o=unique[Number(select.value)];if(!o)return;for(const id of ['first_name','last_name','birth_date','phone','guardian_name']){if(typeof o[id]==='string'&&o[id].trim())$(id).value=o[id].trim();}$('birth_date').dispatchEvent(new Event('change'));$('km16-reuse-status').textContent='Informations reprises. Vérifiez les coordonnées, confirmez les conditions avant de continuer.';};}
 let paymentCheckTimer;
 let paymentChecks=0;
 function showPaymentReturn(order, payments=[], failed=false){
@@ -1096,30 +1095,30 @@ function editDocuments(td,d,o){
  const b=text('button','Enregistrer les justificatifs',editor);b.type='button';const feedback=text('p','',editor,'muted');const dirty=()=>kind.value!==d.health_kind||health.value!==d.health_status||(school&&school.value!==d.school_status);const updateDirty=()=>{const changed=Boolean(dirty());b.disabled=!changed;td.dataset.unsavedDocuments=changed?'true':'false';feedback.textContent=changed?'Modifications non enregistrées · les statuts affichés restent ceux de la base.':'';};for(const control of [kind,health,school].filter(Boolean))control.addEventListener('change',updateDirty);updateDirty();feedback.setAttribute('role','status');feedback.setAttribute('aria-live','polite');
  b.onclick=async()=>{b.disabled=true;b.textContent='Enregistrement…';feedback.textContent='Enregistrement des justificatifs en cours…';try{await api({action:'documents-update',order_id:d.order_id,revision:d.revision,health_kind:kind.value,health_status:health.value,school_status:school?school.value:'not_required'});d.health_kind=kind.value;d.health_status=health.value;if(school)d.school_status=school.value;d.revision++;updateStatus();updateDirty();feedback.textContent='Justificatifs enregistrés avec succès.';note('Justificatifs enregistrés pour '+o.first_name+' '+o.last_name+'.');await admin();}catch(e){feedback.textContent='Échec : '+e.message;note(e.message,true);}finally{b.disabled=false;b.textContent='Enregistrer les justificatifs';}};
 }
-const requestedFollowup=new URLSearchParams(location.search).get('followup');if(['attention','all','sent','uncertain','never','recent','due'].includes(requestedFollowup))$('km16-followup-filter').value=requestedFollowup;
+const requestedFollowup=new URLSearchParams(location.search).get('followup');if(adminPanel&&['attention','all','sent','uncertain','never','recent','due'].includes(requestedFollowup))$('km16-followup-filter').value=requestedFollowup;
 let km16AdminTriage='pending';
 const km16TriageButtons=[...document.querySelectorAll('[data-triage]')];
 function km16SetTriage(value){km16AdminTriage=value;for(const b of km16TriageButtons)b.setAttribute('aria-pressed',String(b.dataset.triage===value));const rows=[...$('admin-orders').querySelectorAll('tr[data-triage-status]')];let visible=0;for(const row of rows){const status=row.dataset.triageStatus;row.hidden=!(value==='all'||value==='pending'&&status!=='approved'||value==='ready'&&status==='ready'||value==='blocked'&&status==='blocked');if(!row.hidden)visible++;}$('km16-triage-status').textContent=visible+' dossier(s) affiché(s). Les dossiers sont classés pour vérification, sans validation automatique.';}
 for(const b of km16TriageButtons)b.onclick=()=>km16SetTriage(b.dataset.triage);
 const km16OpenGlobalStatus=(status)=>{if(km16AdminLoading){$('km16-overview-status').textContent='Chargement en cours : réessayez dans un instant.';return;}if(!['all','pending','approved','rejected'].includes(status))return;$('km16-admin-server-approval').value=status;km16AdminServerApproval=status;$('km16-followup-search').value='';km16AdminServerSearch='';$('km16-admin-server-search-status').textContent='Recherche réinitialisée pour afficher tous les dossiers du statut sélectionné.';$('km16-admin-server-filter-status').textContent='Filtre global : '+$('km16-admin-server-approval').selectedOptions[0].textContent+' · chargement en cours…';km16SetTriage('all');$('km16-admin-triage').scrollIntoView({behavior:'smooth',block:'start'});admin(false);};
-$('km16-overview-review').onclick=()=>km16OpenGlobalStatus('pending');
-$('km16-overview-approved-action').onclick=()=>km16OpenGlobalStatus('all');
+if(adminPanel)$('km16-overview-review').onclick=()=>km16OpenGlobalStatus('pending');
+if(adminPanel)$('km16-overview-approved-action').onclick=()=>km16OpenGlobalStatus('all');
 for(const button of document.querySelectorAll('[data-overview-approval]'))button.onclick=()=>km16OpenGlobalStatus(button.dataset.overviewApproval);
-$('km16-overview-refresh').onclick=async()=>{const button=$('km16-overview-refresh'),status=$('km16-overview-status'),gen=generation;button.disabled=true;status.textContent='Actualisation des indicateurs globaux…';try{const {data,error}=await client.rpc('km16_admin_membership_counts');if(error)throw error;if(gen!==generation)return;const c=Array.isArray(data)?data[0]:data;if(!c)throw Error('Aucun indicateur disponible');for(const key of ['total','pending','approved','rejected'])$('km16-overview-'+key).textContent=Number(c[key]).toLocaleString('fr-FR');$('km16-admin-global-counts').textContent='Saison · '+Number(c.total)+' dossier(s) réels au total · '+Number(c.pending)+' à vérifier · '+Number(c.approved)+' validé(s) · '+Number(c.rejected)+' refusé(s)';status.textContent='Indicateurs globaux mis à jour · '+new Date().toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'});}catch(e){if(gen===generation)status.textContent='Actualisation impossible : '+e.message;}finally{button.disabled=false;}};
-$('km16-admin-diagnostics-run').onclick=async()=>{const button=$('km16-admin-diagnostics-run'),status=$('km16-admin-diagnostics-status'),results=$('km16-admin-diagnostics-results');button.disabled=true;status.textContent='Vérification en lecture seule…';results.replaceChildren();try{const response=await api({action:'admin-diagnostics'});if(response.read_only!==true||!Array.isArray(response.checks))throw Error('Réponse de diagnostic invalide');for(const check of response.checks){const item=document.createElement('p');item.textContent=(check.ok?'✓ ':'✗ ')+check.name+' : '+(check.ok?'Disponible':'Indisponible');results.append(item);}status.textContent=response.checks.every(x=>x.ok)?'Contrôles de lecture réussis · aucune donnée modifiée.':'Un ou plusieurs contrôles ont échoué · aucune donnée modifiée.';}catch(e){status.textContent='Diagnostic indisponible : '+e.message;}finally{button.disabled=false;}};
+if(adminPanel)$('km16-overview-refresh').onclick=async()=>{const button=$('km16-overview-refresh'),status=$('km16-overview-status'),gen=generation;button.disabled=true;status.textContent='Actualisation des indicateurs globaux…';try{const {data,error}=await client.rpc('km16_admin_membership_counts');if(error)throw error;if(gen!==generation)return;const c=Array.isArray(data)?data[0]:data;if(!c)throw Error('Aucun indicateur disponible');for(const key of ['total','pending','approved','rejected'])$('km16-overview-'+key).textContent=Number(c[key]).toLocaleString('fr-FR');$('km16-admin-global-counts').textContent='Saison · '+Number(c.total)+' dossier(s) réels au total · '+Number(c.pending)+' à vérifier · '+Number(c.approved)+' validé(s) · '+Number(c.rejected)+' refusé(s)';status.textContent='Indicateurs globaux mis à jour · '+new Date().toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'});}catch(e){if(gen===generation)status.textContent='Actualisation impossible : '+e.message;}finally{button.disabled=false;}};
+if(adminPanel)$('km16-admin-diagnostics-run').onclick=async()=>{const button=$('km16-admin-diagnostics-run'),status=$('km16-admin-diagnostics-status'),results=$('km16-admin-diagnostics-results');button.disabled=true;status.textContent='Vérification en lecture seule…';results.replaceChildren();try{const response=await api({action:'admin-diagnostics'});if(response.read_only!==true||!Array.isArray(response.checks))throw Error('Réponse de diagnostic invalide');for(const check of response.checks){const item=document.createElement('p');item.textContent=(check.ok?'✓ ':'✗ ')+check.name+' : '+(check.ok?'Disponible':'Indisponible');results.append(item);}status.textContent=response.checks.every(x=>x.ok)?'Contrôles de lecture réussis · aucune donnée modifiée.':'Un ou plusieurs contrôles ont échoué · aucune donnée modifiée.';}catch(e){status.textContent='Diagnostic indisponible : '+e.message;}finally{button.disabled=false;}};
 const km16ActivityRefresh=$('km16-admin-activity-refresh'),km16ActivityMore=$('km16-admin-activity-more');let km16ActivityLoading=false,km16ActivityEntries=[],km16ActivityNextPage=0,km16ActivityHasMore=false,km16ActivityServerSearch='',km16ActivityServerApproval='all';
 const km16RenderActivity=()=>{const target=$('km16-admin-activity-list'),status=$('km16-admin-activity-status');const filter=$('km16-admin-activity-filter').value,query=$('km16-admin-activity-search').value.normalize('NFKC').toLocaleLowerCase('fr-FR').trim();const labels={pending:'À vérifier',approved:'Validé',rejected:'Refusé'};const items=km16ActivityEntries.filter(e=>(filter==='all'||e.new_status===filter)&&(!query||[e.order_id,e.actor_email,e.previous_status,e.new_status].join(' ').normalize('NFKC').toLocaleLowerCase('fr-FR').includes(query)));target.replaceChildren();for(const entry of items){const item=document.createElement('div');item.className='km16-activity-entry';item.textContent=new Date(entry.decided_at).toLocaleString('fr-FR')+' · '+(labels[entry.previous_status]||entry.previous_status)+' → '+(labels[entry.new_status]||entry.new_status)+' · '+entry.actor_email+' · dossier '+entry.order_id;target.append(item);}if(!items.length){const empty=document.createElement('p');empty.className='muted';empty.textContent=km16ActivityEntries.length?'Aucune décision ne correspond aux filtres sélectionnés.':'Aucune décision historisée dans les entrées chargées.';target.append(empty);}status.textContent=(km16ActivityServerSearch||km16ActivityServerApproval!=='all'?'Recherche globale active · ':'')+items.length+' décision(s) affichée(s) sur '+km16ActivityEntries.length+' entrée(s) chargée(s)'+(km16ActivityHasMore?' · historique supplémentaire disponible':' · fin de l’historique');$('km16-admin-activity-loaded').textContent=km16ActivityEntries.length+' décision(s) chargée(s)';};
 const km16VisibleActivity=()=>{const filter=$('km16-admin-activity-filter').value,query=$('km16-admin-activity-search').value.normalize('NFKC').toLocaleLowerCase('fr-FR').trim();return km16ActivityEntries.filter(e=>(filter==='all'||e.new_status===filter)&&(!query||[e.order_id,e.actor_email,e.previous_status,e.new_status].join(' ').normalize('NFKC').toLocaleLowerCase('fr-FR').includes(query)));};
 const km16CheckActivityExport=(entries)=>{if(!entries.length)throw Error('Aucune décision à exporter');const ids=new Set(),dates=[];for(const entry of entries){if(!Number.isSafeInteger(Number(entry.id))||!entry.order_id||!entry.decided_at||!entry.actor_email||!['pending','approved','rejected'].includes(entry.new_status))throw Error('Données de décision incomplètes');if(ids.has(String(entry.id)))throw Error('Décision en double détectée dans la pagination');ids.add(String(entry.id));const ms=Date.parse(entry.decided_at);if(!Number.isFinite(ms))throw Error('Date de décision invalide');dates.push(ms);}const format=ms=>new Date(ms).toLocaleString('fr-FR',{timeZone:'Europe/Paris'});const label=entries.length+' décision(s) vérifiée(s) · période : '+format(dates.reduce((a,b)=>Math.min(a,b)))+' au '+format(dates.reduce((a,b)=>Math.max(a,b)))+' (heure de Paris)';$('km16-admin-activity-export-check').textContent=label;return label;};
 const km16DownloadActivityCsv=(entries,suffix='')=>{const csvCell=value=>{let v=String(value??'');if(/^[\s]*[=+@-]/.test(v))v="'"+v;return '"'+v.replace(/"/g,'""')+'"';};const rows=[['Date et heure (Europe/Paris)','Référence dossier','Ancien statut','Nouveau statut','Administrateur'],...entries.map(e=>[new Date(e.decided_at).toLocaleString('fr-FR',{timeZone:'Europe/Paris'}),e.order_id,e.previous_status,e.new_status,e.actor_email])];const csv='\uFEFF'+rows.map(row=>row.map(csvCell).join(';')).join('\r\n');const blob=new Blob([csv],{type:'text/csv;charset=utf-8'}),url=URL.createObjectURL(blob),link=document.createElement('a');link.href=url;link.download='KM16-historique-decisions-'+new Date().toISOString().slice(0,10)+suffix+'.csv';document.body.append(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);};
-$('km16-admin-activity-export').onclick=()=>{const entries=km16VisibleActivity();if(!entries.length){$('km16-admin-activity-status').textContent='Aucune décision chargée ne correspond aux filtres : aucun fichier créé.';return;}try{km16CheckActivityExport(entries);km16DownloadActivityCsv(entries,'-charges');}catch(e){$('km16-admin-activity-export-check').textContent='Export non généré : '+e.message;return;}$('km16-admin-activity-status').textContent=entries.length+' décision(s) exportée(s) parmi les entrées chargées'+(km16ActivityHasMore?' · des pages supplémentaires restent à charger.':'.');};
+if(adminPanel)$('km16-admin-activity-export').onclick=()=>{const entries=km16VisibleActivity();if(!entries.length){$('km16-admin-activity-status').textContent='Aucune décision chargée ne correspond aux filtres : aucun fichier créé.';return;}try{km16CheckActivityExport(entries);km16DownloadActivityCsv(entries,'-charges');}catch(e){$('km16-admin-activity-export-check').textContent='Export non généré : '+e.message;return;}$('km16-admin-activity-status').textContent=entries.length+' décision(s) exportée(s) parmi les entrées chargées'+(km16ActivityHasMore?' · des pages supplémentaires restent à charger.':'.');};
 let km16ActivityExporting=false;
-$('km16-admin-activity-export-all').onclick=async()=>{if(km16ActivityExporting||km16ActivityLoading)return;const q=$('km16-admin-activity-search').value.trim(),approval=$('km16-admin-activity-filter').value,status=$('km16-admin-activity-status'),button=$('km16-admin-activity-export-all');if(q.length>120||q&&!/^[\p{L}\p{N} @._-]+$/u.test(q)){status.textContent='Recherche invalide : vérifiez les caractères utilisés.';return;}if(!confirm('Exporter toutes les décisions correspondant aux filtres actuels ? Le fichier contiendra des données administratives confidentielles.'))return;km16ActivityExporting=true;button.disabled=true;km16ActivityRefresh.disabled=true;km16ActivityMore.disabled=true;const entries=[];let snapshotId='';try{for(let page=0;page<=100000;page++){status.textContent='Préparation de l’export complet : '+entries.length+' décision(s) récupérée(s)…';const result=await api({action:'admin-recent-decisions',page,search:q,approval,...(snapshotId?{snapshot_id:snapshotId}:{})});if(!snapshotId){snapshotId=String(result.snapshot_id??'');if(!/^(0|[1-9][0-9]{0,18})$/.test(snapshotId))throw Error('Référence de période manquante');}else if(String(result.snapshot_id)!==snapshotId)throw Error('La période de référence a changé pendant l’export');if(!Array.isArray(result.history))throw Error('Réponse du serveur invalide');entries.push(...result.history);if(!result.has_more){if(!entries.length){status.textContent='Aucune décision ne correspond aux filtres : aucun fichier créé.';return;}km16CheckActivityExport(entries);km16DownloadActivityCsv(entries,'-complet');status.textContent='Export complet préparé : '+entries.length+' décision(s) · période figée au début de l’export.';return;}if(!result.history.length)throw Error('Pagination interrompue : résultat incomplet');}throw Error('Historique trop volumineux pour cet export.');}catch(e){status.textContent='Export interrompu, aucun fichier incomplet téléchargé : '+e.message;}finally{km16ActivityExporting=false;button.disabled=false;km16ActivityRefresh.disabled=false;km16ActivityMore.disabled=false;}};
-$('km16-admin-activity-filter').onchange=km16RenderActivity;$('km16-admin-activity-search').oninput=km16RenderActivity;
+if(adminPanel)$('km16-admin-activity-export-all').onclick=async()=>{if(km16ActivityExporting||km16ActivityLoading)return;const q=$('km16-admin-activity-search').value.trim(),approval=$('km16-admin-activity-filter').value,status=$('km16-admin-activity-status'),button=$('km16-admin-activity-export-all');if(q.length>120||q&&!/^[\p{L}\p{N} @._-]+$/u.test(q)){status.textContent='Recherche invalide : vérifiez les caractères utilisés.';return;}if(!confirm('Exporter toutes les décisions correspondant aux filtres actuels ? Le fichier contiendra des données administratives confidentielles.'))return;km16ActivityExporting=true;button.disabled=true;km16ActivityRefresh.disabled=true;km16ActivityMore.disabled=true;const entries=[];let snapshotId='';try{for(let page=0;page<=100000;page++){status.textContent='Préparation de l’export complet : '+entries.length+' décision(s) récupérée(s)…';const result=await api({action:'admin-recent-decisions',page,search:q,approval,...(snapshotId?{snapshot_id:snapshotId}:{})});if(!snapshotId){snapshotId=String(result.snapshot_id??'');if(!/^(0|[1-9][0-9]{0,18})$/.test(snapshotId))throw Error('Référence de période manquante');}else if(String(result.snapshot_id)!==snapshotId)throw Error('La période de référence a changé pendant l’export');if(!Array.isArray(result.history))throw Error('Réponse du serveur invalide');entries.push(...result.history);if(!result.has_more){if(!entries.length){status.textContent='Aucune décision ne correspond aux filtres : aucun fichier créé.';return;}km16CheckActivityExport(entries);km16DownloadActivityCsv(entries,'-complet');status.textContent='Export complet préparé : '+entries.length+' décision(s) · période figée au début de l’export.';return;}if(!result.history.length)throw Error('Pagination interrompue : résultat incomplet');}throw Error('Historique trop volumineux pour cet export.');}catch(e){status.textContent='Export interrompu, aucun fichier incomplet téléchargé : '+e.message;}finally{km16ActivityExporting=false;button.disabled=false;km16ActivityRefresh.disabled=false;km16ActivityMore.disabled=false;}};
+if(adminPanel){$('km16-admin-activity-filter').onchange=km16RenderActivity;$('km16-admin-activity-search').oninput=km16RenderActivity;}
 const km16LoadActivity=async(loadMore=false)=>{if(km16ActivityLoading)return;km16ActivityLoading=true;km16ActivityRefresh.disabled=true;km16ActivityMore.disabled=true;const status=$('km16-admin-activity-status');status.textContent=loadMore?'Chargement des décisions suivantes…':'Chargement des dernières décisions…';try{const page=loadMore?km16ActivityNextPage:0;const result=await api({action:'admin-recent-decisions',page,search:km16ActivityServerSearch,approval:km16ActivityServerApproval});const received=Array.isArray(result.history)?result.history:[];km16ActivityEntries=loadMore?[...km16ActivityEntries,...received]:received;km16ActivityNextPage=page+1;km16ActivityHasMore=result.has_more===true;km16ActivityMore.hidden=!km16ActivityHasMore;km16RenderActivity();}catch(e){status.textContent='Journal indisponible : '+e.message;}finally{km16ActivityLoading=false;km16ActivityRefresh.disabled=false;km16ActivityMore.disabled=false;}};
-km16ActivityRefresh.onclick=()=>km16LoadActivity(false);km16ActivityMore.onclick=()=>km16LoadActivity(true);
-$('km16-admin-activity-server-search').onclick=()=>{if(km16ActivityLoading)return;const q=$('km16-admin-activity-search').value.trim();if(q.length>120||q&&!/^[\p{L}\p{N} @._-]+$/u.test(q)){$('km16-admin-activity-status').textContent='Recherche invalide : 120 caractères maximum, lettres, chiffres, espaces, @ . _ et - uniquement.';return;}km16ActivityServerSearch=q;km16ActivityServerApproval=$('km16-admin-activity-filter').value;km16LoadActivity(false);};
-$('km16-admin-activity-reset').onclick=()=>{if(km16ActivityLoading)return;km16ActivityServerSearch='';km16ActivityServerApproval='all';$('km16-admin-activity-search').value='';$('km16-admin-activity-filter').value='all';km16LoadActivity(false);};
+if(adminPanel){km16ActivityRefresh.onclick=()=>km16LoadActivity(false);km16ActivityMore.onclick=()=>km16LoadActivity(true);}
+if(adminPanel)$('km16-admin-activity-server-search').onclick=()=>{if(km16ActivityLoading)return;const q=$('km16-admin-activity-search').value.trim();if(q.length>120||q&&!/^[\p{L}\p{N} @._-]+$/u.test(q)){$('km16-admin-activity-status').textContent='Recherche invalide : 120 caractères maximum, lettres, chiffres, espaces, @ . _ et - uniquement.';return;}km16ActivityServerSearch=q;km16ActivityServerApproval=$('km16-admin-activity-filter').value;km16LoadActivity(false);};
+if(adminPanel)$('km16-admin-activity-reset').onclick=()=>{if(km16ActivityLoading)return;km16ActivityServerSearch='';km16ActivityServerApproval='all';$('km16-admin-activity-search').value='';$('km16-admin-activity-filter').value='all';km16LoadActivity(false);};
 let km16AdminLoaded=null,km16AdminNextPage=0,km16AdminHasMore=false,km16AdminLoading=false,km16AdminServerSearch='',km16AdminServerApproval='all';
 const km16HasUnsavedDocuments=()=>Boolean(document.querySelector('#admin-orders [data-unsaved-documents="true"],#km16-followup-inline-body [data-unsaved-documents="true"]'));
 const km16ConfirmDiscardDocuments=()=>!km16HasUnsavedDocuments()||confirm('Des modifications de justificatifs ne sont pas enregistrées. Les abandonner et actualiser les dossiers ?');
@@ -1199,13 +1198,33 @@ async function authState(s){
  km16AdminLoaded=null;km16AdminNextPage=0;km16AdminHasMore=false;km16AdminServerSearch='';km16AdminServerApproval='all';
  syncAccountForm();checkoutAccess.sync(s);$('login').hidden=!!s;$('connected').hidden=!s;$('identity').textContent=s?.user.email||'';$('my-orders').hidden=!s;
  showMembershipJourney();
- const isAdmin=s?.user.email==='alexandre.marchat@gmail.com';$('admin').hidden=!isAdmin||embedded||accountView;buttonState();
+ buttonState();
+ if(adminPanel){
+  const currentGeneration=generation;
+  const status=$('admin-access-status');
+  adminPanel.hidden=true;
+  $('admin-orders').replaceChildren();$('links-list').replaceChildren();$('link-result').hidden=true;
+  $('link-url').value='';$('link-email').value='';
+  status.textContent=s?'Vérification de l’accès administrateur…':'Connectez-vous pour accéder aux dossiers.';
+  if(!s)return;
+  try{
+   const access=await api({action:'admin-access'},s.user);
+   if(currentGeneration!==generation)return;
+   if(access.admin!==true)throw Error('Accès réservé à l’administration KM16.');
+   if(!catalogueReady)return;
+   status.textContent='';
+   adminPanel.hidden=false;
+   initLinks();await Promise.all([admin(),listLinks()]);
+   if(currentGeneration===generation&&location.hash)$(location.hash.slice(1))?.scrollIntoView();
+  }catch(error){if(currentGeneration===generation)status.textContent=error.message;}
+  return;
+ }
  if(!s){
   clearMemberFirstCourse();
   clearTimeout(paymentCheckTimer);showPaymentReturn();
   $('member-upcoming').hidden=true;$('member-upcoming-courses').replaceChildren();$('member-upcoming-stages').replaceChildren();
   $('member-actions').hidden=true;$('member-actions-list').replaceChildren();
-  myOrderGroup='Tous les achats';myOrderData={orders:[],payments:[],documents:[]};$('km16-reuse-member').hidden=true;$('order-filters').replaceChildren();$('orders').replaceChildren();$('admin-orders').replaceChildren();$('links-list').replaceChildren();$('link-result').hidden=true;$('link-url').value='';$('link-email').value='';
+  myOrderGroup='Tous les achats';myOrderData={orders:[],payments:[],documents:[]};$('km16-reuse-member').hidden=true;$('order-filters').replaceChildren();$('orders').replaceChildren();
   return;
  }
  if(accountView){
@@ -1214,11 +1233,11 @@ async function authState(s){
   void loadUpcomingCourses();
  }
  void loadHouseholdProfiles();
- if(!catalogueReady&&!accountView)return;await orders();if(isAdmin&&!embedded&&!accountView){initLinks();await Promise.all([admin(),listLinks()]);}
+ if(!catalogueReady&&!accountView)return;await orders();
 }
 $('payment-return-refresh').onclick=orders;
 $('payment-return-orders').onclick=()=>{if(myOrderGroup!=='Tous les achats'){myOrderGroup='Tous les achats';renderMyOrders();}};
-$('refresh').onclick=()=>{if(accountView&&session){firstCourseSessions=null;void loadUpcomingCourses();}return orders();};$('admin-refresh').onclick=()=>admin(false);
+$('refresh').onclick=()=>{if(accountView&&session){firstCourseSessions=null;void loadUpcomingCourses();}return orders();};if(adminPanel)$('admin-refresh').onclick=()=>admin(false);
 
 function initLinks(){
  const current=$('link-category').value;
@@ -1238,8 +1257,8 @@ function linkPrice(){
  $('link-count').value='1';for(const o of $('link-count').options)o.disabled=p?.kind!=='annual'&&o.value!=='1';linkSchedule();
 }
 function linkSchedule(){try{const n=Number($('link-count').value),a=splitAmount(parseEuro($('link-amount').value),n);$('link-schedule').textContent=n===1?'Un règlement de '+money(a[0]):'Premier règlement : '+money(a[0])+', puis '+(n-1)+' mensualités de '+money(a[1])+'. Total : '+money(a.reduce((s,x)=>s+x,0));}catch{$('link-schedule').textContent='Saisissez un montant en euros.';}}
-$('link-category').onchange=linkOptions;$('link-product').onchange=linkPrice;$('link-count').onchange=linkSchedule;$('link-amount').oninput=linkSchedule;
-$('link-form').onsubmit=async e=>{
+if(adminPanel){$('link-category').onchange=linkOptions;$('link-product').onchange=linkPrice;$('link-count').onchange=linkSchedule;$('link-amount').oninput=linkSchedule;}
+if(adminPanel)$('link-form').onsubmit=async e=>{
  e.preventDefault();const gen=generation;$('link-create').disabled=true;$('link-status').textContent='Création du lien…';$('link-result').hidden=true;$('link-url').value='';
  try{
   const r=await api({action:'links-create',product_id:$('link-product').value,total_cents:parseEuro($('link-amount').value),count:Number($('link-count').value),recipient_email:$('link-email').value.trim()});
@@ -1248,8 +1267,8 @@ $('link-form').onsubmit=async e=>{
   $('link-status').textContent='Lien créé. Copiez-le avant de quitter cette page. Les paiements restent soumis à l’ouverture des inscriptions.';await listLinks();
  }catch(e){if(gen===generation)$('link-status').textContent=e.message;}finally{$('link-create').disabled=false;}
 };
-$('link-copy').onclick=async()=>{try{await navigator.clipboard.writeText($('link-url').value);$('link-status').textContent='Lien copié.';}catch{$('link-url').select();$('link-status').textContent='Sélectionnez le lien puis copiez-le avec Cmd+C.';}};
-$('links-refresh').onclick=listLinks;
+if(adminPanel)$('link-copy').onclick=async()=>{try{await navigator.clipboard.writeText($('link-url').value);$('link-status').textContent='Lien copié.';}catch{$('link-url').select();$('link-status').textContent='Sélectionnez le lien puis copiez-le avec Cmd+C.';}};
+if(adminPanel)$('links-refresh').onclick=listLinks;
 async function listLinks(){const gen=generation;try{
  const {links}=await api({action:'links-list'});if(gen!==generation)return;
  const table=document.createElement('table'),h=document.createElement('tr');for(const label of ['Offre / payeur','Tarif','Règlement','État','Action'])text('th',label,h);table.append(h);
@@ -1279,7 +1298,7 @@ try{
   try{specialOffer=await api({action:'link-preview',link_token:linkToken});$('offer-notice').hidden=false;$('offer-notice').textContent='Votre offre personnalisée : '+specialOffer.product.title+' · '+money(specialOffer.product.amount)+' · '+specialOffer.count+' fois, sans supplément. Utilisez l’e-mail du payeur indiqué à KM16 dans votre demande.';choose(specialOffer.product);}
   catch(e){$('offer-notice').hidden=false;$('offer-notice').textContent=e.message;$('order').hidden=true;selected=null;}
  }
- catalogueReady=true;if(!accountView){if(await checkoutAccess.resumeAvailable())$('resume-request').hidden=false;else await checkoutAccess.restore();}checkoutAccess.sync(session);if(session)void authState(session).catch(()=>accountMessage('Les informations du compte sont temporairement indisponibles.',true));
+ catalogueReady=true;if(!accountView&&!adminPanel){if(await checkoutAccess.resumeAvailable())$('resume-request').hidden=false;else await checkoutAccess.restore();}checkoutAccess.sync(session);if(session)void authState(session).catch(()=>accountMessage('Les informations du compte sont temporairement indisponibles.',true));
  if(paymentReturn.has('cancel'))note(requestedOrder?'Paiement interrompu. Vous pouvez vérifier et reprendre le paiement depuis ce dossier.':'Vous avez quitté le paiement. Consultez Mes inscriptions avant de recommencer.');
 }catch{note('Chargement impossible. Rechargez la page ou contactez contact@km16.fr.',true);}
 

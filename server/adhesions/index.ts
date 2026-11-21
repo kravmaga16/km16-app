@@ -100,6 +100,7 @@ Deno.serve(async req=>{
   if(!ar.ok)return reply({error:'Session expirée, reconnectez-vous'},401);
   const user=await ar.json();if(!user.email_confirmed_at||user.is_anonymous)return reply({error:'Confirmez votre adresse e-mail'},403);
   const admin=user.email?.toLowerCase()==='alexandre.marchat@gmail.com';
+  if(data.action==='admin-access')return admin?reply({admin:true}):reply({error:'Accès privé'},403);
   if(data.action==='photo-upload'){
    if(!/^[0-9a-f-]{36}$/i.test(data.request_id))return reply({error:'Demande invalide'},400);
    const existing=(await db('km16_member_photos?id=eq.'+data.request_id))[0];
@@ -237,9 +238,11 @@ Deno.serve(async req=>{
     return reply({status:'unavailable'});
    if(checkout.status==='open'&&checkout.url&&checkout.expires_at>Math.floor(Date.now()/1000))return reply({status:'open',url:checkout.url});
    if(checkout.status!=='expired')return reply({status:'unavailable'});
-   // V6 changes only the free-trial welcome. Paid orders retain their accepted V5 archive.
+   // V6 updates the trial welcome. V7 makes the photo optional and clarifies privacy.
+   // Existing paid orders retain their accepted archive.
    const paidTermsUnchanged=order.total_cents>0&&!['essai','essai-saint-jean'].includes(order.product_id)
-    &&order.terms_version==='km16-2026-11-10-v5'&&config.terms_version==='km16-2026-11-20-v6';
+    &&((order.terms_version==='km16-2026-11-10-v5'&&['km16-2026-11-20-v6','km16-2026-11-21-v7'].includes(config.terms_version))
+    ||(order.terms_version==='km16-2026-11-20-v6'&&config.terms_version==='km16-2026-11-21-v7'));
    if(!order.customer_id||(order.terms_version!==config.terms_version&&!paidTermsUnchanged)||!config.terms_url||!config.privacy_url)
     return reply({status:'expired'});
    const product=(await db('km16_membership_products?id=eq.'+encodeURIComponent(order.product_id)))[0];
@@ -291,7 +294,6 @@ Deno.serve(async req=>{
   if(Deno.env.get('KM16_ADHESIONS_STRIPE_SECRET_KEY')?.startsWith('sk_live_')&&Deno.env.get('KM16_ADHESIONS_ALLOW_LIVE')!=='true')return reply({error:'Paiements réels non activés'},503);
   const id=data.request_id;
   if(!user.email||! /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(user.email))return reply({error:'E-mail confirmé obligatoire'},400);
-  if(!(await db('km16_member_photos?id=eq.'+id+'&user_id=eq.'+user.id+'&select=id')).length)return reply({error:'Ajoutez obligatoirement une photo du pratiquant avant de payer.'},400);
   let participantKey=null;
   if(product.kind==='annual'){
    const normalized=[Deno.env.get('KM16_ADHESIONS_STRIPE_SECRET_KEY').startsWith('sk_live_')?'live':'test',user.id,config.season_end,data.first_name.trim().toLowerCase(),data.last_name.trim().toLowerCase(),data.birth_date].join('|');

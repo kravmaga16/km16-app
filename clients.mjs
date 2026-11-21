@@ -1,9 +1,11 @@
+import {initAdminMfa} from './admin-mfa.mjs';
 import {withClubPayments, clubAmountKnown, clubPaymentLabel} from './club-payments.mjs';
 import {initCommunications} from './communications.mjs?v=ages1';
 import {SEASON,seasonState,parisDate} from './seasons.mjs?v=1';
 import {clientsWorkbook,stagesMonthly} from './clients-excel.mjs?v=club-20261119';
 const $=id=>document.getElementById(id),ADMIN='alexandre.marchat@gmail.com';
 const client=window.supabase?.createClient('https://tlfewpbgbwesdriklxzb.supabase.co','sb_publishable_OGRSgobOGf54jlfmXGmS8g_04Ftvfsn',{auth:{storageKey:'km16-video-auth',detectSessionInUrl:false,flowType:'implicit'}});
+const resetAdminMfa=initAdminMfa(client?.auth, $('km16-admin-mfa'));
 const endpoint='https://tlfewpbgbwesdriklxzb.supabase.co/functions/v1/km16-clients';
 let sourceClients=[],clubPayments=[],clubRegistrationRequest=0,clubRegistrationPending;
 const clubRegistrationTable = 'km16_club_registrations';
@@ -866,6 +868,7 @@ async function authState(s){
  generation++;controller?.abort();busy=false;session=s;clear();clearKm16EmailAlerts();communications.reset();
  void refreshKm16HealthDocuments();
  const admin=s?.user.email?.toLowerCase()===ADMIN;
+ if(!admin)resetAdminMfa();
  $('login').hidden=!!s;$('forbidden').hidden=!s||admin;$('workspace').hidden=!admin;$('stages-panel').hidden=!admin;
  $('km16-email-relances').hidden=!isKm16EmailAdmin(s);
  $('password').value='';$('test').checked=false;$('test-notice').hidden=true;group='';$('search').value='';

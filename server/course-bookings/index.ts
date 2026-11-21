@@ -36,8 +36,8 @@ Deno.serve(async(req:Request)=>{
    return reply({sessions:rows});
   }
   if(action==='book'){
-   const owner=req.headers.has('authorization')?await verifiedUser(req):null;
-   if(req.headers.has('authorization')&&!owner)return reply({error:'Reconnectez-vous à votre espace KM16.'},401);
+   const owner=await verifiedUser(req);
+   if(!owner)return reply({error:'Confirmez votre adresse e-mail et connectez-vous pour réserver.'},401);
    let householdId=null;
    if(payload.household_id){
     const value=text(payload.household_id);
@@ -46,7 +46,7 @@ Deno.serve(async(req:Request)=>{
      return reply({error:'Profil indisponible dans votre foyer'},400);
     householdId=value;
    }
-   const id=text(payload.session_id),first=text(payload.first_name),last=text(payload.last_name),email=text(owner?.email??payload.email).toLowerCase();
+   const id=text(payload.session_id),first=text(payload.first_name),last=text(payload.last_name),email=text(owner.email).toLowerCase();
    if(!/^[0-9a-f-]{36}$/.test(id)||first.length<1||first.length>100||last.length<1||last.length>100||!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)||email.length>254)return reply({error:'Informations invalides'},400);
    if(payload.website)return reply({error:'Demande refusée'},400);
    const session=await db('km16_course_sessions?id=eq.'+id+'&enabled=eq.true&select=id,session_date');
@@ -55,7 +55,7 @@ Deno.serve(async(req:Request)=>{
    if(recent.length>=5)return reply({error:'Trop de demandes récentes. Réessayez plus tard.'},429);
    const token=crypto.randomUUID()+crypto.randomUUID();
    let rows;
-   try{rows=await db('km16_course_bookings','POST',{session_id:id,first_name:first,last_name:last,email,status:'Inscrit',owner_id:owner?.id??null,household_id:householdId,cancellation_hash:await sha(token)});}
+   try{rows=await db('km16_course_bookings','POST',{session_id:id,first_name:first,last_name:last,email,status:'Inscrit',owner_id:owner.id,household_id:householdId,cancellation_hash:await sha(token)});}
    catch(e){if(String(e).includes('23505'))return reply({error:'Une inscription active existe déjà pour cette adresse et ce cours.'},409);throw e;}
    return reply({ok:true,id:rows[0].id,cancellation_token:token,account_booking:Boolean(owner)});
   }

@@ -16,7 +16,29 @@ function chooseParticipant() {
 }
 $('participant').onchange = chooseParticipant;
 
-void accountSession().then(async session => {
+$('booking-login-send').onclick=async()=>{
+ const email=$('email');
+ if(!email.reportValidity())return;
+ const button=$('booking-login-send'),status=$('booking-login-status');
+ button.disabled=true;
+ try{
+  if(!account)throw Error();
+  const {error}=await account.auth.signInWithOtp({email:email.value.trim(),options:{shouldCreateUser:true,emailRedirectTo:new URL('./',location.href).href}});
+  if(error)throw error;
+  status.textContent='Consultez votre boîte e-mail. Après avoir ouvert le lien, revenez ici et cliquez sur Réserver.';
+ }catch{status.textContent='Le lien n’a pas pu être envoyé. Patientez un instant et réessayez.';}
+ finally{button.disabled=false;}
+};
+async function refreshBookingLogin() {
+ const session=await accountSession();
+ $('booking-login').hidden=Boolean(session);
+ if(session)$('email').value=session.user.email;
+ $('email').readOnly=Boolean(session);
+ return session;
+}
+window.addEventListener('focus',()=>void refreshBookingLogin().catch(()=>{}));
+
+void refreshBookingLogin().then(async session => {
  if (!session) return;
  $('email').value = session.user.email;
  $('email').readOnly = true;
@@ -127,9 +149,13 @@ $('book-form').onsubmit=async e=>{
   if(!selected)throw Error('Veuillez choisir une séance avant de confirmer.');
   const participant = participants[$('participant').value];
   const booking = {session_id:selected.id, first_name:$('first').value,
-   last_name:$('last').value, email:$('email').value, website:$('website').value,
+   last_name:$('last').value, website:$('website').value,
    ...(participant?.household_id?{household_id:participant.household_id}:{})};
-  const activeAccount = await accountSession();
+  const activeAccount = await refreshBookingLogin();
+  if(!activeAccount){
+   $('booking-login-send').focus();
+   throw Error('Confirmez votre adresse e-mail avant de réserver.');
+  }
   if (participant && activeAccount?.user.id !== participantOwner) {
    participants = [];
    $('participant-choice').hidden = true;
@@ -139,7 +165,7 @@ $('book-form').onsubmit=async e=>{
    $('email').readOnly = Boolean(activeAccount);
    throw Error('Votre compte a changé. Renseignez le participant puis réessayez.');
   }
-  const j=await call('book',booking,activeAccount?.access_token);
+  const j=await call('book',booking,activeAccount.access_token);
   const url=cancellationUrl(j.cancellation_token);
   $('booking-summary').textContent=selected?iso(selected.session_date)+' · '+selected.start_time.slice(0,5)+'–'+selected.end_time.slice(0,5)+' · '+selected.category+' · '+selected.venue:'';
   $('status').textContent='Votre place est réservée ! '+(j.account_booking?'Retrouvez la séance dans Mes réservations.':'Conservez votre lien d’annulation ci-dessous.');

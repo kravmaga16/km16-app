@@ -69,7 +69,11 @@ clear.addEventListener('click',()=>{
  render();
  profile.focus();
 });
-if(location.hash==='#next-course-profiles')get('next-course-profiles').open=true;
+if(new URLSearchParams(location.search).get('profils')==='1'){
+ const settings=get('next-course-profiles');
+ settings.open=true;
+ settings.querySelector('summary').focus();
+}
 let loading=false;
 async function load(){
  if(loading)return;

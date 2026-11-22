@@ -36,6 +36,7 @@ async function harness(browser){
   state.notify=(session,event='SIGNED_IN')=>{state.session=session;for(const listener of listeners)listener(event,session);};
   state.login=()=>state.notify(admin);
   const auth={
+   mfa:{getAuthenticatorAssuranceLevel:async()=>({data:{currentLevel:'aal2'},error:null})},
    getSession:async()=>({data:{session:state.session},error:null}),
    onAuthStateChange:listener=>{listeners.push(listener);state.ready=true;return {data:{subscription:{unsubscribe(){}}}};},
    signOut:async()=>{if(state.holdSignOut)await new Promise(done=>{state.finishSignOut=done;});state.notify(null,'SIGNED_OUT');return {error:null};},

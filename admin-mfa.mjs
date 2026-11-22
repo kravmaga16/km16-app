@@ -1,4 +1,4 @@
-export function initAdminMfa(auth, panel) {
+export function initAdminMfa(auth, panel, { login = false } = {}) {
   if (!panel) return () => {};
   const add = panel.querySelector('[data-mfa-add]');
   const form = panel.querySelector('form');
@@ -23,7 +23,7 @@ export function initAdminMfa(auth, panel) {
     form.hidden = true;
     qr.removeAttribute('src');
     qr.hidden = true;
-    add.disabled = false;
+    add.disabled = login;
     form.querySelector('button').disabled = false;
     status.textContent = '';
   }
@@ -42,6 +42,12 @@ export function initAdminMfa(auth, panel) {
       if (current !== revision) return;
       factors.replaceChildren(...totp.map((factor, index) => new Option(factor.friendly_name || `Application ${index + 1}`, factor.id)));
       verify.hidden = !totp.length;
+      add.hidden = login && totp.length > 0;
+      add.disabled = false;
+      if (login && totp.length) {
+        verify.onclick();
+        return;
+      }
       status.textContent = totp.length
         ? `${totp.length} application(s) d’authentification associée(s).`
         : 'Aucune application d’authentification associée.';
@@ -109,6 +115,7 @@ export function initAdminMfa(auth, panel) {
 
   return () => {
     panel.open = false;
+    if (login) panel.hidden = true;
     reset();
   };
 }

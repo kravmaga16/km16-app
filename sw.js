@@ -1,5 +1,5 @@
 const CACHE='km16-app-20261121-admin-security';const FILES=['./','./index.html','./logo-km16.png','./equipe-km16.jpg','./icon-192.png','./icon-512.png','./manifest.webmanifest','./robots.txt','./sitemap.xml','./stage-visibility.js?v=2','./app-navigation.css?v=1','./app-navigation.mjs?v=1'];self.addEventListener('install',e=>{e.waitUntil(caches.open(CACHE).then(c=>c.addAll(FILES)).then(()=>self.skipWaiting()))});self.addEventListener('activate',e=>{e.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(k=>k.startsWith('km16-')&&k!==CACHE).map(k=>caches.delete(k)))).then(()=>self.clients.claim()))});
-const PRIVATE_PAGES=new Set(['adhesion-admin.html','clients.html','course-admin.html','course-operations.html','news-admin.html','trials.html']);
+const PRIVATE_PAGES=new Set(['admin-password-reset.html','adhesion-admin.html','clients.html','course-admin.html','course-operations.html','news-admin.html','trials.html']);
 self.addEventListener('fetch',event=>{
  const request=event.request;
  const url=new URL(request.url);

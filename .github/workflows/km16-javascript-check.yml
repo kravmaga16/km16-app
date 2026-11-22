@@ -30,6 +30,8 @@ jobs:
           find . -type f \( -name '*.mjs' -o -name '*.js' \) -not -path './node_modules/*' -print0 | xargs -0 -r -n 1 node --check
       - name: Tester la presence du parcours de connexion administrateur
         run: node scripts/check-admin-login.mjs
+      - name: Tester la récupération du mot de passe administrateur
+        run: node --test tests/admin-password-recovery.test.mjs
       - name: Verifier les garde-fous de securite de l'administration
         run: node scripts/check-admin-safety.mjs
       - name: Verifier la navigation mobile de l'administration

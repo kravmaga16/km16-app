@@ -3,6 +3,7 @@ const profile = get('next-profile');
 const message = get('next-session');
 const book = get('next-book');
 const remove = get('next-profile-remove');
+const clear = get('next-profile-clear');
 const key = 'km16-course-profiles';
 const matchers = {enfants: /^enfants/i, adolescents: /^adolescents/i, adultes: /^adultes.*tous niveaux/i, noire: /préparation noire/i};
 const dateFormat = new Intl.DateTimeFormat('fr-FR', {dateStyle:'full', timeZone:'Europe/Paris'});
@@ -25,6 +26,7 @@ function render(){
  profile.value = state.selected;
  const selected = state.profiles.find(p=>p.id===state.selected);
  remove.hidden = !selected;
+ clear.hidden = state.profiles.length === 0;
  book.href = './course-booking.html';
  book.textContent = 'Réserver un cours';
  if(!sessions){
@@ -61,6 +63,17 @@ remove.addEventListener('click',()=>{
  render();
  profile.focus();
 });
+clear.addEventListener('click',()=>{
+ try{localStorage.removeItem(key);}catch{return;}
+ state={profiles:[],selected:''};
+ render();
+ profile.focus();
+});
+if(new URLSearchParams(location.search).get('profils')==='1'){
+ const settings=get('next-course-profiles');
+ settings.open=true;
+ settings.querySelector('summary').focus();
+}
 let loading=false;
 async function load(){
  if(loading)return;

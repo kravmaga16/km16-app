@@ -29,3 +29,15 @@ Avant d’appliquer une évolution SQL ou de republier une fonction :
 Les quatre migrations des règlements au club reprennent l’historique de production. Les migrations `20261119140107`, `20261119140226` et `20261119140504` créent successivement le registre, sa politique d’accès administrateur et le calcul des totaux. La migration `20261119142144` ajoute le rattachement à la fiche client. Le registre dépend de `public.km16_ops_is_admin()`, défini dans `20261119065900`.
 
 L’avis Auth `auth_leaked_password_protection` signale la protection désactivée le 19 novembre 2026. Le réglage se trouve dans **Authentication → Sign In / Providers → Email**. La protection des mots de passe compromis exige un forfait Supabase Pro ou supérieur. Après activation, relancer Security Advisor pour confirmer la disparition de l’avis.
+
+### Récupération du mot de passe administrateur
+
+Dans **Authentication → URL Configuration → Redirect URLs**, vérifier que
+`https://app.km16.fr/admin-password-reset.html` est autorisée pour les e-mails
+de récupération. Vérifier également que le modèle **Reset Password** utilise
+`{{ .ConfirmationURL }}` et que l'envoi Auth SMTP est configuré. Ouvrir le
+lien dans le navigateur qui a demandé le message. Le code reçu par e-mail
+est échangé grâce au vérificateur PKCE conservé dans ce navigateur.
+
+Valider la réception du message, l'ouverture du formulaire, le refus d'un
+lien déjà utilisé et la reconnexion avec un compte de test dédié.

@@ -278,7 +278,7 @@ function resetRegistration(){
  if(selected){$('count').value=String(specialOffer?.count||1);updateSchedule();}
  syncAccountForm();
 }
-const checkoutAccess=createCheckoutAccess({
+const checkoutAccess=adminPanel?null:createCheckoutAccess({
  client,kind:'membership',host:$('checkout-access'),emailInput:$('contact_email'),
  returnPath:location.pathname+location.search+location.hash,
  getDraft:({manual=false}={})=>({productId:selected.id,reminderSource:stageDetail&&selected.id===requestedProduct&&hasStageAnalyticsConsent()?reminderSource:undefined,requestId,count:Number($('count').value),photo:manual?undefined:photoData,profile:$('purchase-profile').value,fields:Object.fromEntries(draftFields.map(id=>[id,$(id).value])),checks:manual?{}:Object.fromEntries(draftChecks.map(id=>[id,$(id).checked]))}),
@@ -1357,7 +1357,7 @@ try{
   try{specialOffer=await api({action:'link-preview',link_token:linkToken});$('offer-notice').hidden=false;$('offer-notice').textContent='Votre offre personnalisée : '+specialOffer.product.title+' · '+money(specialOffer.product.amount)+' · '+specialOffer.count+' fois, sans supplément. Utilisez l’e-mail du payeur indiqué à KM16 dans votre demande.';choose(specialOffer.product);}
   catch(e){$('offer-notice').hidden=false;$('offer-notice').textContent=e.message;$('order').hidden=true;selected=null;}
  }
- catalogueReady=true;if(!accountView&&!adminPanel){if(await checkoutAccess.resumeAvailable())$('resume-request').hidden=false;else await checkoutAccess.restore();}checkoutAccess.sync(session);if(session||adminPanel)void authState(session).catch(()=>accountMessage('Les informations du compte sont temporairement indisponibles.',true));
+ catalogueReady=true;if(!accountView&&!adminPanel){if(await checkoutAccess.resumeAvailable())$('resume-request').hidden=false;else await checkoutAccess.restore();}checkoutAccess?.sync(session);if(session||adminPanel)void authState(session).catch(()=>accountMessage('Les informations du compte sont temporairement indisponibles.',true));
  if(paymentReturn.has('cancel'))note(requestedOrder?'Paiement interrompu. Vous pouvez vérifier et reprendre le paiement depuis ce dossier.':'Vous avez quitté le paiement. Consultez Mes inscriptions avant de recommencer.');
 }catch{note('Chargement impossible. Rechargez la page ou contactez contact@km16.fr.',true);}
 if(adminPanel&&!catalogueReady){

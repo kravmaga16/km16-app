@@ -11,6 +11,9 @@ const $=id=>document.getElementById(id),money=n=>new Intl.NumberFormat('fr-FR',{
 const client=window.supabase?.createClient('https://tlfewpbgbwesdriklxzb.supabase.co','sb_publishable_OGRSgobOGf54jlfmXGmS8g_04Ftvfsn',{auth:{storageKey:'km16-video-auth',detectSessionInUrl:false,flowType:'implicit'}});
 const endpoint='https://tlfewpbgbwesdriklxzb.supabase.co/functions/v1/km16-adhesions';
 const adminPanel=$('admin');
+const adminMfaGate=$('adhesion-admin-mfa');
+let resetAdhesionMfa;
+let adminSessionToken=null;
 const embedded=new URLSearchParams(location.search).get('embed')==='1'&&parent!==window;
 const accountView=new URLSearchParams(location.search).get('espace')==='1'&&!embedded&&!location.hash.includes('offre=');
 const paymentReturn=new URLSearchParams(location.search);
@@ -186,6 +189,10 @@ $('login').onsubmit=async e=>{
   const next=accountSession(data?.session);
   if(!next)throw Error('Confirmez votre adresse e-mail, puis reconnectez-vous.');
   accountRevision++;
+  if(adminPanel){
+   await authState(next);
+   return;
+  }
   void authState(next).catch(()=>accountMessage('Connexion réussie. L’historique est temporairement indisponible.',true));
   accountMessage('Vous êtes connecté. Vous pouvez poursuivre votre inscription.');
   if(selected){$('selection').scrollIntoView({behavior:'smooth',block:'start'});$('first_name').focus({preventScroll:true});}
@@ -318,7 +325,12 @@ $('email-link-login').onsubmit=async event=>{
  catch(error){accountMessage(error?.status===429?'Un lien a déjà été demandé. Patientez une minute avant de réessayer.':'Le lien n’a pas pu être envoyé. Vérifiez votre adresse puis réessayez.',true);}
  finally{button.disabled=false;}
 };
-$('logout').onclick=async()=>{await checkoutAccess.clear();resetRegistration();await client.auth.signOut({scope:'local'});};
+$('logout').onclick=async()=>{
+ if(!adminPanel){await checkoutAccess.clear();resetRegistration();}
+ const {error}=await client.auth.signOut({scope:'local'});
+ if(error)accountMessage('La déconnexion n’a pas abouti. Réessayez.',true);
+};
+if(adminMfaGate)$('adhesion-admin-mfa-logout').onclick=$('logout').onclick;
 $('order').onsubmit=async e=>{
  e.preventDefault();if(busy||photoPreparing||$('member-camera-dialog').open||!selected||!enabled||!$('order').reportValidity())return;
  const controls=[...$('order').querySelectorAll('input,select')].map(element=>({element,disabled:element.disabled}));
@@ -1180,15 +1192,77 @@ async function admin(loadMore=false){if(km16AdminLoading)return;if(!km16ConfirmD
  const rows=[...table.querySelectorAll('tr[data-triage-status]')];const counts={pending:0,ready:0,blocked:0,all:rows.length};for(const row of rows){const state=row.dataset.triageStatus;if(state!=='approved')counts.pending++;if(state==='ready')counts.ready++;if(state==='blocked')counts.blocked++;}for(const key of Object.keys(counts))$('km16-triage-'+key).textContent=String(counts[key]);km16SetTriage(km16AdminTriage);if(km16AdminHasMore)$('km16-triage-status').textContent+=' Résultats partiels : chargez les dossiers suivants pour compléter les totaux et les filtres.';
  const target=new URLSearchParams(location.search).get('admin_order');
  if(target){const selected=[...table.querySelectorAll('tr[id]')].find(row=>row.id==='admin-order-'+target);if(selected){km16SetTriage('all');selected.style.cssText='outline:3px solid #b31c28;background:#fff5f4;scroll-margin-top:24px';selected.scrollIntoView({block:'center',behavior:'smooth'});}}
-}catch(e){if(gen===generation){note(e.message,true);$('km16-followup-status').textContent='Actualisation impossible : '+e.message;}}finally{if(gen===generation){if(refreshButton)refreshButton.disabled=false;if(followupRefresh)followupRefresh.disabled=false;if(moreButton){moreButton.disabled=false;moreButton.textContent='Charger 25 dossiers supplémentaires';}}km16AdminLoading=false;}}
+}catch(e){if(gen===generation){note(e.message,true);$('km16-followup-status').textContent='Actualisation impossible : '+e.message;}}finally{if(gen===generation){if(refreshButton)refreshButton.disabled=false;if(followupRefresh)followupRefresh.disabled=false;if(moreButton){moreButton.disabled=false;moreButton.textContent='Charger 25 dossiers supplémentaires';}km16AdminLoading=false;}}}
 function clearMemberFirstCourse(){
  firstCourseRequest?.abort();firstCourseRequest=null;firstCourseSessions=null;
  memberCourses=null;memberPerson='';householdProfiles=[];renderPurchaseProfiles();
  $('member-first-course').hidden=true;$('member-first-course-list').replaceChildren();
  $('member-family').hidden=true;$('member-person').replaceChildren(new Option('Tout le foyer',''));
 }
+async function restoreAdmin(s){
+ const token=s?.access_token;
+ if(adminSessionToken===token)return;
+ adminSessionToken=token;
+ session=s;
+ const currentGeneration=++generation;
+ km16AdminLoading=false;
+ const status=$('admin-access-status');
+ adminPanel.hidden=true;
+ $('admin-orders').replaceChildren();
+ $('links-list').replaceChildren();
+ $('link-result').hidden=true;
+ $('link-url').value='';
+ $('link-email').value='';
+ km16AdminLoaded=null;
+ km16AdminNextPage=0;
+ km16AdminHasMore=false;
+ km16AdminServerSearch='';
+ km16AdminServerApproval='all';
+ $('km16-admin-server-approval').value='all';
+ $('account-access').hidden=!!s;
+ $('connected').hidden=!s;
+ $('identity').textContent=s?.user.email||'';
+ accountMessage('');
+ if(!s){
+  resetAdhesionMfa?.();
+  status.textContent='Connectez-vous pour accéder aux dossiers.';
+  return;
+ }
+ status.textContent='Vérification de l’accès administrateur…';
+ try{
+  const access=await api({action:'admin-access'},s.user);
+  if(currentGeneration!==generation)return;
+  if(access.admin!==true)throw Error('Accès réservé à l’administration KM16.');
+  const {data,error}=await accountTimeout(client.auth.mfa.getAuthenticatorAssuranceLevel(token));
+  if(currentGeneration!==generation)return;
+  if(error)throw error;
+  if(data?.currentLevel!=='aal2'){
+   status.textContent='';
+   if(adminMfaGate.hidden){adminMfaGate.hidden=false;adminMfaGate.open=true;}
+   return;
+  }
+  resetAdhesionMfa?.();
+  status.textContent='';
+  adminPanel.hidden=false;
+  initLinks();
+  const target=$(location.hash.slice(1));
+  target?.scrollIntoView();
+  await Promise.all([admin(),listLinks()]);
+ }catch(error){
+  if(currentGeneration!==generation)return;
+  resetAdhesionMfa?.();
+  adminSessionToken=null;
+  status.textContent=error.message||'Accès administratif indisponible. Rechargez la page pour réessayer.';
+ }
+}
 async function authState(s){
- s=accountSession(s);const previous=session;
+ s=accountSession(s);
+ if(adminPanel){
+  session=s;
+  if(catalogueReady)await restoreAdmin(s);
+  return;
+ }
+ const previous=session;
  const enteredEmail=normalizeEmail($('contact_email').value);
  const identityChanged=previous&&previous.user.id!==s?.user.id;
  const differentEmail=!previous&&s&&enteredEmail&&enteredEmail!==normalizeEmail(s.user.email);
@@ -1199,26 +1273,7 @@ async function authState(s){
  syncAccountForm();checkoutAccess.sync(s);$('login').hidden=!!s;$('connected').hidden=!s;$('identity').textContent=s?.user.email||'';$('my-orders').hidden=!s;
  showMembershipJourney();
  buttonState();
- if(adminPanel){
-  const currentGeneration=generation;
-  const status=$('admin-access-status');
-  adminPanel.hidden=true;
-  $('admin-orders').replaceChildren();$('links-list').replaceChildren();$('link-result').hidden=true;
-  $('link-url').value='';$('link-email').value='';
-  status.textContent=s?'Vérification de l’accès administrateur…':'Connectez-vous pour accéder aux dossiers.';
-  if(!s)return;
-  try{
-   const access=await api({action:'admin-access'},s.user);
-   if(currentGeneration!==generation)return;
-   if(access.admin!==true)throw Error('Accès réservé à l’administration KM16.');
-   if(!catalogueReady)return;
-   status.textContent='';
-   adminPanel.hidden=false;
-   initLinks();await Promise.all([admin(),listLinks()]);
-   if(currentGeneration===generation&&location.hash)$(location.hash.slice(1))?.scrollIntoView();
-  }catch(error){if(currentGeneration===generation)status.textContent=error.message;}
-  return;
- }
+
  if(!s){
   clearMemberFirstCourse();
   clearTimeout(paymentCheckTimer);showPaymentReturn();
@@ -1276,6 +1331,10 @@ async function listLinks(){const gen=generation;try{
  $('links-list').replaceChildren(table);
  }catch(e){if(gen===generation)$('link-status').textContent=e.message;}}
 
+if(adminMfaGate){
+ const {initAdminMfa}=await import('./admin-mfa.mjs?v=enrollment-20261123');
+ resetAdhesionMfa=initAdminMfa(client?.auth,adminMfaGate,{login:true});
+}
 if(client){
  client.auth.onAuthStateChange((_event,s)=>{const revision=++accountRevision;setTimeout(()=>{if(revision===accountRevision)void authState(s).catch(()=>accountMessage('Les informations du compte sont temporairement indisponibles.',true));},0);});
  void restoreAccount();
@@ -1298,8 +1357,12 @@ try{
   try{specialOffer=await api({action:'link-preview',link_token:linkToken});$('offer-notice').hidden=false;$('offer-notice').textContent='Votre offre personnalisée : '+specialOffer.product.title+' · '+money(specialOffer.product.amount)+' · '+specialOffer.count+' fois, sans supplément. Utilisez l’e-mail du payeur indiqué à KM16 dans votre demande.';choose(specialOffer.product);}
   catch(e){$('offer-notice').hidden=false;$('offer-notice').textContent=e.message;$('order').hidden=true;selected=null;}
  }
- catalogueReady=true;if(!accountView&&!adminPanel){if(await checkoutAccess.resumeAvailable())$('resume-request').hidden=false;else await checkoutAccess.restore();}checkoutAccess.sync(session);if(session)void authState(session).catch(()=>accountMessage('Les informations du compte sont temporairement indisponibles.',true));
+ catalogueReady=true;if(!accountView&&!adminPanel){if(await checkoutAccess.resumeAvailable())$('resume-request').hidden=false;else await checkoutAccess.restore();}checkoutAccess.sync(session);if(session||adminPanel)void authState(session).catch(()=>accountMessage('Les informations du compte sont temporairement indisponibles.',true));
  if(paymentReturn.has('cancel'))note(requestedOrder?'Paiement interrompu. Vous pouvez vérifier et reprendre le paiement depuis ce dossier.':'Vous avez quitté le paiement. Consultez Mes inscriptions avant de recommencer.');
 }catch{note('Chargement impossible. Rechargez la page ou contactez contact@km16.fr.',true);}
+if(adminPanel&&!catalogueReady){
+ catalogueReady=true;
+ void authState(session);
+}
 
 if(embedded){window.addEventListener('message',event=>{if(event.origin!==location.origin||event.source!==parent||event.data?.type!=='km16-payment-category')return;category=categoryFor(event.data.category);render();});document.dispatchEvent(new Event('km16-payment-ready'));parent.postMessage({type:'km16-payment-ready',enabled},location.origin);}

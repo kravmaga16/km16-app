@@ -72,7 +72,13 @@ export function initAdminMfa(auth, panel, { login = false } = {}) {
     verify.hidden = true;
     status.textContent = 'Préparation du code QR…';
     try {
-      const factor = requireData(await auth.mfa.enroll({factorType:'totp', issuer:'KM16'}));
+      // An unfinished enrollment can keep its name reserved after a reload.
+      const friendlyName = `Application KM16 ${crypto.randomUUID()}`;
+      const factor = requireData(await auth.mfa.enroll({
+        factorType: 'totp',
+        issuer: 'KM16',
+        friendlyName,
+      }));
       if (current !== revision) return;
       factorId = factor.id;
       enrolling = true;
@@ -85,7 +91,7 @@ export function initAdminMfa(auth, panel, { login = false } = {}) {
       if (current !== revision) return;
       add.disabled = false;
       verify.hidden = !factors.options.length;
-      status.textContent = 'Impossible d’ajouter une application. Réessayez après avoir vérifié votre connexion.';
+      status.textContent = 'Impossible de préparer le code QR. Réessayez l’association.';
     }
   };
 

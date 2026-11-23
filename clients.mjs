@@ -1,4 +1,4 @@
-import {initAdminMfa} from './admin-mfa.mjs?v=login-20261122';
+import {initAdminMfa} from './admin-mfa.mjs?v=enrollment-20261123';
 import {withClubPayments, clubAmountKnown, clubPaymentLabel} from './club-payments.mjs';
 import {initCommunications} from './communications.mjs?v=ages1';
 import {SEASON,seasonState,parisDate} from './seasons.mjs?v=1';

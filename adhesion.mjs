@@ -17,6 +17,15 @@ let adminSessionToken=null;
 const embedded=new URLSearchParams(location.search).get('embed')==='1'&&parent!==window;
 const accountView=new URLSearchParams(location.search).get('espace')==='1'&&!embedded&&!location.hash.includes('offre=');
 const paymentReturn=new URLSearchParams(location.search);
+const prorataView=!!adminPanel&&(paymentReturn.get('vue')==='prorata'||location.hash==='#link-form');
+if(prorataView){
+ $('registration-intro').textContent='Accédez au formulaire de création d’un lien au prorata après connexion et vérification de votre session.';
+ const links=$('payment-links');
+ adminPanel.firstElementChild.after(links);
+ if(paymentReturn.get('connexion')==='expiree'){
+  $('account-status').textContent='Ce lien de connexion ne peut plus être utilisé. Demandez un nouveau lien ou utilisez votre mot de passe.';
+ }
+}
 const registrationConfirmation=paymentReturn.get('confirmation');
 const requestedOrder=accountView && /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(paymentReturn.get('order')||'')
  ? paymentReturn.get('order').toLowerCase() : '';
@@ -347,7 +356,7 @@ $('email-link-login').onsubmit=async event=>{
  event.preventDefault();if(!$('email-link-login').reportValidity())return;
  const button=$('account-email-submit');if(button.disabled)return;button.disabled=true;
  accountMessage('Envoi du lien de connexion…');
- try{if(!client)throw Error('Connexion indisponible');if(requestedOrder)saveOrderLoginReturn(requestedOrder,$('account-email').value);else if(reuseOrder&&(renewalJourney||trialJourney))saveOrderLoginReturn(reuseOrder,$('account-email').value,renewalJourney?'renewal':'trial');const {error}=await accountTimeout(client.auth.signInWithOtp({email:normalizeEmail($('account-email').value),options:{shouldCreateUser:false,emailRedirectTo:'https://app.km16.fr/'}}));if(error)throw error;accountMessage('Si vous avez un espace KM16 à cette adresse, consultez votre boîte e-mail pour vous connecter.');}
+ try{if(!client)throw Error('Connexion indisponible');if(requestedOrder)saveOrderLoginReturn(requestedOrder,$('account-email').value);else if(reuseOrder&&(renewalJourney||trialJourney))saveOrderLoginReturn(reuseOrder,$('account-email').value,renewalJourney?'renewal':'trial');const {error}=await accountTimeout(client.auth.signInWithOtp({email:normalizeEmail($('account-email').value),options:{shouldCreateUser:false,emailRedirectTo:prorataView?'https://app.km16.fr/?confirmation=admin-prorata':'https://app.km16.fr/'}}));if(error)throw error;accountMessage('Si vous avez un espace KM16 à cette adresse, consultez votre boîte e-mail pour vous connecter.');}
  catch(error){accountMessage(error?.status===429?'Un lien a déjà été demandé. Patientez une minute avant de réessayer.':'Le lien n’a pas pu être envoyé. Vérifiez votre adresse puis réessayez.',true);}
  finally{button.disabled=false;}
 };
@@ -1263,7 +1272,7 @@ async function restoreAdmin(s){
  $('account-access').hidden=!!s;
  $('connected').hidden=!s;
  $('identity').textContent=s?.user.email||'';
- accountMessage('');
+ if(s||!prorataView||paymentReturn.get('connexion')!=='expiree')accountMessage('');
  if(!s){
   resetAdhesionMfa?.();
   status.textContent='Connectez-vous pour accéder aux dossiers.';
@@ -1286,8 +1295,8 @@ async function restoreAdmin(s){
   status.textContent='';
   adminPanel.hidden=false;
   initLinks();
-  const target=$(location.hash.slice(1));
-  target?.scrollIntoView();
+  const target=prorataView?$('payment-links'):$(location.hash.slice(1));
+  target?.scrollIntoView({block:'start'});
   await Promise.all([admin(),listLinks()]);
  }catch(error){
   if(currentGeneration!==generation)return;

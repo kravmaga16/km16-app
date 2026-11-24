@@ -2,7 +2,7 @@
 // Preserve email confirmation before the tab navigation consumes the hash.
 if (/[#&](access_token|error|error_code)=/.test(location.hash)) {
   window.KM16_AUTH_FRAGMENT = location.hash.slice(1);
-  const isRegistration = new URLSearchParams(location.search).get('confirmation') === 'adhesion' &&
+  const isRegistration = ['adhesion','admin-prorata'].includes(new URLSearchParams(location.search).get('confirmation')) &&
     new URLSearchParams(window.KM16_AUTH_FRAGMENT).get('type') !== 'recovery';
   history.replaceState(null, '', location.pathname + location.search + (isRegistration ? '' : '#videos'));
 }
@@ -561,6 +561,12 @@ import {createCheckoutAccess, verifiedAccount, normalizeEmail, getPendingCheckou
       })).catch(error=>({error}));
       if (error) { recovery=false; message('Ce lien a expiré. Demandez un nouveau lien.',true); }
       else if(!recovery){confirmedSession=verifiedAccount(data?.session);confirmedReturn=!!confirmedSession;}
+    }
+    if(returnParams.get('confirmation')==='admin-prorata'&&fragment.get('type')!=='recovery'){
+      const target=new URL('./adhesion-admin.html?vue=prorata',location.href);
+      if(!confirmedReturn)target.searchParams.set('connexion','expiree');
+      location.replace(target.href);
+      return;
     }
     if(registrationReturn){
       const pending=await getPendingCheckout(confirmedSession);

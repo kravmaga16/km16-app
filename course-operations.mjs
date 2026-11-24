@@ -1,3 +1,4 @@
+import { courseCategoryLabel } from './course-category-label.mjs';
 const $=id=>document.getElementById(id);
 const params=new URLSearchParams(location.search);
 const view=params.get('vue');
@@ -12,7 +13,7 @@ const clock=new Intl.DateTimeFormat('sv-SE',{dateStyle:'short',timeStyle:'short'
 const money=new Intl.NumberFormat('fr-FR',{style:'currency',currency:'EUR'});
 const make=(parent,tag,content='')=>{const el=document.createElement(tag);el.textContent=content;parent.append(el);return el;};
 const row=()=>{const el=make(rows,'article');el.className='row';return el;};
-const sessionLabel=s=>day.format(new Date(s.session_date+'T12:00:00Z'))+' · '+s.start_time.slice(0,5)+'–'+s.end_time.slice(0,5)+' · '+s.venue+' · '+s.category;
+const sessionLabel=s=>day.format(new Date(s.session_date+'T12:00:00Z'))+' · '+s.start_time.slice(0,5)+'–'+s.end_time.slice(0,5)+' · '+s.venue+' · '+courseCategoryLabel(s.category);
 const go=(parent,text,url)=>{const a=make(parent,'a',text);a.href=url;return a;};
 async function rpc(name,args){
  const {data,error}=await db.rpc(name,args);

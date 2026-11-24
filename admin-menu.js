@@ -28,7 +28,7 @@
     ["Finances", [
       ["Finances et encaissements", './clients.html#km16-finances', 'M3 3h7v7H3z M14 3h7v7h-7z M3 14h7v7H3z M14 14h7v7h-7z'],
       ["Règlements au club", './clients.html#km16-club-registration', 'M2 5h20v14H2z M2 10h20 M6 15h4'],
-      ["Créer un lien de paiement", './adhesion-admin.html#link-form', 'M10 13a4 4 0 006 0l4-4a4 4 0 00-6-6l-2 2 M14 11a4 4 0 00-6 0l-4 4a4 4 0 006 6l2-2'],
+      ["Créer un lien de paiement ou au prorata", './adhesion-admin.html?vue=prorata', 'M10 13a4 4 0 006 0l4-4a4 4 0 00-6-6l-2 2 M14 11a4 4 0 00-6 0l-4 4a4 4 0 006 6l2-2'],
       ["Ventes de tee-shirts", './tee-shirts.html#admin', 'M4 4l4-2 4 3 4-3 4 2v6l-3 2v12H7V8L4 6z'],
     ]],
     ["Communications", [
@@ -100,7 +100,7 @@
     const hash = location.hash || (panel.id === 'admin' ? '#admin' : '#workspace');
     for (const a of links) {
       const url = new URL(a.href);
-      if (url.origin === location.origin && url.pathname === location.pathname && url.hash === hash) a.setAttribute('aria-current', 'location');
+      if (url.origin === location.origin && url.pathname === location.pathname && (url.search ? url.search === location.search : url.hash === hash)) a.setAttribute('aria-current', 'location');
       else a.removeAttribute('aria-current');
     }
   }

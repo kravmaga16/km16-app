@@ -110,6 +110,11 @@ async function harness(browser,width,scenario){
    for(const listener of listeners)listener(event,next);
   };
   const auth={
+   mfa:{
+    getAuthenticatorAssuranceLevel:async()=>({data:{currentLevel:window.TEST_SESSION?.access_token==='admin-aal2'?'aal2':'aal1'},error:null}),
+    listFactors:async()=>({data:{totp:[{id:'fixture-totp'}]},error:null}),
+    challengeAndVerify:async()=>{window.authNotify('MFA_CHALLENGE_VERIFIED',{...confirmed,access_token:'admin-aal2'});return {data:{},error:null};}
+   },
    getSession:async()=>({data:{session:window.TEST_SESSION},error:null}),
    getUser:async()=>({data:{user:window.TEST_SESSION?.user||null},error:null}),
    onAuthStateChange:fn=>{listeners.push(fn);queueMicrotask(()=>fn('INITIAL_SESSION',window.TEST_SESSION));return {data:{subscription:{unsubscribe(){}}}};},
@@ -144,11 +149,19 @@ async function harness(browser,width,scenario){
    }
    else if(body.action==='checkout'){if(window.TEST_CHECKOUT_DELAY)await new Promise(resolve=>setTimeout(resolve,window.TEST_CHECKOUT_DELAY));data=scenario==='reminder-free'?{free:true}:{url:'https://checkout.stripe.com/c/pay/simulated-only'};}
    else if(body.action==='orders')data={orders:[],payments:[],documents:[]};
+   else if(scenario==='prorata-admin'&&body.action==='admin-access')data={admin:true};
+   else if(scenario==='prorata-admin'&&body.action==='admin-page')data={orders:[],payments:[],documents:[],mails:[]};
+   else if(scenario==='prorata-admin'&&body.action==='links-list')data={links:[]};
+   else if(scenario==='prorata-admin'&&body.action==='links-create')data={url:location.origin+'/adhesion.html#offre='+'a'.repeat(64),expires_at:'2027-12-01T00:00:00Z',livemode:false};
    else throw Error('Unexpected action: '+body.action);
    return new Response(JSON.stringify(data),{status:200,headers:{'Content-Type':'application/json'}});
   };
  },{initial,products,scenario,confirmed});
  const hostPage=await context.newPage();let page=hostPage;
+ if(scenario==='prorata-admin'){
+  await hostPage.goto(origin+'/adhesion-admin.html?vue=prorata');
+  return {context,page,events,errors,unexpected};
+ }
  if(scenario==='camera-embed'){
   await hostPage.goto(origin+'/__camera-host.html');
   const handle=await hostPage.waitForSelector('#payment-console-frame');page=await handle.contentFrame();
@@ -263,7 +276,40 @@ async function checkout(page,events){
 try{
  for(const [engineName,engine] of engines){
   const browser=await engine.launch({headless:true,...(engineName==='Chromium'&&process.env.KM16_CHROMIUM_PATH?{executablePath:process.env.KM16_CHROMIUM_PATH,args:['--no-sandbox']}: {})});
-  try{for(const width of [390,1280])for(const scenario of scenarios){
+  try{
+   if(!process.env.KM16_CAMERA_ONLY){
+    const {context,page,events,errors,unexpected}=await harness(browser,390,'prorata-admin');
+    try{
+     assert.equal(await page.locator('#link-form').isVisible(),false,'form stays hidden when signed out');
+     await page.locator('#account-email').fill('test@example.invalid');
+     await page.locator('#account-email-submit').click();
+     await page.waitForFunction(()=>document.querySelector('#account-status').textContent.includes('consultez votre boîte'));
+     const args=otpCalls(events)[0].args;
+     assert.equal(args.options.shouldCreateUser,false);
+     const redirect=new URL(args.options.emailRedirectTo);
+     assert.equal(redirect.searchParams.get('confirmation'),'admin-prorata');
+     await page.goto(origin+redirect.search+'#access_token=fixture&refresh_token=fixture&type=magiclink');
+     await page.waitForURL('**/adhesion-admin.html?vue=prorata');
+     const code=page.locator('#adhesion-admin-mfa input[name="code"]');
+     await code.waitFor({state:'visible'});
+     assert.equal(await page.locator('#link-form').isVisible(),false,'MFA is required before the form appears');
+     assert.equal(events.some(e=>e.body?.action==='links-list'),false,'private links are never requested before MFA');
+     await code.fill('123456');
+     await page.getByRole('button',{name:'Vérifier le code'}).click();
+     await page.locator('#link-form').waitFor({state:'visible'});
+     assert.equal(await page.locator('#admin > :nth-child(2)').getAttribute('id'),'payment-links');
+     await page.locator('#link-amount').fill('250,00');
+     await page.locator('#link-email').fill('payer@example.invalid');
+     await page.locator('#link-create').click();
+     await page.locator('#link-result').waitFor({state:'visible'});
+     const write=events.find(e=>e.body?.action==='links-create');
+     assert.equal(write.authorization,'Bearer admin-aal2');
+     assert.equal(write.body.total_cents,25000);
+     assert.deepEqual(errors,[]);assert.deepEqual(unexpected,[]);
+     console.log(`PASS ${engineName} prorata admin: email return, MFA and simulated link creation`);
+    }finally{await context.close();}
+   }
+   for(const width of [390,1280])for(const scenario of scenarios){
    const {context,page,hostPage,events,errors,unexpected}=await harness(browser,width,scenario);
    try{
     assert.equal(await page.locator('#order').isVisible(),true,'form opens before account creation');

@@ -1,6 +1,6 @@
 import {initAdminMfa} from './admin-mfa.mjs?v=enrollment-20261123';
 import {withClubPayments, clubAmountKnown, clubPaymentLabel} from './club-payments.mjs';
-import {initCommunications} from './communications.mjs?v=ages1';
+import {initCommunications} from './communications.mjs?v=ages-5-8';
 import {SEASON,seasonState,parisDate} from './seasons.mjs?v=1';
 import {clientsWorkbook,stagesMonthly} from './clients-excel.mjs?v=club-20261119';
 const $=id=>document.getElementById(id),ADMIN='alexandre.marchat@gmail.com';

@@ -1,3 +1,4 @@
+import { courseCategoryLabel } from './course-category-label.mjs?v=ages-5-8';
 const get = id => document.getElementById(id);
 const profile = get('next-profile');
 const message = get('next-session');
@@ -39,7 +40,7 @@ function render(){
   message.textContent = 'Aucune séance ouverte pour ce profil dans le calendrier actuel.';
   return;
  }
- message.textContent = dateFormat.format(new Date(next.session_date+'T12:00:00Z'))+' · '+next.start_time.slice(0,5)+'–'+next.end_time.slice(0,5)+' · '+next.venue+' · '+next.category;
+ message.textContent = dateFormat.format(new Date(next.session_date+'T12:00:00Z'))+' · '+next.start_time.slice(0,5)+'–'+next.end_time.slice(0,5)+' · '+next.venue+' · '+courseCategoryLabel(next.category);
  book.href = './course-booking.html?session='+encodeURIComponent(next.id);
  book.textContent = 'Réserver cette séance';
 }

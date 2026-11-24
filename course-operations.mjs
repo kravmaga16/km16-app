@@ -1,4 +1,4 @@
-import { courseCategoryLabel } from './course-category-label.mjs';
+import { courseCategoryLabel } from './course-category-label.mjs?v=ages-5-8';
 const $=id=>document.getElementById(id);
 const params=new URLSearchParams(location.search);
 const view=params.get('vue');

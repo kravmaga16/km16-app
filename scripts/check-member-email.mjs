@@ -267,6 +267,7 @@ try{
    const {context,page,hostPage,events,errors,unexpected}=await harness(browser,width,scenario);
    try{
     assert.equal(await page.locator('#order').isVisible(),true,'form opens before account creation');
+    assert.equal(await page.locator('#guardian').isVisible(),false,'guardian stays hidden until a minor’s date is entered');
     assert.equal(await page.locator('#checkout-reminder').isChecked(),false,'payment reminders are opt-in only');
     assert.equal(await page.locator('#checkout-reminder').getAttribute('required'),null,'reminder consent is independent of required terms');
     assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),true,'no horizontal overflow');
@@ -544,7 +545,10 @@ try{
      assert.equal(await page.locator('#checkout-reminder').isChecked(),false,'a different identity never inherits consent');
      assert.equal(await page.locator('#first_name').inputValue(),'','different account clears personal data');assert.equal(await page.locator('#photo-preview').isVisible(),false);
     }else if(scenario==='draft-new-tab'){
-     await fill(page);await page.locator('#count').selectOption('3');await page.locator('#installments').check();await page.locator('#checkout-reminder').check();await submitEmail(page,events);
+     await fill(page);await page.locator('#count').selectOption('4');await page.locator('#installments').check();
+     await page.locator('#count').selectOption('3');
+     assert.equal(await page.locator('#installments').isChecked(),false,'changing the schedule requires renewed consent');
+     await page.locator('#installments').check();await page.locator('#checkout-reminder').check();await submitEmail(page,events);
      const photo=await page.locator('#photo-preview').getAttribute('src');
      const redirect=new URL(otpCalls(events)[0].args.options.emailRedirectTo);
      const next=await context.newPage();await next.goto(origin+redirect.search+'#access_token=fixture&refresh_token=fixture&type=magiclink');
@@ -579,6 +583,7 @@ try{
      await page.locator('#checkout-reminder').check();
      await page.locator('#catalogue .card').filter({has:page.getByRole('heading',{name:'Cours d’essai offert',exact:true})}).getByRole('button').click();
      assert.equal(await page.locator('#checkout-reminder-wrap').isVisible(),false,'free trials never offer payment reminders');
+     assert.equal(await page.locator('#stripe-payment-note').isVisible(),false,'free trials do not display payment instructions');
      assert.equal(await page.locator('#checkout-reminder').isChecked(),false,'choosing a free trial clears earlier consent');
      await fill(page);await submitEmail(page,events);await notify(page);
      await page.locator('#pay').click();

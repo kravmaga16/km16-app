@@ -5,7 +5,7 @@ enhanceBirthDate(document.getElementById('birth_date'));
 import {preparePhoto} from './member-photo.mjs?v=1';
 import {createMemberCamera} from './member-camera.mjs?v=2';
 import {parseEuro,eligibleProducts} from './purchase-links.mjs?v=liens1';
-import {splitAmount,ageOn,validateOrder} from './rules.mjs';
+import {splitAmount,ageOn,validateOrder} from './rules.mjs?v=inscription-20261124';
 import {createCheckoutAccess,verifiedAccount,normalizeEmail,saveOrderLoginReturn} from './checkout-account.mjs?v=confirmation-20261124';
 const $=id=>document.getElementById(id),money=n=>new Intl.NumberFormat('fr-FR',{style:'currency',currency:'EUR'}).format(n/100);
 const client=window.supabase?.createClient('https://tlfewpbgbwesdriklxzb.supabase.co','sb_publishable_OGRSgobOGf54jlfmXGmS8g_04Ftvfsn',{auth:{storageKey:'km16-video-auth',detectSessionInUrl:false,flowType:'implicit'}});
@@ -175,10 +175,17 @@ function renderRecommendedMembership(offered=products){
  const button=text('button','M’inscrire à cette formule',actions);button.type='button';button.onclick=()=>choose(product);
  const planning=text('a','Voir tous les horaires et dojos',actions);planning.href='./#planning';
 }
-function choose(p,{focus=true}={}){if(busy)return;if(selected?.id!==p.id||Number(p.amount)<=0)$('checkout-reminder').checked=false;selected=p;if(focus&&p.kind==='annual')void trackMembershipStep('formula_chosen');$('checkout-reminder-wrap').hidden=!(Number(p.amount)>0);if(p.category==='Stages'&&!linkToken&&!embedded)prepareStageAnalytics();requestId=crypto.randomUUID();$('chosen').textContent=p.title;syncAccountForm();$('count').value=String(specialOffer?.count||1);$('count').disabled=!!specialOffer;$('payment-mode').hidden=p.kind!=='annual'||!!specialOffer;for(const o of $('count').options)o.disabled=p.kind!=='annual'&&o.value!=='1';$('eligibility-wrap').hidden=!p.review;$('eligibility').required=p.review;updateSchedule();if(focus){if(reusedMember&&!familyProfile)fillMemberDetails(reusedMember);$('selection').scrollIntoView({behavior:'smooth',block:'start'});$('first_name').focus({preventScroll:true});}}
-function updateSchedule(){if(!selected)return;const n=Number($('count').value),a=splitAmount(selected.amount,n);$('schedule').replaceChildren();text('strong',(n===1?'À régler : ':'Total : ')+money(selected.amount),$('schedule'));if(n>1)text('div','Aujourd’hui : '+money(a[0])+' · Puis '+(n-1)+' mensualités de '+money(a[1]),$('schedule'));if(selected.kind==='annual'||selected.kind==='monthly')text('div','Sans supplément · Licence non comprise',$('schedule'));$('installments-wrap').hidden=n===1;$('installments').required=n>1;updateCheckoutSummary();buttonState();}
-$('count').onchange=()=>{requestId=crypto.randomUUID();updateSchedule();};
-$('birth_date').onchange=()=>{let minor=true;try{minor=ageOn($('birth_date').value,today())<18;}catch{}$('guardian').hidden=!minor;$('guardian_name').required=minor;};
+function choose(p,{focus=true}={}){if(busy)return;if(selected?.id!==p.id||Number(p.amount)<=0)$('checkout-reminder').checked=false;$('installments').checked=false;if(selected?.id!==p.id)$('eligibility').checked=false;selected=p;if(focus&&p.kind==='annual')void trackMembershipStep('formula_chosen');$('checkout-reminder-wrap').hidden=!(Number(p.amount)>0);if(p.category==='Stages'&&!linkToken&&!embedded)prepareStageAnalytics();requestId=crypto.randomUUID();$('chosen').textContent=p.title;syncAccountForm();$('count').value=String(specialOffer?.count||1);$('count').disabled=!!specialOffer;$('payment-mode').hidden=p.kind!=='annual'||!!specialOffer;for(const o of $('count').options)o.disabled=p.kind!=='annual'&&o.value!=='1';$('eligibility-wrap').hidden=!p.review;$('eligibility').required=p.review;updateSchedule();if(focus){if(reusedMember&&!familyProfile)fillMemberDetails(reusedMember);$('selection').scrollIntoView({behavior:'smooth',block:'start'});$('first_name').focus({preventScroll:true});}}
+function updateSchedule(){
+ if(!selected)return;
+ const installments=Number($('count').value)>1;
+ $('installments-wrap').hidden=!installments;
+ $('installments').required=installments;
+ updateCheckoutSummary();
+ buttonState();
+}
+$('count').onchange=()=>{requestId=crypto.randomUUID();$('installments').checked=false;updateSchedule();};
+$('birth_date').onchange=()=>{let minor=false;try{const age=ageOn($('birth_date').value,today());minor=age>=0&&age<18;}catch{}$('guardian').hidden=!minor;$('guardian_name').required=minor;};
 $('login').onsubmit=async e=>{
  e.preventDefault();if(accountLoginBusy)return;
  if(!client){accountMessage('Connexion indisponible. Rechargez la page pour réessayer.',true);return;}
@@ -244,6 +251,7 @@ function isFreeTrial(id,amount){return ['essai','essai-saint-jean'].includes(id)
 function updateCheckoutSummary(){
  if(!selected)return;
  const trial=isFreeTrial(selected.id,selected.amount);
+ if($('stripe-payment-note'))$('stripe-payment-note').hidden=Number(selected.amount)===0;
  $('registration-validation-note').textContent=trial
   ?'Après l’enregistrement de votre demande de cours d’essai, choisissez librement une séance adaptée au pratiquant dans le planning. Présentez-vous à l’enseignant à votre arrivée.'
   :'L’inscription est soumise à la validation de KM16. Pour une formule réservée, faites confirmer votre éligibilité au club avant de payer.';
@@ -254,17 +262,12 @@ function updateCheckoutSummary(){
  const amounts=splitAmount(selected.amount,Number($('count').value));
  text('p',amounts[0]===0?'Aucun paiement à effectuer.':'À régler aujourd’hui : '+money(amounts[0]),summary);
  if(amounts.length>1)text('p','Puis '+(amounts.length-1)+' échéances mensuelles de '+money(amounts[1])+' · Total '+money(selected.amount),summary);
- if(trial){const planning=text('a','Consulter le planning pour mon cours d’essai',summary);planning.href='./#planning';}
  if(selected.kind==='annual'){
   text('p','Licence FEKM saison 2026/2027 : '+money(FEKM_LICENSE_CENTS)+' à régler séparément auprès de la fédération si nécessaire.',summary);
-  const faq=text('details','',summary);text('summary','Avant de m’inscrire',faq);
-  text('p','Vous pouvez commencer en cours de saison tant que la formule est ouverte. Le montant applicable est celui affiché ici.',faq);
-  text('p','Pour votre premier cours, prévoyez un tee-shirt blanc et un bas de kimono noir.',faq);
-  const equipment=text('a','Voir la tenue et les protections',faq);equipment.href='./#equipement';
  }
  else if(selected.category==='Stages')text('p','Après validation du paiement, retrouvez la confirmation et les informations du stage dans Mes inscriptions.',summary);
 }
-$('order').addEventListener('input',updateCheckoutSummary);
+for(const id of ['first_name','last_name'])$(id).addEventListener('input',updateCheckoutSummary);
 for(const id of ['first_name','last_name','birth_date','contact_email'])$(id).addEventListener('input',()=>{$('checkout-reminder').checked=false;});
 // Date entry is displayed by the date helper; a change also covers that control.
 $('birth_date').addEventListener('change',()=>{$('checkout-reminder').checked=false;});
@@ -377,7 +380,18 @@ if(!adminPanel)$('order').onsubmit=async e=>{
   session=verified;syncAccountForm();
   if(photoToUpload)await api({action:'photo-upload',request_id:payload.request_id,photo:photoToUpload},verified.user);
   const r=await api(payload,verified.user);
-  if(r.free){await checkoutAccess.clear();showCheckoutFeedback(isFreeTrial(selected.id,selected.amount)?'Votre demande gratuite a été enregistrée dans votre espace KM16. Vous pouvez venir quand vous le souhaitez sur une séance adaptée dans le planning. Présentez-vous à l’enseignant à votre arrivée.':'Votre demande gratuite a été enregistrée dans votre espace KM16. Le club doit la valider.');requestId=crypto.randomUUID();await orders();}
+  if(r.free){
+   await checkoutAccess.clear();
+   const trial=isFreeTrial(selected.id,selected.amount);
+   showCheckoutFeedback(trial?'Votre demande gratuite a été enregistrée dans votre espace KM16. Vous pouvez venir quand vous le souhaitez sur une séance adaptée dans le planning. Présentez-vous à l’enseignant à votre arrivée.':'Votre demande gratuite a été enregistrée dans votre espace KM16. Le club doit la valider.');
+   if(trial){
+    const planning=text('a','Consulter le planning pour mon cours d’essai',checkoutFeedback);
+    planning.href='./#planning';
+    checkoutFeedback.insertBefore(document.createElement('br'),planning);
+   }
+   requestId=crypto.randomUUID();
+   await orders();
+  }
   else{const u=new URL(r.url);if(u.protocol!=='https:'||u.hostname!=='checkout.stripe.com')throw Error('Adresse de paiement invalide');await checkoutAccess.clear();if(selected.kind==='annual')await trackMembershipStep('checkout_opened');if(!linkToken&&!embedded)await trackStageCheckout(selected, stageDetail && selected.id===requestedProduct ? reminderSource : undefined);(embedded?window.top:window).location.assign(u.href);}
  }catch(error){showCheckoutFeedback(error.message,true);}finally{for(const {element,disabled} of controls)element.disabled=disabled;busy=false;buttonState();}
 };
@@ -1397,6 +1411,10 @@ try{
    if(registrationConfirmation==='1')await restoreAccount();
    if(registrationConfirmation==='1'&&session){
     note(selected?'Votre e-mail est confirmé. Complétez le formulaire, puis poursuivez votre inscription.':'Votre e-mail est confirmé. Choisissez votre formule pour poursuivre votre inscription.');
+    if(selected){
+     $('selection').scrollIntoView({block:'start'});
+     $('first_name').focus({preventScroll:true});
+    }
    }else{
     note('Si votre lien a expiré ou a déjà été utilisé, reprenez votre demande et demandez un nouveau lien de confirmation.',true);
    }

@@ -22,7 +22,8 @@ export function validateOrder(product, data, today) {
  const age=ageOn(data.birth_date,today);
  if(age<0||age>110||product.min_age!=null&&age<product.min_age||product.max_age!=null&&age>product.max_age)throw Error('L’âge ne correspond pas à cette formule : contactez KM16');
  if(age<18&&!String(data.guardian_name||'').trim())throw Error('Représentant légal requis pour un mineur');
- if(!/^\+?[\d ().-]{8,25}$/.test(String(data.phone||'')))throw Error('Téléphone invalide');
+ const phone=String(data.phone||'');
+ if(!/^\+?[\d ().-]{8,25}$/.test(phone)||phone.replace(/\D/g,'').length<8)throw Error('Téléphone invalide');
  if(data.terms!==true||data.license!==true||data.privacy!==true||n>1&&data.installments!==true||product.review&&data.eligibility!==true)throw Error('Veuillez compléter les confirmations');
  return {count:n,amounts:splitAmount(product.amount,n),age};
 }

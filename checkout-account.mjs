@@ -323,7 +323,15 @@ export function createCheckoutAccess({client, kind, host, emailInput, getDraft, 
       record.retryAfter = 0;
       saved = await persist(record);
       show('Envoi du lien de vérification à ' + email + '…');
-      const {error} = await timeout(client.auth.signInWithOtp({email, options: {shouldCreateUser: true, emailRedirectTo: SITE}}));
+      const redirect = new URL(SITE);
+      if (kind === 'membership') {
+        redirect.searchParams.set('confirmation', 'adhesion');
+        // A public product can be reselected on another device. Keep private offers local.
+        if (!new URL(url, SITE).hash && /^[a-z0-9-]{1,100}$/.test(draft?.productId || '')) {
+          redirect.searchParams.set('produit', draft.productId);
+        }
+      }
+      const {error} = await timeout(client.auth.signInWithOtp({email, options: {shouldCreateUser: true, emailRedirectTo: redirect.href}}));
       if (error) throw Object.assign(Error(accessError(error)), {publicAccessError: true, rateLimited: error.status === 429 || ['over_email_send_rate_limit', 'over_request_rate_limit'].includes(error.code)});
       waiting();
       return null;

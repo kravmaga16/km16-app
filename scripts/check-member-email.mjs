@@ -37,6 +37,7 @@ async function harness(browser,width,scenario){
  await context.route('**/*',route=>{
   const url=new URL(route.request().url());
   if(url.origin===origin)return route.continue();
+  if(url.hostname==='script.google.com'&&url.pathname.startsWith('/macros/s/'))return route.fulfill({status:200,contentType:'text/javascript',body:'/* Agenda fixture. */'});
   if(url.hostname==='km16.fr'||url.hostname==='fonts.googleapis.com'||url.hostname==='fonts.gstatic.com')return route.fulfill({status:204});
   if(url.hostname==='cdn.jsdelivr.net'&&url.pathname.includes('supabase'))return route.fulfill({status:200,contentType:'text/javascript',body:'/* Auth test double already installed. */'});
   if(url.hostname==='checkout.stripe.com')return route.fulfill({status:200,contentType:'text/html',body:'<h1>Payment simulation only</h1>'});

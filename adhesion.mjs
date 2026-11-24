@@ -1,4 +1,4 @@
-import {downloadCalendar, downloadCourseCalendar, stageCalendarFile} from './course-calendar-export.mjs?v=2';
+import {downloadCalendar, downloadCourseCalendar, stageCalendarFile} from './course-calendar-export.mjs?v=ages-5-8';
 import {hasStageAnalyticsConsent, prepareStageAnalytics, stageReminderSource, trackStageCheckout, trackStageReminderVisit, trackMembershipStep} from './stage-analytics.mjs?v=adhesion-mesure-20261120';
 import {enhanceBirthDate} from './birth-date-input.mjs?v=1';
 enhanceBirthDate(document.getElementById('birth_date'));

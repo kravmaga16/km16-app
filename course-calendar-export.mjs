@@ -1,3 +1,4 @@
+import { courseCategoryLabel } from './course-category-label.mjs?v=ages-5-8';
 const parisOffset = new Intl.DateTimeFormat('en', {
   timeZone: 'Europe/Paris', timeZoneName: 'longOffset',
 });
@@ -49,7 +50,7 @@ function calendarFile({id, date, start, end, title, venue, details}) {
 export function courseCalendarFile(course) {
   return calendarFile({
     id: course.id, date: course.session_date, start: course.start_time, end: course.end_time,
-    title: 'Cours KM16 · ' + course.category, venue: course.venue,
+    title: 'Cours KM16 · ' + courseCategoryLabel(course.category), venue: course.venue,
     details: 'https://app.km16.fr/course-operations.html',
   });
 }

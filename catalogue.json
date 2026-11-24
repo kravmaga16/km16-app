@@ -62,10 +62,10 @@
     "category": "Enfants",
     "amount": 45500,
     "kind": "annual",
-    "min_age": 6,
+    "min_age": 5,
     "max_age": 8,
     "review": false,
-    "note": "6 à 8 ans révolus · Licence non comprise"
+    "note": "5 à 8 ans révolus · Licence non comprise"
   },
   {
     "id": "enfant-renouvellement",
@@ -73,7 +73,7 @@
     "category": "Enfants",
     "amount": 39900,
     "kind": "annual",
-    "min_age": 6,
+    "min_age": 5,
     "max_age": 8,
     "review": true,
     "note": "Réservé aux adhérents de la saison 2025–2026"
@@ -84,7 +84,7 @@
     "category": "Enfants",
     "amount": 33500,
     "kind": "annual",
-    "min_age": 6,
+    "min_age": 5,
     "max_age": 8,
     "review": true,
     "note": "Élèves de Saint-Jean-de-Passy uniquement · Certificat de scolarité ou carte scolaire de l’année en cours à fournir après paiement"

@@ -14,7 +14,7 @@ Pour les nouveaux inscrits, veuillez trouver ci-dessous la liste de l’équipem
 - Protège-dents
 - Protection poitrine pour les femmes (recommandée mais non obligatoire)
 - Gants de boxe :
-  - 8 oz minimum pour les enfants de 6 à 8 ans
+  - 8 oz minimum pour les enfants de 5 à 8 ans
   - 12 oz minimum pour les ados de 9 à 14 ans
   - 14 oz minimum pour les adultes
 - Tee-shirt blanc du club :
@@ -83,7 +83,7 @@ Au programme : Préparation de ceinture par niveau, de la jaune à la 4D.
 - Protège-dents
 - Protection poitrine pour les femmes (recommandée mais non obligatoire)
 - Gants de boxe :
-  - 8 oz minimum pour les enfants de 6 à 8 ans
+  - 8 oz minimum pour les enfants de 5 à 8 ans
   - 12 oz minimum pour les ados de 9 à 14 ans
   - 14 oz minimum pour les adultes
 - Tee-shirt blanc du club :

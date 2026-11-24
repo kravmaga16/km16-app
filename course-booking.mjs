@@ -1,3 +1,4 @@
+import { courseCategoryLabel } from './course-category-label.mjs';
 const $=id=>document.getElementById(id);
 const account=window.supabase?.createClient('https://tlfewpbgbwesdriklxzb.supabase.co','sb_publishable_OGRSgobOGf54jlfmXGmS8g_04Ftvfsn',{auth:{storageKey:'km16-video-auth',detectSessionInUrl:false,flowType:'implicit'}});
 async function accountSession(){
@@ -88,7 +89,7 @@ function refreshSessionChoices(){
  const category=$('category-filter').value,previous=$('session').value;
  const filtered=availableSessions.filter(s=>s.session_date>=todayParis()&&(!category||s.category===category));
  $('session').replaceChildren(new Option('Choisir une séance',''));
- for(const s of filtered)$('session').add(new Option(iso(s.session_date)+' · '+s.start_time.slice(0,5)+' · '+s.category+' · '+s.venue,s.id));
+ for(const s of filtered)$('session').add(new Option(iso(s.session_date)+' · '+s.start_time.slice(0,5)+' · '+courseCategoryLabel(s.category)+' · '+s.venue,s.id));
  if(filtered.some(s=>s.id===previous))$('session').value=previous;
  $('submit').disabled=!$('session').value;
  if(!filtered.length)$('status').textContent='Aucune séance disponible pour ces filtres.';
@@ -98,7 +99,7 @@ function setSessionFilters(rows){
  availableSessions=rows.filter(s=>s.session_date>=todayParis()).sort((a,b)=>(a.session_date+a.start_time).localeCompare(b.session_date+b.start_time));
  $('category-filter').replaceChildren(new Option('Toutes les catégories',''));
  const categories=[...new Set(availableSessions.map(s=>s.category))].sort((a,b)=>a.localeCompare(b,'fr'));
- for(const category of categories)$('category-filter').add(new Option(category,category));
+ for(const category of categories)$('category-filter').add(new Option(courseCategoryLabel(category),category));
  $('category-filter').onchange=refreshSessionChoices;
  $('session').onchange=()=>{$('submit').disabled=!$('session').value;};
  refreshSessionChoices();
@@ -167,7 +168,7 @@ $('book-form').onsubmit=async e=>{
   }
   const j=await call('book',booking,activeAccount.access_token);
   const url=cancellationUrl(j.cancellation_token);
-  $('booking-summary').textContent=selected?iso(selected.session_date)+' · '+selected.start_time.slice(0,5)+'–'+selected.end_time.slice(0,5)+' · '+selected.category+' · '+selected.venue:'';
+  $('booking-summary').textContent=selected?iso(selected.session_date)+' · '+selected.start_time.slice(0,5)+'–'+selected.end_time.slice(0,5)+' · '+courseCategoryLabel(selected.category)+' · '+selected.venue:'';
   $('status').textContent='Votre place est réservée ! '+(j.account_booking?'Retrouvez la séance dans Mes réservations.':'Conservez votre lien d’annulation ci-dessous.');
   $('cancel-link').href=url;$('token').value=j.cancellation_token;$('confirmation').hidden=false;
   $('new-booking').textContent = participants.length ? 'Inscrire une autre personne à cette séance' : 'Réserver une autre séance';

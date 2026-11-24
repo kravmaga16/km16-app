@@ -5,7 +5,7 @@ enhanceBirthDate(document.getElementById('birth_date'));
 import {preparePhoto} from './member-photo.mjs?v=1';
 import {createMemberCamera} from './member-camera.mjs?v=2';
 import {parseEuro,eligibleProducts} from './purchase-links.mjs?v=liens1';
-import {splitAmount,ageOn,validateOrder} from './rules.mjs';
+import {splitAmount,ageOn,validateOrder} from './rules.mjs?v=inscription-20261124';
 import {createCheckoutAccess,verifiedAccount,normalizeEmail,saveOrderLoginReturn} from './checkout-account.mjs?v=confirmation-20261124';
 const $=id=>document.getElementById(id),money=n=>new Intl.NumberFormat('fr-FR',{style:'currency',currency:'EUR'}).format(n/100);
 const client=window.supabase?.createClient('https://tlfewpbgbwesdriklxzb.supabase.co','sb_publishable_OGRSgobOGf54jlfmXGmS8g_04Ftvfsn',{auth:{storageKey:'km16-video-auth',detectSessionInUrl:false,flowType:'implicit'}});
@@ -175,7 +175,7 @@ function renderRecommendedMembership(offered=products){
  const button=text('button','M’inscrire à cette formule',actions);button.type='button';button.onclick=()=>choose(product);
  const planning=text('a','Voir tous les horaires et dojos',actions);planning.href='./#planning';
 }
-function choose(p,{focus=true}={}){if(busy)return;if(selected?.id!==p.id||Number(p.amount)<=0)$('checkout-reminder').checked=false;selected=p;if(focus&&p.kind==='annual')void trackMembershipStep('formula_chosen');$('checkout-reminder-wrap').hidden=!(Number(p.amount)>0);if(p.category==='Stages'&&!linkToken&&!embedded)prepareStageAnalytics();requestId=crypto.randomUUID();$('chosen').textContent=p.title;syncAccountForm();$('count').value=String(specialOffer?.count||1);$('count').disabled=!!specialOffer;$('payment-mode').hidden=p.kind!=='annual'||!!specialOffer;for(const o of $('count').options)o.disabled=p.kind!=='annual'&&o.value!=='1';$('eligibility-wrap').hidden=!p.review;$('eligibility').required=p.review;updateSchedule();if(focus){if(reusedMember&&!familyProfile)fillMemberDetails(reusedMember);$('selection').scrollIntoView({behavior:'smooth',block:'start'});$('first_name').focus({preventScroll:true});}}
+function choose(p,{focus=true}={}){if(busy)return;if(selected?.id!==p.id||Number(p.amount)<=0)$('checkout-reminder').checked=false;$('installments').checked=false;if(selected?.id!==p.id)$('eligibility').checked=false;selected=p;if(focus&&p.kind==='annual')void trackMembershipStep('formula_chosen');$('checkout-reminder-wrap').hidden=!(Number(p.amount)>0);if(p.category==='Stages'&&!linkToken&&!embedded)prepareStageAnalytics();requestId=crypto.randomUUID();$('chosen').textContent=p.title;syncAccountForm();$('count').value=String(specialOffer?.count||1);$('count').disabled=!!specialOffer;$('payment-mode').hidden=p.kind!=='annual'||!!specialOffer;for(const o of $('count').options)o.disabled=p.kind!=='annual'&&o.value!=='1';$('eligibility-wrap').hidden=!p.review;$('eligibility').required=p.review;updateSchedule();if(focus){if(reusedMember&&!familyProfile)fillMemberDetails(reusedMember);$('selection').scrollIntoView({behavior:'smooth',block:'start'});$('first_name').focus({preventScroll:true});}}
 function updateSchedule(){
  if(!selected)return;
  const installments=Number($('count').value)>1;
@@ -184,7 +184,7 @@ function updateSchedule(){
  updateCheckoutSummary();
  buttonState();
 }
-$('count').onchange=()=>{requestId=crypto.randomUUID();updateSchedule();};
+$('count').onchange=()=>{requestId=crypto.randomUUID();$('installments').checked=false;updateSchedule();};
 $('birth_date').onchange=()=>{let minor=false;try{const age=ageOn($('birth_date').value,today());minor=age>=0&&age<18;}catch{}$('guardian').hidden=!minor;$('guardian_name').required=minor;};
 $('login').onsubmit=async e=>{
  e.preventDefault();if(accountLoginBusy)return;

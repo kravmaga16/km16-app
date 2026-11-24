@@ -114,7 +114,7 @@ async function restoreAccount(){
  try{const {data,error}=await accountTimeout(client.auth.getSession());if(revision!==accountRevision)return;if(error)throw error;await authState(data.session);}
  catch{if(revision===accountRevision)accountMessage('Votre connexion n’a pas pu être rétablie. Connectez-vous ci-dessous.',true);}
 }
-function buttonState(){ $('save-request').disabled=busy||!selected;$('pay').disabled=busy||photoPreparing||!enabled||!selected||selected.draft;$('reset-request').disabled=busy;$('pay').textContent=busy?'Préparation de votre demande…':photoPreparing?'Préparation de la photo…':!enabled?'Paiement indisponible':!accountSession(session)?'Valider ma demande':selected?.amount===0?'Envoyer ma demande gratuite':'Continuer vers le paiement';for(const id of ['member_photo','member_camera','take-photo'])$(id).disabled=busy||photoPreparing;$('take-photo').textContent=photoData?'Reprendre une photo':'Prendre une photo';}
+function buttonState(){ $('save-request').disabled=busy||!selected;$('pay').disabled=busy||photoPreparing||!enabled||!selected||selected.draft;$('reset-request').disabled=busy;$('pay').textContent=busy?'Préparation de votre demande…':photoPreparing?'Préparation de la photo…':!enabled?'Paiement indisponible':!accountSession(session)?'Recevoir mon lien de confirmation':selected?.amount===0?'Envoyer ma demande gratuite':'Continuer vers le paiement';for(const id of ['member_photo','member_camera','take-photo'])$(id).disabled=busy||photoPreparing;$('take-photo').textContent=photoData?'Reprendre une photo':'Prendre une photo';}
 function render(){
  if(linkToken){$('catalogue').replaceChildren();$('filters').replaceChildren();return;}
  let offered=products.filter(p=>p.category!=='Interne'&&p.category!=='Équipement'&&(!p.event_date||p.event_date>=today())&&(!embedded||!p.draft));
@@ -271,12 +271,26 @@ $('km16-reuse-apply').addEventListener('click',()=>{$('checkout-reminder').check
 const draftFields=['first_name','last_name','birth_date','phone','guardian_name','contact_email'];
 const draftChecks=['license','terms','privacy','eligibility','installments'];
 function resetRegistration(){
+ if(checkoutFeedback){checkoutFeedback.hidden=true;checkoutFeedback.textContent='';}
  memberCamera.close();
  $('order').reset();photoData='';photoRevision++;photoPreparing=false;requestId=crypto.randomUUID();
  $('photo-preview').removeAttribute('src');$('photo-preview').hidden=true;$('photo-status').textContent='';
  $('birth_date').dispatchEvent(new Event('change'));
  if(selected){$('count').value=String(specialOffer?.count||1);updateSchedule();}
  syncAccountForm();
+}
+const checkoutFeedback=adminPanel?null:text('p','',document.createDocumentFragment(),'muted');
+if(checkoutFeedback){
+ checkoutFeedback.setAttribute('role','status');
+ checkoutFeedback.hidden=true;
+ $('pay').after(checkoutFeedback,$('checkout-access'));
+}
+function showCheckoutFeedback(message,error=false){
+ note(message,error);
+ checkoutFeedback.textContent=message;
+ checkoutFeedback.className=error?'error':'muted';
+ checkoutFeedback.hidden=!message;
+ if(error)checkoutFeedback.scrollIntoView({block:'nearest'});
 }
 const checkoutAccess=adminPanel?null:createCheckoutAccess({
  client,kind:'membership',host:$('checkout-access'),emailInput:$('contact_email'),
@@ -301,7 +315,15 @@ const checkoutAccess=adminPanel?null:createCheckoutAccess({
   $('selection').scrollIntoView({behavior:'smooth',block:'start'});
   $('chosen').tabIndex=-1;$('chosen').focus({preventScroll:true});
  },
- onVerified:next=>{session=next;syncAccountForm();buttonState();note(Number(selected?.amount)===0?'Votre e-mail est confirmé. Vérifiez puis envoyez votre demande gratuite.':'Votre e-mail est confirmé. Vérifiez votre demande puis continuez vers le paiement.');}
+ onVerified:next=>{
+  session=next;syncAccountForm();buttonState();
+  note(Number(selected?.amount)===0?'Votre e-mail est confirmé. Vérifiez puis envoyez votre demande gratuite.':'Votre e-mail est confirmé. Vérifiez votre demande puis continuez vers le paiement.');
+  if(!busy&&selected){
+   const pay=$('pay');
+   pay.scrollIntoView({block:'center'});
+   pay.focus({preventScroll:true});
+  }
+ }
 });
 $('save-request').onclick=async()=>{
  const button=$('save-request');
@@ -331,13 +353,13 @@ $('logout').onclick=async()=>{
  if(error)accountMessage('La déconnexion n’a pas abouti. Réessayez.',true);
 };
 if(adminMfaGate)$('adhesion-admin-mfa-logout').onclick=$('logout').onclick;
-$('order').onsubmit=async e=>{
+if(!adminPanel)$('order').onsubmit=async e=>{
  e.preventDefault();if(busy||photoPreparing||$('member-camera-dialog').open||!selected||!enabled||!$('order').reportValidity())return;
  const controls=[...$('order').querySelectorAll('input,select')].map(element=>({element,disabled:element.disabled}));
  const photoToUpload=photoData;
  const reminderAccountId=session?.user?.id||null;
  for(const {element} of controls)element.disabled=true;
- busy=true;buttonState();note('Préparation de votre demande…');
+ busy=true;buttonState();showCheckoutFeedback('Préparation de votre demande…');
  const payload={action:'checkout',request_id:requestId,product_id:selected.id,reminder_opt_in:Number(selected.amount)>0&&$('checkout-reminder').checked,...($('purchase-profile').value?{household_id:$('purchase-profile').value}:{}),...(linkToken?{link_token:linkToken}:{}),count:Number($('count').value)};
  for(const id of ['first_name','last_name','birth_date','phone','guardian_name'])payload[id]=$(id).value;
  for(const id of draftChecks)payload[id]=$(id).checked;
@@ -345,14 +367,18 @@ $('order').onsubmit=async e=>{
   validateOrder(selected,payload,today());
   if(selected.kind==='annual')void trackMembershipStep('form_completed');
   const verified=await checkoutAccess.ensure();
-  if(!verified){note('Consultez votre e-mail pour confirmer cette adresse. Votre demande est conservée.');return;}
+  if(!verified){
+   showCheckoutFeedback('');
+   $('checkout-access').scrollIntoView({block:'nearest'});
+   return;
+  }
   payload.reminder_opt_in=payload.reminder_opt_in&&$('checkout-reminder').checked&&(!reminderAccountId||reminderAccountId===verified.user.id);
   session=verified;syncAccountForm();
   if(photoToUpload)await api({action:'photo-upload',request_id:payload.request_id,photo:photoToUpload},verified.user);
   const r=await api(payload,verified.user);
-  if(r.free){await checkoutAccess.clear();note(isFreeTrial(selected.id,selected.amount)?'Votre demande gratuite a été enregistrée dans votre espace KM16. Vous pouvez venir quand vous le souhaitez sur une séance adaptée dans le planning. Présentez-vous à l’enseignant à votre arrivée.':'Votre demande gratuite a été enregistrée dans votre espace KM16. Le club doit la valider.');requestId=crypto.randomUUID();await orders();}
+  if(r.free){await checkoutAccess.clear();showCheckoutFeedback(isFreeTrial(selected.id,selected.amount)?'Votre demande gratuite a été enregistrée dans votre espace KM16. Vous pouvez venir quand vous le souhaitez sur une séance adaptée dans le planning. Présentez-vous à l’enseignant à votre arrivée.':'Votre demande gratuite a été enregistrée dans votre espace KM16. Le club doit la valider.');requestId=crypto.randomUUID();await orders();}
   else{const u=new URL(r.url);if(u.protocol!=='https:'||u.hostname!=='checkout.stripe.com')throw Error('Adresse de paiement invalide');await checkoutAccess.clear();if(selected.kind==='annual')await trackMembershipStep('checkout_opened');if(!linkToken&&!embedded)await trackStageCheckout(selected, stageDetail && selected.id===requestedProduct ? reminderSource : undefined);(embedded?window.top:window).location.assign(u.href);}
- }catch(error){note(error.message,true);}finally{for(const {element,disabled} of controls)element.disabled=disabled;busy=false;buttonState();}
+ }catch(error){showCheckoutFeedback(error.message,true);}finally{for(const {element,disabled} of controls)element.disabled=disabled;busy=false;buttonState();}
 };
 let myOrderGroup='Tous les achats',myOrderData={orders:[],payments:[],documents:[]};
 const orderGroupNames=['Adhésions','Stages','Cours et essais','Équipements','Autres achats'];

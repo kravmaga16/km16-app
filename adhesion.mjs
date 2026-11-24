@@ -6,7 +6,7 @@ import {preparePhoto} from './member-photo.mjs?v=1';
 import {createMemberCamera} from './member-camera.mjs?v=2';
 import {parseEuro,eligibleProducts} from './purchase-links.mjs?v=liens1';
 import {splitAmount,ageOn,validateOrder} from './rules.mjs';
-import {createCheckoutAccess,verifiedAccount,normalizeEmail,saveOrderLoginReturn} from './checkout-account.mjs?v=brouillon-20261120';
+import {createCheckoutAccess,verifiedAccount,normalizeEmail,saveOrderLoginReturn} from './checkout-account.mjs?v=confirmation-20261124';
 const $=id=>document.getElementById(id),money=n=>new Intl.NumberFormat('fr-FR',{style:'currency',currency:'EUR'}).format(n/100);
 const client=window.supabase?.createClient('https://tlfewpbgbwesdriklxzb.supabase.co','sb_publishable_OGRSgobOGf54jlfmXGmS8g_04Ftvfsn',{auth:{storageKey:'km16-video-auth',detectSessionInUrl:false,flowType:'implicit'}});
 const endpoint='https://tlfewpbgbwesdriklxzb.supabase.co/functions/v1/km16-adhesions';
@@ -17,6 +17,7 @@ let adminSessionToken=null;
 const embedded=new URLSearchParams(location.search).get('embed')==='1'&&parent!==window;
 const accountView=new URLSearchParams(location.search).get('espace')==='1'&&!embedded&&!location.hash.includes('offre=');
 const paymentReturn=new URLSearchParams(location.search);
+const registrationConfirmation=paymentReturn.get('confirmation');
 const requestedOrder=accountView && /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(paymentReturn.get('order')||'')
  ? paymentReturn.get('order').toLowerCase() : '';
 const returnedOrder=paymentReturn.get('paid')==='1' ? requestedOrder : '';
@@ -1383,7 +1384,28 @@ try{
   try{specialOffer=await api({action:'link-preview',link_token:linkToken});$('offer-notice').hidden=false;$('offer-notice').textContent='Votre offre personnalisée : '+specialOffer.product.title+' · '+money(specialOffer.product.amount)+' · '+specialOffer.count+' fois, sans supplément. Utilisez l’e-mail du payeur indiqué à KM16 dans votre demande.';choose(specialOffer.product);}
   catch(e){$('offer-notice').hidden=false;$('offer-notice').textContent=e.message;$('order').hidden=true;selected=null;}
  }
- catalogueReady=true;if(!accountView&&!adminPanel){if(await checkoutAccess.resumeAvailable())$('resume-request').hidden=false;else await checkoutAccess.restore();}checkoutAccess?.sync(session);if(session||adminPanel)void authState(session).catch(()=>accountMessage('Les informations du compte sont temporairement indisponibles.',true));
+ catalogueReady=true;
+ if(!accountView&&!adminPanel){
+  let restored=false;
+  if(!registrationConfirmation&&await checkoutAccess.resumeAvailable())$('resume-request').hidden=false;
+  else restored=await checkoutAccess.restore();
+  if(registrationConfirmation&&!restored){
+   if(!linkToken&&stageCatalogueLoaded&&enabled){
+    const product=products.find(p=>p.id===requestedProduct&&!p.draft&&p.category!=='Interne'&&p.category!=='Équipement'&&(!p.event_date||p.event_date>=today()));
+    if(product)choose(product,{focus:false});
+   }
+   if(registrationConfirmation==='1')await restoreAccount();
+   if(registrationConfirmation==='1'&&session){
+    note(selected?'Votre e-mail est confirmé. Complétez le formulaire, puis poursuivez votre inscription.':'Votre e-mail est confirmé. Choisissez votre formule pour poursuivre votre inscription.');
+   }else{
+    note('Si votre lien a expiré ou a déjà été utilisé, reprenez votre demande et demandez un nouveau lien de confirmation.',true);
+   }
+  }else if(registrationConfirmation==='erreur'&&!session){
+   note('Ce lien ne peut plus être utilisé. Demandez un nouveau lien depuis votre formulaire.',true);
+  }
+ }
+ checkoutAccess?.sync(session);
+ if(session||adminPanel)void authState(session).catch(()=>accountMessage('Les informations du compte sont temporairement indisponibles.',true));
  if(paymentReturn.has('cancel'))note(requestedOrder?'Paiement interrompu. Vous pouvez vérifier et reprendre le paiement depuis ce dossier.':'Vous avez quitté le paiement. Consultez Mes inscriptions avant de recommencer.');
 }catch{note('Chargement impossible. Rechargez la page ou contactez contact@km16.fr.',true);}
 if(adminPanel&&!catalogueReady){

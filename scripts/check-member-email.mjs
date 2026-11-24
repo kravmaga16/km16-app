@@ -23,7 +23,7 @@ const server=createServer(async(req,res)=>{try{
 await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
 const origin='http://127.0.0.1:'+server.address().port;
 const engines=process.env.KM16_CHROMIUM_ONLY?[['Chromium',chromium]]:[['Chromium',chromium],['WebKit',webkit]];
-const allScenarios=['guest','session','anonymous','unconfirmed','slow-catalogue','guest-refresh','network-error','network-reload','rate-limit','wrong-identity','draft-new-tab','logout','minor','identity-switch-before-checkout','reminder-free','camera','camera-errors','camera-cancel-pending','camera-embed','camera-desktop-devices','camera-device-recovery','camera-framing'];
+const allScenarios=['guest','session','anonymous','unconfirmed','slow-catalogue','guest-refresh','network-error','network-reload','rate-limit','wrong-identity','draft-new-tab','confirmation-no-draft','confirmation-legacy','confirmation-expired','logout','minor','identity-switch-before-checkout','reminder-free','camera','camera-errors','camera-cancel-pending','camera-embed','camera-desktop-devices','camera-device-recovery','camera-framing'];
 const scenarios=process.env.KM16_CAMERA_ONLY?allScenarios.filter(name=>name.startsWith('camera')):allScenarios;
 const otpCalls=events=>events.filter(e=>e.type==='otp');
 const writes=events=>events.filter(e=>e.type==='api'&&['photo-upload','checkout'].includes(e.body.action));
@@ -37,6 +37,8 @@ async function harness(browser,width,scenario){
  await context.route('**/*',route=>{
   const url=new URL(route.request().url());
   if(url.origin===origin)return route.continue();
+  if(url.hostname==='script.google.com'&&url.pathname.startsWith('/macros/s/'))return route.fulfill({status:200,contentType:'text/javascript',body:'/* Agenda fixture. */'});
+  if(url.hostname==='km16.fr'||url.hostname==='fonts.googleapis.com'||url.hostname==='fonts.gstatic.com')return route.fulfill({status:204});
   if(url.hostname==='cdn.jsdelivr.net'&&url.pathname.includes('supabase'))return route.fulfill({status:200,contentType:'text/javascript',body:'/* Auth test double already installed. */'});
   if(url.hostname==='checkout.stripe.com')return route.fulfill({status:200,contentType:'text/html',body:'<h1>Payment simulation only</h1>'});
   unexpected.push(url.origin+url.pathname);return route.abort();
@@ -245,7 +247,9 @@ async function notify(page,email=confirmed.user.email){
 async function submitEmail(page,events){
  await page.locator('#pay').click();await page.waitForFunction(()=>!document.querySelector('#checkout-access').hidden&&!document.querySelector('#pay').disabled);
  assert.equal(otpCalls(events).length,1);const args=otpCalls(events)[0].args;
- assert.equal(args.options.shouldCreateUser,true);assert.equal(args.options.emailRedirectTo,'https://app.km16.fr/');assert.equal(args.email,'test@example.invalid');
+ assert.equal(args.options.shouldCreateUser,true);const redirect=new URL(args.options.emailRedirectTo);
+ assert.equal(redirect.origin+redirect.pathname,'https://app.km16.fr/');assert.equal(redirect.searchParams.get('confirmation'),'adhesion');
+ assert.match(redirect.searchParams.get('produit')||'',/^[a-z0-9-]+$/);assert.equal(args.email,'test@example.invalid');
  assert.deepEqual(writes(events),[],'no dossier/photo/payment before email verification');
 }
 async function checkout(page,events){
@@ -541,12 +545,32 @@ try{
      assert.equal(await page.locator('#first_name').inputValue(),'','different account clears personal data');assert.equal(await page.locator('#photo-preview').isVisible(),false);
     }else if(scenario==='draft-new-tab'){
      await fill(page);await page.locator('#count').selectOption('3');await page.locator('#installments').check();await page.locator('#checkout-reminder').check();await submitEmail(page,events);
-     const photo=await page.locator('#photo-preview').getAttribute('src');await page.evaluate(s=>localStorage.setItem('km16-test-auth',JSON.stringify(s)),confirmed);
-     const next=await context.newPage();await next.goto(origin+'/adhesion.html');await next.waitForFunction(()=>document.querySelector('#first_name').value==='Camille'&&!document.querySelector('#order').hidden);
+     const photo=await page.locator('#photo-preview').getAttribute('src');
+     const redirect=new URL(otpCalls(events)[0].args.options.emailRedirectTo);
+     const next=await context.newPage();await next.goto(origin+redirect.search+'#access_token=fixture&refresh_token=fixture&type=magiclink');
+     await next.waitForURL('**/adhesion.html?confirmation=1');await next.waitForFunction(()=>document.querySelector('#first_name').value==='Camille'&&!document.querySelector('#order').hidden);
      assert.equal(await next.locator('#last_name').inputValue(),'Exemple');assert.equal(await next.locator('#birth_date-display').inputValue(),'01/01/1990');assert.equal(await next.locator('#count').inputValue(),'3');
      assert.equal(await next.locator('#photo-preview').getAttribute('src'),photo);assert.equal(await next.locator('#terms').isChecked(),true);assert.equal(await next.locator('#installments').isChecked(),true);assert.equal(await next.locator('#contact_email').inputValue(),confirmed.user.email);assert.deepEqual(writes(events),[]);
      assert.equal(await next.locator('#checkout-reminder').isChecked(),false,'a saved draft cannot reinstate reminder consent');
      const body=await checkout(next,events);assert.equal(body.count,3);assert.equal(body.reminder_opt_in,false);
+    }else if(scenario.startsWith('confirmation-')){
+     await fill(page);await submitEmail(page,events);
+     const expectedProduct=await page.locator('#chosen').textContent();
+     await page.evaluate(()=>localStorage.removeItem('km16-pending-checkout'));
+     const redirect=new URL(otpCalls(events)[0].args.options.emailRedirectTo);
+     const next=await context.newPage();
+     const expired=scenario==='confirmation-expired';
+     const legacy=scenario==='confirmation-legacy';
+     await next.goto(origin+(legacy?'':redirect.search)+(expired?'#error_code=otp_expired':'#access_token=fixture&refresh_token=fixture&type=magiclink'));
+     if(legacy)await next.getByRole('link',{name:'Reprendre mon inscription KM16'}).click();
+     await next.waitForURL(new RegExp('/adhesion[.]html[?].*confirmation='+(expired?'erreur':'1')));
+     await next.waitForFunction(expired=>document.querySelector('#status').textContent.includes(expired?'demandez un nouveau lien':'Votre e-mail est confirmé'),expired);
+     if(!legacy){
+      assert.equal(await next.locator('#chosen').textContent(),expectedProduct);
+      assert.equal(await next.locator('#first_name').inputValue(),'','personal data is never carried by the email URL');
+      if(!expired)assert.match(await next.locator('#pay').textContent(),/Continuer vers le paiement/);
+     }
+     assert.deepEqual(writes(events),[],'opening a confirmation does not create an order or initiate payment');
     }else if(scenario==='logout'){
      await fill(page);await page.locator('#checkout-reminder').check();await page.locator('#logout').click();await page.waitForFunction(()=>!document.querySelector('#contact_email').readOnly);
      assert.equal(await page.locator('#checkout-reminder').isChecked(),false,'logout clears the opt-in');

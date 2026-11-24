@@ -2,7 +2,9 @@
 // Preserve email confirmation before the tab navigation consumes the hash.
 if (/[#&](access_token|error|error_code)=/.test(location.hash)) {
   window.KM16_AUTH_FRAGMENT = location.hash.slice(1);
-  history.replaceState(null, '', location.pathname + location.search + '#videos');
+  const isRegistration = new URLSearchParams(location.search).get('confirmation') === 'adhesion' &&
+    new URLSearchParams(window.KM16_AUTH_FRAGMENT).get('type') !== 'recovery';
+  history.replaceState(null, '', location.pathname + location.search + (isRegistration ? '' : '#videos'));
 }
 </script><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#ffffff"><meta name="description" content="Application officielle KM16. Consultez le planning et les stages, réservez un cours et retrouvez votre espace adhérent."><link rel="preload" as="image" href="./equipe-km16-800.webp" imagesrcset="./equipe-km16-480.webp 480w, ./equipe-km16-800.webp 800w, ./equipe-km16-1200.webp 1200w" imagesizes="(max-width:740px) 100vw, (max-width:1100px) 45vw, 500px" fetchpriority="high"><link rel="preconnect" href="https://tlfewpbgbwesdriklxzb.supabase.co" crossorigin><link rel="dns-prefetch" href="//cdn.jsdelivr.net"><link rel="manifest" href="./manifest.webmanifest"><link rel="icon" href="./icon-192.png"><link rel="apple-touch-icon" href="./app-icon-192.png"><title>Application KM16 · Planning, réservations et adhésions</title>
 <link rel="canonical" href="https://app.km16.fr/">
@@ -106,6 +108,7 @@ if (/[#&](access_token|error|error_code)=/.test(location.hash)) {
 <section class="panel" id="tarifs"><h2>Tarifs & adhésion</h2><p class="lead">Cotisations annuelles · Saison 2026–2027. L’adhésion donne accès aux cours de la catégorie et de la formule choisies. Le planning adulte propose 9 h de cours tous niveaux et 2 h 30 de préparation à la ceinture noire par semaine, hors fermetures.</p><div style="overflow-x:auto"><table class="tarif-table"><thead><tr><th scope="col">Catégorie</th><th scope="col">Première inscription</th><th scope="col">Renouvellement</th><th scope="col">Saint-Jean-de-Passy</th></tr></thead><tbody><tr><th scope="row">Adultes (dès 15 ans)</th><td>630 €</td><td>570 €</td><td>510 €</td></tr><tr><th scope="row">Ados (9–14 ans)</th><td>610 €</td><td>570 €</td><td>475 €</td></tr><tr><th scope="row">Enfants (6–8 ans)</th><td>455 €</td><td>399 €</td><td>335 €</td></tr></tbody></table></div><p class="muted">Renouvellement réservé aux adhérents de la saison 2025–2026. Tarif Saint-Jean-de-Passy soumis à vérification de l’éligibilité. Licence FEKM de 33 € par saison et par pratiquant, à régler séparément pour les adhésions annuelles.</p><p>Les 15–17 ans suivent les cours adultes. Leur représentant légal effectue l’inscription. Pour connaître le justificatif d’aptitude requis, les garanties d’assurance ou les éventuelles conditions tarifaires pour plusieurs membres d’un foyer, <a href="https://km16.fr/contacts/">contactez KM16 avant de payer</a>.</p><p><a href="./adhesion.html?produit=cours-deux-heures">Cours à l’unité de 2 h · 40 €</a>. Valable un mois, date à convenir avec KM16.</p><section id="payment-console" aria-labelledby="payment-console-title"><h3 id="payment-console-title">Votre inscription et votre paiement</h3><p>Choisissez votre formule et renseignez le dossier du pratiquant. Les cotisations annuelles peuvent être réglées en 1, 3 ou 4 fois, sans supplément. La licence FEKM est à régler séparément.</p><p><a href="./adhesion.html">S’inscrire en ligne <span aria-hidden="true">→</span></a></p><p id="payment-console-status" role="status" aria-live="polite"></p><div id="payment-console-host"></div></section></section>
 <section class="panel" id="videos" hidden>
 <div class="video-intro"><span class="tag">Créations originales KM16</span><h2>Votre entraînement continue ici</h2><p class="lead">Les explications de l’équipe KM16, à retrouver à votre rythme. Achat à l’unité, sans abonnement.</p><span>Accès permanent aux vidéos achetées · Lecture en streaming</span></div>
+<p id="kv-legacy-registration-return" hidden><a href="./adhesion.html?confirmation=1">Reprendre mon inscription KM16</a></p>
 <div id="kv-status" role="status" aria-live="polite" class="kv-status">Chargement de la vidéothèque…</div>
 <div class="kv-layout">
 <article class="card kv-account"><h3>Déjà client ?</h3>
@@ -363,7 +366,7 @@ document.addEventListener('visibilitychange',()=>{if(!document.hidden)km16Update
 </script><script>
 (function(){const box=document.querySelector('.club-news');const btn=box&&box.querySelector('.club-news-toggle');if(!btn)return;btn.addEventListener('click',function(){const paused=box.classList.toggle('is-paused');btn.setAttribute('aria-pressed',String(paused));btn.setAttribute('aria-label',paused?'Reprendre le défilement':'Mettre le défilement en pause');btn.textContent=paused?'▶':'Ⅱ';});})();
 </script><script type="module">
-import {createCheckoutAccess, verifiedAccount, normalizeEmail, getPendingCheckout, takeOrderLoginReturn} from './checkout-account.mjs?v=adhesion-foyer-20261119';
+import {createCheckoutAccess, verifiedAccount, normalizeEmail, getPendingCheckout, takeOrderLoginReturn} from './checkout-account.mjs?v=confirmation-20261124';
 (async function () {
   'use strict';
   const BASE = 'https://tlfewpbgbwesdriklxzb.supabase.co';
@@ -548,15 +551,34 @@ import {createCheckoutAccess, verifiedAccount, normalizeEmail, getPendingCheckou
     });
     const fragment=new URLSearchParams(window.KM16_AUTH_FRAGMENT || '');
     delete window.KM16_AUTH_FRAGMENT;
-    let confirmedReturn=false;
+    const returnParams=new URLSearchParams(location.search);
+    const registrationReturn=returnParams.get('confirmation')==='adhesion'&&fragment.get('type')!=='recovery';
+    let confirmedReturn=false, confirmedSession=null;
     if (fragment.get('access_token') && fragment.get('refresh_token')) {
       recovery=fragment.get('type')==='recovery';
-      const {error}=await client.auth.setSession({access_token:fragment.get('access_token'),refresh_token:fragment.get('refresh_token')});
+      const {data,error}=await withDeadline(client.auth.setSession({
+        access_token:fragment.get('access_token'),refresh_token:fragment.get('refresh_token')
+      })).catch(error=>({error}));
       if (error) { recovery=false; message('Ce lien a expiré. Demandez un nouveau lien.',true); }
-      else confirmedReturn=!recovery;
+      else if(!recovery){confirmedSession=verifiedAccount(data?.session);confirmedReturn=!!confirmedSession;}
+    }
+    if(registrationReturn){
+      const pending=await getPendingCheckout(confirmedSession);
+      const target=new URL(pending?.kind==='membership'?pending.url:'./adhesion.html',location.href);
+      const product=returnParams.get('produit')||'';
+      if(pending?.kind!=='membership'&&/^[a-z0-9-]{1,100}$/.test(product))target.searchParams.set('produit',product);
+      target.searchParams.set('confirmation',confirmedReturn?'1':'erreur');
+      location.replace(target.href);
+      return;
     }
     const {data}=await client.auth.getSession(); account(data.session);
-    if(confirmedReturn){const target=takeOrderLoginReturn(session);if(target){location.replace(target);return;}const pending=await getPendingCheckout(session);if(pending&&pending.kind!=='video'){location.replace(pending.url);return;}}
+    if(confirmedReturn){
+      const target=takeOrderLoginReturn(session);
+      if(target){location.replace(target);return;}
+      const pending=await getPendingCheckout(session);
+      if(pending&&pending.kind!=='video'){location.replace(pending.url);return;}
+      if(!pending&&session)el('kv-legacy-registration-return').hidden=false;
+    }
     el('kv-auth-submit').disabled=false;el('kv-access-submit').disabled=false;
     el('kv-email-access').onsubmit=async event=>{
       event.preventDefault();const button=el('kv-access-submit');if(button.disabled)return;button.disabled=true;

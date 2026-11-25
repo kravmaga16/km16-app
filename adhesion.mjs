@@ -40,7 +40,7 @@ let reusedMember=null;
 let trialReuseAttempt='';
 const requestedCategory=new URLSearchParams(location.search).get('categorie')||'Tous';
 const requestedProduct=new URLSearchParams(location.search).get('produit')||'';
-let stageCatalogueLoaded=false;
+let stageCatalogueLoaded=false,catalogueUnavailable=false;
 let reminderSource=stageReminderSource(new URLSearchParams(location.search).get('source_stage'));
 const stageDetail=/^stage-[a-z0-9-]+$/.test(requestedProduct)&&!embedded&&!accountView;
 if(stageDetail){
@@ -52,9 +52,15 @@ if(stageDetail){
 }
 const requestedStageDate=new URLSearchParams(location.search).get('stage_date')||'';
 const categoryFor=value=>{const s=String(value).toLowerCase();return s.includes('adulte')?'Adultes':s.includes('enfant')?'Enfants':s.includes('ado')?'Ados':['Tous','Stages','Découverte','Équipement'].includes(value)?value:'Tous';};
-let products=[],selected=null,session=null,enabled=false,category='Tous',busy=false,requestId=crypto.randomUUID(),generation=0;
+let products=[],selected=null,session=null,enabled=false,category=categoryFor(requestedCategory),busy=false,requestId=crypto.randomUUID(),generation=0;
 const linkToken=new URLSearchParams(location.hash.slice(1)).get('offre')||'';
 let specialOffer=null;
+if(embedded)window.addEventListener('message',event=>{
+ if(event.origin!==location.origin||event.source!==parent||event.data?.type!=='km16-payment-category')return;
+ category=categoryFor(event.data.category);
+ render();
+});
+
 let photoData='',photoRevision=0,photoPreparing=false;
 async function selectMemberPhoto(input,file=input?.files?.[0]){
  if(!file||busy)return;
@@ -94,7 +100,7 @@ if(accountView){
 const today=()=>new Intl.DateTimeFormat('en-CA',{timeZone:'Europe/Paris',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
 function note(t,error=false){$('status').textContent=t;$('status').className=error?'error':'';}
 function text(tag,t,parent,cls){const e=document.createElement(tag);e.textContent=t;if(cls)e.className=cls;parent.append(e);return e;}
-async function api(data,expectedUser=null){const s=client?(await accountTimeout(client.auth.getSession())).data?.session:null;if(expectedUser&&(!verifiedAccount(s)||s.user.id!==expectedUser.id||normalizeEmail(s.user.email)!==normalizeEmail(expectedUser.email)))throw Error('Votre connexion a changé. Vérifiez votre demande avant de continuer.');const r=await fetch(endpoint,{method:'POST',headers:{'Content-Type':'application/json',...(s?{Authorization:'Bearer '+s.access_token}:{})},body:JSON.stringify(data)});const result=await r.json();if(!r.ok)throw Error(result.error||'Service indisponible');return result;}
+async function api(data,expectedUser=null){const s=client&&data.action!=='catalogue'?(await accountTimeout(client.auth.getSession())).data?.session:null;if(expectedUser&&(!verifiedAccount(s)||s.user.id!==expectedUser.id||normalizeEmail(s.user.email)!==normalizeEmail(expectedUser.email)))throw Error('Votre connexion a changé. Vérifiez votre demande avant de continuer.');const r=await fetch(endpoint,{method:'POST',headers:{'Content-Type':'application/json',...(s?{Authorization:'Bearer '+s.access_token}:{})},body:JSON.stringify(data),...(data.action==='catalogue'?{signal:AbortSignal.timeout(8000)}:{})});const result=await r.json();if(!r.ok)throw Error(result.error||'Service indisponible');return result;}
 // Account restoration must not wait for the remote catalogue or order history.
 let accountRevision=0,accountLoginBusy=false,catalogueReady=false;
 const accountSession=verifiedAccount;
@@ -140,7 +146,7 @@ function render(){
   const stage=offered.find(p=>p.id===requestedProduct&&p.category==='Stages'&&!p.draft&&!p.review);
   const host=$('catalogue');host.replaceChildren();$('filters').replaceChildren();
   const card=document.createElement('article');card.className='card';host.append(card);
-  if(!stageCatalogueLoaded)text('p','Chargement du stage…',card);
+  if(!stageCatalogueLoaded)text('p',catalogueUnavailable?'Les informations de ce stage sont temporairement indisponibles.':'Chargement du stage…',card);
   else if(stage){
    const number=/^stage-([1-9])$/.exec(stage.id)?.[1]||(stage.id==='stage-combat'?'8':'');
    if(number)text('span','Stage '+number+'/9',card,'tag');
@@ -184,7 +190,7 @@ function renderRecommendedMembership(offered=products){
  const button=text('button','M’inscrire à cette formule',actions);button.type='button';button.onclick=()=>choose(product);
  const planning=text('a','Voir tous les horaires et dojos',actions);planning.href='./#planning';
 }
-function choose(p,{focus=true}={}){if(busy)return;if(selected?.id!==p.id||Number(p.amount)<=0)$('checkout-reminder').checked=false;$('installments').checked=false;if(selected?.id!==p.id)$('eligibility').checked=false;selected=p;if(focus&&p.kind==='annual')void trackMembershipStep('formula_chosen');$('checkout-reminder-wrap').hidden=!(Number(p.amount)>0);if(p.category==='Stages'&&!linkToken&&!embedded)prepareStageAnalytics();requestId=crypto.randomUUID();$('chosen').textContent=p.title;syncAccountForm();$('count').value=String(specialOffer?.count||1);$('count').disabled=!!specialOffer;$('payment-mode').hidden=p.kind!=='annual'||!!specialOffer;for(const o of $('count').options)o.disabled=p.kind!=='annual'&&o.value!=='1';$('eligibility-wrap').hidden=!p.review;$('eligibility').required=p.review;updateSchedule();if(focus){if(reusedMember&&!familyProfile)fillMemberDetails(reusedMember);$('selection').scrollIntoView({behavior:'smooth',block:'start'});$('first_name').focus({preventScroll:true});}}
+function choose(p,{focus=true}={}){if(busy)return;if(checkoutFeedback)showCheckoutFeedback('');if(selected?.id!==p.id||Number(p.amount)<=0)$('checkout-reminder').checked=false;$('installments').checked=false;if(selected?.id!==p.id)$('eligibility').checked=false;selected=p;if(focus&&p.kind==='annual')void trackMembershipStep('formula_chosen');$('checkout-reminder-wrap').hidden=!(Number(p.amount)>0);if(p.category==='Stages'&&!linkToken&&!embedded)prepareStageAnalytics();requestId=crypto.randomUUID();$('chosen').textContent=p.title;syncAccountForm();$('count').value=String(specialOffer?.count||1);$('count').disabled=!!specialOffer;$('payment-mode').hidden=p.kind!=='annual'||!!specialOffer;for(const o of $('count').options)o.disabled=p.kind!=='annual'&&o.value!=='1';$('eligibility-wrap').hidden=!p.review;$('eligibility').required=p.review;updateSchedule();if(focus){if(reusedMember&&!familyProfile)fillMemberDetails(reusedMember);$('selection').scrollIntoView({behavior:'smooth',block:'start'});$('first_name').focus({preventScroll:true});}}
 function updateSchedule(){
  if(!selected)return;
  const installments=Number($('count').value)>1;
@@ -401,9 +407,27 @@ if(!adminPanel)$('order').onsubmit=async e=>{
    requestId=crypto.randomUUID();
    await orders();
   }
-  else{const u=new URL(r.url);if(u.protocol!=='https:'||u.hostname!=='checkout.stripe.com')throw Error('Adresse de paiement invalide');await checkoutAccess.clear();if(selected.kind==='annual')await trackMembershipStep('checkout_opened');if(!linkToken&&!embedded)await trackStageCheckout(selected, stageDetail && selected.id===requestedProduct ? reminderSource : undefined);(embedded?window.top:window).location.assign(u.href);}
+  else{
+   const url=stripeCheckoutUrl(r.url);
+   await checkoutAccess.clear();
+   if(selected.kind==='annual')await trackMembershipStep('checkout_opened');
+   if(!linkToken&&!embedded)await trackStageCheckout(selected, stageDetail && selected.id===requestedProduct ? reminderSource : undefined);
+   showCheckoutFeedback('Redirection vers le paiement sécurisé…');
+   const link=text('a','Ouvrir le paiement Stripe',checkoutFeedback);
+   link.href=url.href;
+   if(embedded)link.target='_top';
+   checkoutFeedback.insertBefore(document.createElement('br'),link);
+   try{(embedded?window.top:window).location.assign(url.href);}
+   catch{checkoutFeedback.firstChild.textContent='Utilisez le lien ci-dessous pour continuer vers Stripe.';}
+  }
  }catch(error){showCheckoutFeedback(error.message,true);}finally{for(const {element,disabled} of controls)element.disabled=disabled;busy=false;buttonState();}
 };
+function stripeCheckoutUrl(value){
+ let url;
+ try{url=new URL(value);}catch{throw Error('Adresse de paiement invalide.');}
+ if(url.protocol!=='https:'||url.host!=='checkout.stripe.com'||url.username||url.password)throw Error('Adresse de paiement invalide.');
+ return url;
+}
 let myOrderGroup='Tous les achats',myOrderData={orders:[],payments:[],documents:[]};
 const orderGroupNames=['Adhésions','Stages','Cours et essais','Équipements','Autres achats'];
 function orderGroup(order){
@@ -901,8 +925,7 @@ function renderMyOrders(){
     try{
      const result=await api({action:'resume-checkout',order_id:o.id,reminder_opt_in:reminder.checked},session?.user);
      if(result.status==='open'){
-      const url=new URL(result.url);
-      if(url.protocol!=='https:'||url.hostname!=='checkout.stripe.com')throw Error('Adresse de paiement invalide.');
+      const url=stripeCheckoutUrl(result.url);
       location.assign(url.href);return;
      }
      feedback.textContent={
@@ -970,7 +993,7 @@ function renderMyOrders(){
 }
 function renderKm16Reuse(){const box=$('km16-reuse-member'),select=$('km16-reuse-select');if(!box||!select)return;const candidates=(myOrderData.orders||[]).filter(o=>o.first_name&&o.last_name&&o.birth_date);const seen=new Set();const unique=candidates.filter(o=>{const key=[o.first_name,o.last_name,o.birth_date].join('|').toLowerCase();if(seen.has(key))return false;seen.add(key);return true;});box.hidden=!session||!unique.length;if(box.hidden)return;select.replaceChildren();const placeholder=document.createElement('option');placeholder.value='';placeholder.textContent='Choisir un pratiquant déjà enregistré';select.append(placeholder);unique.forEach((o,i)=>{const option=document.createElement('option');option.value=String(i);option.textContent=[o.first_name,o.last_name,o.birth_date].join(' · ');select.append(option);});$('km16-reuse-apply').onclick=()=>{if(!select.value){$('km16-reuse-status').textContent='Choisissez d’abord un dossier.';return;}const o=unique[Number(select.value)];if(!o)return;for(const id of ['first_name','last_name','birth_date','phone','guardian_name']){if(typeof o[id]==='string'&&o[id].trim())$(id).value=o[id].trim();}$('birth_date').dispatchEvent(new Event('change'));$('km16-reuse-status').textContent='Informations reprises. Vérifiez les coordonnées, confirmez les conditions avant de continuer.';};}
 let paymentCheckTimer;
-let paymentChecks=0;
+let paymentChecks=0,ordersRevision=0;
 function showPaymentReturn(order, payments=[], failed=false){
  if(!returnedOrder)return;
  const panel=$('payment-return');
@@ -996,21 +1019,22 @@ function showPaymentReturn(order, payments=[], failed=false){
   status.textContent=payment+(license.hidden?' Votre dossier est validé.':' Souscrivez votre licence FEKM si ce n’est pas encore fait, puis présentez le justificatif au club.');
  }else if(order&&paid>0&&paid>=order.total_cents){
   status.textContent='Paiement reçu. Consultez votre inscription pour connaître l’état du dossier.';
- }else{
+ }else if(paymentChecks<4){
   status.textContent='Paiement en cours de vérification. Patientez avant de relancer une inscription.';
-  if(paymentChecks<4){
-   paymentChecks++;
-   paymentCheckTimer=setTimeout(orders,3500);
-  }
+  paymentChecks++;
+  paymentCheckTimer=setTimeout(orders,3500);
+ }else{
+  status.textContent='Le paiement n’est pas encore confirmé. Vérifiez à nouveau dans quelques instants. Si vous avez été débité, contactez contact@km16.fr avant de réessayer.';
  }
 }
 async function orders(){
  clearTimeout(paymentCheckTimer);
+ const revision=++ordersRevision;
  if(!session){showPaymentReturn();return;}
  const gen=generation;
  try{
   const next=await api({action:'orders'});
-  if(gen!==generation)return;
+  if(gen!==generation||revision!==ordersRevision)return;
   myOrderData=next;renderMemberFamily();renderMyOrders();renderMemberActions();renderUpcomingStages();renderFirstCourse();renderKm16Reuse();
   if(requestedOrder&&!returnedOrder&&!focusedRequestedOrder){
    const target=$('member-order-'+requestedOrder);
@@ -1018,13 +1042,13 @@ async function orders(){
    else note('Cette inscription est introuvable dans le compte connecté.',true);
   }
   const order=next.orders.find(o=>o.id===returnedOrder&&o.livemode===true);
-  const returnedPayments=next.payments.filter(p=>p.order_id===returnedOrder);
+  const returnedPayments=order?next.payments.filter(p=>p.order_id===order.id):[];
   showPaymentReturn(order,returnedPayments);
   if(order&&orderGroup(order)==='Adhésions'&&returnedPayments.some(p=>p.status==='paid'&&p.amount_cents>(p.refunded_cents||0))&&hasStageAnalyticsConsent()){
    const key='km16-payment-measured:'+returnedOrder;
    try{if(!sessionStorage.getItem(key)){sessionStorage.setItem(key,'1');void trackMembershipStep('payment_confirmed');}}catch{}
   }
- }catch(e){if(gen===generation){
+ }catch(e){if(gen===generation&&revision===ordersRevision){
   if(accountView)$('member-upcoming-stages').textContent='Stages temporairement indisponibles. Utilisez Actualiser pour réessayer.';
   if(returnedOrder)showPaymentReturn(null,[],true);else note(e.message,true);
  }}
@@ -1394,20 +1418,72 @@ if(client){
 syncAccountForm();showMembershipJourney();
 if(returnedOrder){showPaymentReturn();$('payment-return-title').focus();}
 
+const fallbackCatalogue=(async()=>{
+ try{
+  const response=await fetch('./catalogue.json',{signal:AbortSignal.timeout(5000)});
+  if(!response.ok)return;
+  const fallback=await response.json();
+  if(!stageCatalogueLoaded&&Array.isArray(fallback)){products=fallback;render();}
+ }catch{}
+})();
 try{
- const fallback=await fetch('./catalogue.json').then(r=>r.json());products=fallback;category=categoryFor(requestedCategory);render();
- try{const c=await api({action:'catalogue'});products=c.products;stageCatalogueLoaded=true;enabled=c.enabled;for(const [id,value] of [['terms-link',c.terms_url],['privacy-link',c.privacy_url]]){try{const u=new URL(value);if(u.protocol==='https:')$(id).href=u.href;}catch{enabled=false;}}$('opening').textContent=enabled?'Inscriptions ouvertes · Paiement en 1, 3 ou 4 fois pour les cotisations annuelles.':'Les paiements en ligne ne sont pas encore ouverts.';render();
- if(stageDetail&&reminderSource&&!linkToken){
-  const stage=products.find(p=>p.id===requestedProduct&&!p.draft&&!p.review&&p.event_date>=today());
-  if(stage)trackStageReminderVisit(stage,reminderSource);
+ try{
+  const c=await api({action:'catalogue'});
+  if(!Array.isArray(c.products))throw Error('Catalogue indisponible.');
+  products=c.products;
+  stageCatalogueLoaded=true;
+  enabled=c.enabled===true;
+  if(selected&&!linkToken){
+   const updated=products.find(product=>product.id===selected.id&&!product.draft&&(!product.event_date||product.event_date>=today()));
+   if(updated){
+    selected=updated;
+    $('chosen').textContent=updated.title;
+    $('eligibility-wrap').hidden=!updated.review;
+    $('eligibility').required=!!updated.review;
+    updateSchedule();
+   }else{
+    selected=null;
+    resetRegistration();
+    note('Cette formule est indisponible. Choisissez une autre formule.',true);
+   }
+  }
+  for(const [id,value] of [['terms-link',c.terms_url],['privacy-link',c.privacy_url]]){
+   try{
+    const url=new URL(value);
+    if(url.protocol!=='https:')throw Error('Adresse non sécurisée.');
+    $(id).href=url.href;
+   }catch{enabled=false;}
+  }
+  $('opening').textContent=enabled?'Inscriptions ouvertes · Paiement en 1, 3 ou 4 fois pour les cotisations annuelles.':'Les paiements en ligne ne sont pas encore ouverts.';
+  render();
+  if(stageDetail&&reminderSource&&!linkToken){
+   const stage=products.find(p=>p.id===requestedProduct&&!p.draft&&!p.review&&p.event_date>=today());
+   if(stage)trackStageReminderVisit(stage,reminderSource);
+  }
+  if(['essai','cours-deux-heures'].includes(requestedProduct)&&!linkToken&&!accountView&&!adminPanel&&!registrationConfirmation){
+   const product=products.find(p=>p.id===requestedProduct&&!p.draft&&(!p.event_date||p.event_date>=today()));
+   if(product)choose(product,{focus:false});
+   else note('Cette formule est indisponible. Choisissez une autre formule ou contactez contact@km16.fr.',true);
+  }
+  if(requestedStageDate&&!linkToken){
+   const matches=products.filter(p=>p.category==='Stages'&&!p.draft&&p.event_date===requestedStageDate&&p.event_date>=today());
+   if(matches.length===1)choose(matches[0]);
+   else note('Ce stage n’est pas ouvert au paiement en ligne. Choisissez un autre stage disponible ou contactez contact@km16.fr.',true);
+  }
+ }catch{
+  enabled=false;
+  catalogueUnavailable=true;
+  $('opening').textContent='Le paiement est temporairement indisponible.';
+  note('Vérifiez votre connexion puis rechargez la page pour réessayer.',true);
+  await fallbackCatalogue;
+  render();
  }
- if(requestedProduct==='essai'&&!linkToken){const trial=products.find(p=>p.id==='essai'&&!p.draft);if(trial)choose(trial);}
- if(requestedStageDate&&!linkToken){const matches=products.filter(p=>p.category==='Stages'&&!p.draft&&p.event_date===requestedStageDate&&p.event_date>=today());if(matches.length===1)choose(matches[0]);else note('Ce stage n’est pas ouvert au paiement en ligne. Choisissez un autre stage disponible ou contactez contact@km16.fr.',true);}}catch{$('opening').textContent='Le paiement est temporairement indisponible.';note('Vérifiez votre connexion puis rechargez la page pour réessayer.',true);}
  if(linkToken){
   try{specialOffer=await api({action:'link-preview',link_token:linkToken});$('offer-notice').hidden=false;$('offer-notice').textContent='Votre offre personnalisée : '+specialOffer.product.title+' · '+money(specialOffer.product.amount)+' · '+specialOffer.count+' fois, sans supplément. Utilisez l’e-mail du payeur indiqué à KM16 dans votre demande.';choose(specialOffer.product);}
   catch(e){$('offer-notice').hidden=false;$('offer-notice').textContent=e.message;$('order').hidden=true;selected=null;}
  }
  catalogueReady=true;
+ buttonState();
  if(!accountView&&!adminPanel){
   let restored=false;
   if(!registrationConfirmation&&await checkoutAccess.resumeAvailable())$('resume-request').hidden=false;
@@ -1440,4 +1516,7 @@ if(adminPanel&&!catalogueReady){
  void authState(session);
 }
 
-if(embedded){window.addEventListener('message',event=>{if(event.origin!==location.origin||event.source!==parent||event.data?.type!=='km16-payment-category')return;category=categoryFor(event.data.category);render();});document.dispatchEvent(new Event('km16-payment-ready'));parent.postMessage({type:'km16-payment-ready',enabled},location.origin);}
+if(embedded){
+ document.dispatchEvent(new Event('km16-payment-ready'));
+ parent.postMessage({type:'km16-payment-ready',enabled},location.origin);
+}

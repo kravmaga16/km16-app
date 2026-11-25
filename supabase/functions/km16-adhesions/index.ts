@@ -59,6 +59,7 @@ function createMembershipCheckout(order,config,customerId,email,idempotencyKey,e
   return stripe.checkout.sessions.create({mode:'payment',customer:customerId,billing_address_collection:'required',customer_update:{name:'auto',address:'auto'},payment_method_types:['card'],line_items:[{price_data:{currency:'eur',unit_amount:order.amounts[0],product_data:{name:order.title+' · '+(order.count>1?'Échéance 1/'+order.count:'Paiement intégral'),description:'Licence payée séparément. '+(order.count>1?'Total cotisation : '+(order.total_cents/100).toFixed(2)+' EUR.':'')}},quantity:1}],metadata,payment_intent_data:{metadata,receipt_email:email,...(order.count>1?{setup_future_usage:'off_session'}:{})},consent_collection:{terms_of_service:'required'},custom_text:{terms_of_service_acceptance:{message:'J’accepte les [conditions KM16]('+config.terms_url+').'},...(consent?{submit:{message:consent}}:{})},success_url:SITE+'/adhesion.html?espace=1&paid=1&order='+id,cancel_url:SITE+'/adhesion.html?espace=1&cancel=1&order='+id,locale:'fr',...(expiry?{expires_at:expiry}:{})},{idempotencyKey});
 }
 const digest=async value=>Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(value)))).map(x=>x.toString(16).padStart(2,'0')).join('');
+const checkoutReturnId=value=>typeof value==='string'&&/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/.test(value);
 async function offerFor(token){
  if(!/^[a-f0-9]{64}$/.test(token||''))return null;
  return (await db('km16_purchase_links?token_hash=eq.'+await digest(token)+'&livemode=eq.'+live()))[0]||null;
@@ -96,11 +97,50 @@ Deno.serve(async req=>{
    if(!p||p.draft||p.category==='Interne'||p.kind==='monthly')return reply({error:'Offre indisponible'},409);
    return reply({product:{...p,amount:l.total_cents},count:l.count,expires_at:l.expires_at});
   }
+  if(data.action==='prepare-personal-checkout'){
+   const link=await offerFor(data.link_token);
+   const draft=data.draft;
+   if(!link||link.revoked_at||link.order_id||Date.parse(link.expires_at)<=Date.now()||
+      link.recipient_email!==String(data.email||'').trim().toLowerCase())
+    return reply({error:'Lien indisponible ou réservé à une autre adresse e-mail. Contactez KM16.'},409);
+   if(!draft||!checkoutReturnId(draft.requestId)||draft.productId!==link.product_id||
+      JSON.stringify(draft).length>2004000)
+    return reply({error:'Demande invalide. Vérifiez votre formulaire.'},400);
+   const product=(await db('km16_membership_products?id=eq.'+encodeURIComponent(link.product_id)))[0];
+   try{validateOrder(product,{...draft.fields,...draft.checks,count:link.count},parisToday());}
+   catch(error){return reply({error:error.message},400);}
+   const fields=Object.fromEntries(['first_name','last_name','birth_date','phone','guardian_name']
+    .map(name=>[name,String(draft.fields?.[name]||'').slice(0,160)]));
+   fields.contact_email=link.recipient_email;
+   const checks=Object.fromEntries(['license','terms','privacy','eligibility','installments']
+    .map(name=>[name,draft.checks?.[name]===true]));
+   const photo=typeof draft.photo==='string'&&draft.photo.length<=2000000&&
+    /^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/.test(draft.photo)?draft.photo:undefined;
+   const savedDraft={requestId:draft.requestId,productId:link.product_id,fields,checks,photo,
+    profile:checkoutReturnId(draft.profile)?draft.profile:undefined,linkToken:data.link_token};
+   const id=crypto.randomUUID();
+   const expires_at=new Date(Math.min(Date.parse(link.expires_at),Date.now()+3600000)).toISOString();
+   await db('km16_personal_checkout_returns?on_conflict=link_id','POST',
+    {id,link_id:link.id,expires_at,draft:savedDraft},
+    'resolution=merge-duplicates');
+   return reply({id});
+  }
   const token=req.headers.get('authorization')||'';
   if(!/^Bearer \S+$/.test(token))return reply({error:'Connectez-vous à votre compte KM16'},401);
   const ar=await fetch(base+'/auth/v1/user',{headers:{apikey:key,Authorization:token}});
   if(!ar.ok)return reply({error:'Session expirée, reconnectez-vous'},401);
   const user=await ar.json();if(!user.email_confirmed_at||user.is_anonymous)return reply({error:'Confirmez votre adresse e-mail'},403);
+  if(data.action==='restore-personal-checkout'){
+   if(!checkoutReturnId(data.id))return reply({error:'Lien de confirmation invalide.'},400);
+   const [pending]=await db('km16_personal_checkout_returns?id=eq.'+data.id);
+   const link=pending&&Date.parse(pending.expires_at)>Date.now()&&await offerFor(pending.draft.linkToken);
+   if(!link||link.id!==pending.link_id||link.recipient_email!==user.email?.toLowerCase()||
+      link.revoked_at||link.order_id&&link.order_id!==pending.draft.requestId||Date.parse(link.expires_at)<=Date.now())
+    return reply({error:'Cette demande a expiré ou est indisponible. Rouvrez le lien personnalisé d’origine.'},409);
+   const [product]=await db('km16_membership_products?id=eq.'+encodeURIComponent(link.product_id));
+   if(!product||product.draft)return reply({error:'Offre indisponible.'},409);
+   return reply({draft:pending.draft,offer:{product:{...product,amount:link.total_cents},count:link.count}});
+  }
   const admin=user.email?.toLowerCase()==='alexandre.marchat@gmail.com';
   if(data.action==='admin-access')return admin?reply({admin:true}):reply({error:'Accès privé'},403);
   if(data.action==='photo-upload'||data.action==='member-photo-add'){

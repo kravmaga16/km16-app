@@ -366,7 +366,7 @@ document.addEventListener('visibilitychange',()=>{if(!document.hidden)km16Update
 </script><script>
 (function(){const box=document.querySelector('.club-news');const btn=box&&box.querySelector('.club-news-toggle');if(!btn)return;btn.addEventListener('click',function(){const paused=box.classList.toggle('is-paused');btn.setAttribute('aria-pressed',String(paused));btn.setAttribute('aria-label',paused?'Reprendre le défilement':'Mettre le défilement en pause');btn.textContent=paused?'▶':'Ⅱ';});})();
 </script><script type="module">
-import {createCheckoutAccess, verifiedAccount, normalizeEmail, getPendingCheckout, takeOrderLoginReturn} from './checkout-account.mjs?v=confirmation-offre-20261125';
+import {createCheckoutAccess, verifiedAccount, normalizeEmail, getPendingCheckout, takeOrderLoginReturn, validPersonalCheckoutReturn} from './checkout-account.mjs?v=paiement-direct-20261125';
 (async function () {
   'use strict';
   const BASE = 'https://tlfewpbgbwesdriklxzb.supabase.co';
@@ -570,6 +570,14 @@ import {createCheckoutAccess, verifiedAccount, normalizeEmail, getPendingCheckou
       return;
     }
     if(registrationReturn){
+      const personalReturn=returnParams.get('paiement');
+      if(offerReturn&&validPersonalCheckoutReturn(personalReturn)){
+        const target=new URL('./adhesion.html',location.href);
+        target.searchParams.set('paiement',personalReturn);
+        target.searchParams.set('confirmation',confirmedReturn?'1':'erreur');
+        location.replace(target.href);
+        return;
+      }
       const pending=await getPendingCheckout(confirmedSession);
       const target=new URL(pending?.kind==='membership'&&(!offerReturn||pending.url.includes('#offre='))?pending.url:'./adhesion.html',location.href);
       if(offerReturn&&!target.hash)target.searchParams.set('reprendre','offre');

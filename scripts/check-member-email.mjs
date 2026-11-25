@@ -36,7 +36,10 @@ async function harness(browser,width,scenario){
  context.on('page',page=>page.on('pageerror',error=>errors.push(error.message)));
  await context.route('**/*',route=>{
   const url=new URL(route.request().url());
-  if(url.origin===origin)return route.continue();
+  if(url.origin===origin){
+   if(scenario==='catalogue-local-error'&&url.pathname==='/catalogue.json')return route.fulfill({status:503});
+   return route.continue();
+  }
   if(url.hostname==='script.google.com'&&url.pathname.startsWith('/macros/s/'))return route.fulfill({status:200,contentType:'text/javascript',body:'/* Agenda fixture. */'});
   if(url.hostname==='km16.fr'||url.hostname==='fonts.googleapis.com'||url.hostname==='fonts.gstatic.com')return route.fulfill({status:204});
   if(url.hostname==='cdn.jsdelivr.net'&&url.pathname.includes('supabase'))return route.fulfill({status:200,contentType:'text/javascript',body:'/* Auth test double already installed. */'});
@@ -139,6 +142,7 @@ async function harness(browser,width,scenario){
    if(url.origin===location.origin)return realFetch(input,options);
    if(url.pathname!=='/functions/v1/km16-adhesions')throw Error('Unexpected external fetch: '+url.pathname);
    const body=JSON.parse(options?.body||'{}');await window.__record({type:'api',body,authorization:options?.headers?.Authorization||null});
+   if(body.action==='catalogue'&&scenario==='catalogue-api-error')return new Response('{}',{status:503});
    if(body.action==='catalogue'&&scenario==='slow-catalogue')await new Promise(resolve=>window.finishCatalogue=resolve);
    let data;
    if(body.action==='catalogue')data={products,enabled:true,terms_url:'https://app.km16.fr/conditions-adhesion.html',privacy_url:'https://app.km16.fr/confidentialite.html'};
@@ -160,6 +164,11 @@ async function harness(browser,width,scenario){
  const hostPage=await context.newPage();let page=hostPage;
  if(scenario==='prorata-admin'){
   await hostPage.goto(origin+'/adhesion-admin.html?vue=prorata');
+  return {context,page,events,errors,unexpected};
+ }
+ if(scenario==='catalogue-local-error'||scenario==='catalogue-api-error'){
+  const query=scenario==='catalogue-local-error'?'?produit=cours-deux-heures':'?produit=stage-1';
+  await page.goto(origin+'/adhesion.html'+query);
   return {context,page,events,errors,unexpected};
  }
  if(scenario==='camera-embed'){
@@ -278,6 +287,22 @@ try{
   const browser=await engine.launch({headless:true,...(engineName==='Chromium'&&process.env.KM16_CHROMIUM_PATH?{executablePath:process.env.KM16_CHROMIUM_PATH,args:['--no-sandbox']}: {})});
   try{
    if(!process.env.KM16_CAMERA_ONLY){
+    for(const scenario of ['catalogue-local-error','catalogue-api-error']){
+     const {context,page,errors,unexpected}=await harness(browser,390,scenario);
+     try{
+      if(scenario==='catalogue-local-error'){
+       await page.locator('#order').waitFor({state:'visible'});
+       assert.equal(await page.locator('#chosen').textContent(),products.find(product=>product.id==='cours-deux-heures').title);
+       assert.equal(await page.locator('#pay').isEnabled(),true);
+       assert.match(await page.locator('#checkout-summary').textContent(),/40,00\s*€/);
+      }else{
+       await page.getByText('Les informations de ce stage sont temporairement indisponibles.').waitFor();
+       assert.equal(await page.locator('#pay').isEnabled(),false);
+      }
+      assert.deepEqual(errors,[]);assert.deepEqual(unexpected,[]);
+      console.log(`PASS ${engineName} ${scenario}`);
+     }finally{await context.close();}
+    }
     const {context,page,events,errors,unexpected}=await harness(browser,390,'prorata-admin');
     try{
      assert.equal(await page.locator('#link-form').isVisible(),false,'form stays hidden when signed out');

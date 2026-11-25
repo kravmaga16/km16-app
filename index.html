@@ -2,7 +2,7 @@
 // Preserve email confirmation before the tab navigation consumes the hash.
 if (/[#&](access_token|error|error_code)=/.test(location.hash)) {
   window.KM16_AUTH_FRAGMENT = location.hash.slice(1);
-  const isRegistration = ['adhesion','admin-prorata'].includes(new URLSearchParams(location.search).get('confirmation')) &&
+  const isRegistration = ['adhesion','offre','admin-prorata'].includes(new URLSearchParams(location.search).get('confirmation')) &&
     new URLSearchParams(window.KM16_AUTH_FRAGMENT).get('type') !== 'recovery';
   history.replaceState(null, '', location.pathname + location.search + (isRegistration ? '' : '#videos'));
 }
@@ -366,7 +366,7 @@ document.addEventListener('visibilitychange',()=>{if(!document.hidden)km16Update
 </script><script>
 (function(){const box=document.querySelector('.club-news');const btn=box&&box.querySelector('.club-news-toggle');if(!btn)return;btn.addEventListener('click',function(){const paused=box.classList.toggle('is-paused');btn.setAttribute('aria-pressed',String(paused));btn.setAttribute('aria-label',paused?'Reprendre le défilement':'Mettre le défilement en pause');btn.textContent=paused?'▶':'Ⅱ';});})();
 </script><script type="module">
-import {createCheckoutAccess, verifiedAccount, normalizeEmail, getPendingCheckout, takeOrderLoginReturn} from './checkout-account.mjs?v=confirmation-20261124';
+import {createCheckoutAccess, verifiedAccount, normalizeEmail, getPendingCheckout, takeOrderLoginReturn} from './checkout-account.mjs?v=confirmation-offre-20261125';
 (async function () {
   'use strict';
   const BASE = 'https://tlfewpbgbwesdriklxzb.supabase.co';
@@ -552,7 +552,8 @@ import {createCheckoutAccess, verifiedAccount, normalizeEmail, getPendingCheckou
     const fragment=new URLSearchParams(window.KM16_AUTH_FRAGMENT || '');
     delete window.KM16_AUTH_FRAGMENT;
     const returnParams=new URLSearchParams(location.search);
-    const registrationReturn=returnParams.get('confirmation')==='adhesion'&&fragment.get('type')!=='recovery';
+    const offerReturn=returnParams.get('confirmation')==='offre';
+    const registrationReturn=['adhesion','offre'].includes(returnParams.get('confirmation'))&&fragment.get('type')!=='recovery';
     let confirmedReturn=false, confirmedSession=null;
     if (fragment.get('access_token') && fragment.get('refresh_token')) {
       recovery=fragment.get('type')==='recovery';
@@ -570,9 +571,10 @@ import {createCheckoutAccess, verifiedAccount, normalizeEmail, getPendingCheckou
     }
     if(registrationReturn){
       const pending=await getPendingCheckout(confirmedSession);
-      const target=new URL(pending?.kind==='membership'?pending.url:'./adhesion.html',location.href);
+      const target=new URL(pending?.kind==='membership'&&(!offerReturn||pending.url.includes('#offre='))?pending.url:'./adhesion.html',location.href);
+      if(offerReturn&&!target.hash)target.searchParams.set('reprendre','offre');
       const product=returnParams.get('produit')||'';
-      if(pending?.kind!=='membership'&&/^[a-z0-9-]{1,100}$/.test(product))target.searchParams.set('produit',product);
+      if(!offerReturn&&pending?.kind!=='membership'&&/^[a-z0-9-]{1,100}$/.test(product))target.searchParams.set('produit',product);
       target.searchParams.set('confirmation',confirmedReturn?'1':'erreur');
       location.replace(target.href);
       return;
@@ -582,7 +584,11 @@ import {createCheckoutAccess, verifiedAccount, normalizeEmail, getPendingCheckou
       const target=takeOrderLoginReturn(session);
       if(target){location.replace(target);return;}
       const pending=await getPendingCheckout(session);
-      if(pending&&pending.kind!=='video'){location.replace(pending.url);return;}
+      if(pending&&pending.kind!=='video'){
+        const target=new URL(pending.url,location.href);
+        if(target.hash.startsWith('#offre='))target.searchParams.set('confirmation','1');
+        location.replace(target.href);return;
+      }
       if(!pending&&session)el('kv-legacy-registration-return').hidden=false;
     }
     el('kv-auth-submit').disabled=false;el('kv-access-submit').disabled=false;

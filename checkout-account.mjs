@@ -124,6 +124,13 @@ async function persist(record) {
   } catch {
     // A stale pointer must not redirect an email confirmation to an older purchase.
     removePointer();
+    // Keep only the return address for personal offers if the browser rejects the draft.
+    if (isOfferReturn(record)) {
+      try {
+        const {version, id, kind, email, url, expiresAt, lastSentAt, retryAfter} = record;
+        globalThis.localStorage.setItem(POINTER_KEY, JSON.stringify({version, id, kind, email, url, expiresAt, lastSentAt, retryAfter}));
+      } catch {}
+    }
     if (written) { try { await stored('readwrite', store => store.delete(record.id)); } catch {} }
     return false;
   }
@@ -141,10 +148,15 @@ async function readDraft(pointer) {
   } catch { return null; }
 }
 
+function isOfferReturn(record) {
+  return record.kind === 'membership' && new URL(record.url, SITE).hash.startsWith('#offre=');
+}
+
 export async function getPendingCheckout(session) {
   if (!verifiedAccount(session)) return null;
   const pointer = readPointer();
-  if (!pointer) return null;
+  if (!timely(pointer) || normalizeEmail(session.user.email) !== pointer.email) return null;
+  if (isOfferReturn(pointer)) return {kind: pointer.kind, url: pointer.url};
   const record = await readDraft(pointer);
   if (!record || normalizeEmail(session.user.email) !== record.email) return null;
   return {kind: record.kind, url: record.url};
@@ -325,7 +337,7 @@ export function createCheckoutAccess({client, kind, host, emailInput, getDraft, 
       show('Envoi du lien de vérification à ' + email + '…');
       const redirect = new URL(SITE);
       if (kind === 'membership') {
-        redirect.searchParams.set('confirmation', 'adhesion');
+        redirect.searchParams.set('confirmation', isOfferReturn(record) ? 'offre' : 'adhesion');
         // A public product can be reselected on another device. Keep private offers local.
         if (!new URL(url, SITE).hash && /^[a-z0-9-]{1,100}$/.test(draft?.productId || '')) {
           redirect.searchParams.set('produit', draft.productId);
@@ -349,7 +361,8 @@ export function createCheckoutAccess({client, kind, host, emailInput, getDraft, 
   }
   async function restore() {
     const pointer = readPointer();
-    if (!pointer || pointer.kind !== kind) return false;
+    if (!timely(pointer) || pointer.kind !== kind) return false;
+    if (kind === 'membership' && new URL(pointer.url || '', SITE).hash !== new URL(url, SITE).hash) return false;
     const storedRecord = await readDraft(pointer);
     if (!storedRecord) return false;
     let account;

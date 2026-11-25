@@ -29,5 +29,13 @@ assert.equal(await getPendingCheckout({user: {...session.user, email_confirmed_a
 assert.equal(storageReads, 0, 'No pending personal draft should be retrieved for an unverified identity');
 assert.equal(await getPendingCheckout(session), null);
 assert.equal(storageReads, 1);
+const pointer = {version: 1, id: 'a'.repeat(36), kind: 'membership', email: 'parent@example.invalid',
+  url: '/adhesion.html#offre=' + offer, expiresAt: Date.now() + 60_000};
+globalThis.localStorage = {getItem: () => JSON.stringify(pointer)};
+assert.deepEqual(await getPendingCheckout(session), {kind: 'membership', url: pointer.url},
+  'A verified payer can resume a personal offer even when IndexedDB is unavailable');
+assert.equal(await getPendingCheckout({user: {...session.user, email: 'other@example.invalid'}}), null);
+pointer.expiresAt = Date.now() - 1;
+assert.equal(await getPendingCheckout(session), null);
 delete globalThis.localStorage;
 console.log('Passwordless checkout identity and safe-return checks passed.');

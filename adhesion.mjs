@@ -6,7 +6,7 @@ import {preparePhoto} from './member-photo.mjs?v=1';
 import {createMemberCamera} from './member-camera.mjs?v=2';
 import {parseEuro,eligibleProducts} from './purchase-links.mjs?v=liens1';
 import {splitAmount,ageOn,validateOrder} from './rules.mjs?v=inscription-20261124';
-import {createCheckoutAccess,verifiedAccount,normalizeEmail,saveOrderLoginReturn} from './checkout-account.mjs?v=confirmation-20261124';
+import {createCheckoutAccess,verifiedAccount,normalizeEmail,saveOrderLoginReturn} from './checkout-account.mjs?v=confirmation-offre-20261125';
 const $=id=>document.getElementById(id),money=n=>new Intl.NumberFormat('fr-FR',{style:'currency',currency:'EUR'}).format(n/100);
 const client=window.supabase?.createClient('https://tlfewpbgbwesdriklxzb.supabase.co','sb_publishable_OGRSgobOGf54jlfmXGmS8g_04Ftvfsn',{auth:{storageKey:'km16-video-auth',detectSessionInUrl:false,flowType:'implicit'}});
 const endpoint='https://tlfewpbgbwesdriklxzb.supabase.co/functions/v1/km16-adhesions';
@@ -27,6 +27,7 @@ if(prorataView){
  }
 }
 const registrationConfirmation=paymentReturn.get('confirmation');
+const reopenOffer=paymentReturn.get('reprendre')==='offre';
 const requestedOrder=accountView && /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(paymentReturn.get('order')||'')
  ? paymentReturn.get('order').toLowerCase() : '';
 const returnedOrder=paymentReturn.get('paid')==='1' ? requestedOrder : '';
@@ -1487,15 +1488,16 @@ try{
  if(!accountView&&!adminPanel){
   let restored=false;
   if(!registrationConfirmation&&await checkoutAccess.resumeAvailable())$('resume-request').hidden=false;
-  else restored=await checkoutAccess.restore();
+  else if(!reopenOffer)restored=await checkoutAccess.restore();
   if(registrationConfirmation&&!restored){
-   if(!linkToken&&stageCatalogueLoaded&&enabled){
+   if(!reopenOffer&&!linkToken&&stageCatalogueLoaded&&enabled){
     const product=products.find(p=>p.id===requestedProduct&&!p.draft&&p.category!=='Interne'&&p.category!=='Équipement'&&(!p.event_date||p.event_date>=today()));
     if(product)choose(product,{focus:false});
    }
    if(registrationConfirmation==='1')await restoreAccount();
    if(registrationConfirmation==='1'&&session){
-    note(selected?'Votre e-mail est confirmé. Complétez le formulaire, puis poursuivez votre inscription.':'Votre e-mail est confirmé. Choisissez votre formule pour poursuivre votre inscription.');
+    if(reopenOffer)note('Votre e-mail est confirmé. Rouvrez le lien de paiement personnalisé d’origine dans ce navigateur pour retrouver votre tarif et continuer.');
+    else if(!linkToken||specialOffer)note(selected?'Votre e-mail est confirmé. Complétez le formulaire, puis poursuivez votre inscription.':'Votre e-mail est confirmé. Choisissez votre formule pour poursuivre votre inscription.');
     if(selected){
      $('selection').scrollIntoView({block:'start'});
      $('first_name').focus({preventScroll:true});

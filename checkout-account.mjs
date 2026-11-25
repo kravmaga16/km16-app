@@ -12,6 +12,10 @@ export function normalizeEmail(value) {
   return typeof value === 'string' ? value.trim().toLowerCase() : '';
 }
 
+export function validPersonalCheckoutReturn(value) {
+  return typeof value === 'string' && /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/.test(value);
+}
+
 function validEmail(value) {
   return value.length <= 254 && /^[^\s@<>\u0000-\u001f]+@[^\s@<>\u0000-\u001f]+\.[^\s@<>\u0000-\u001f]+$/.test(value);
 }
@@ -198,7 +202,7 @@ function accessError(error) {
     'Le lien de vérification n’a pas pu être envoyé. Vos informations sont conservées ici. Vérifiez votre connexion, puis réessayez.';
 }
 
-export function createCheckoutAccess({client, kind, host, emailInput, getDraft, applyDraft, onVerified, returnPath}) {
+export function createCheckoutAccess({client, kind, host, emailInput, getDraft, applyDraft, onVerified, returnPath, preparePersonalReturn}) {
   const url = safeCheckoutReturn(kind, returnPath);
   if (!url || !host || !emailInput || typeof getDraft !== 'function') throw Error('Parcours de vérification invalide');
   let currentSession = null, record = null, waitingEmail = '', lastSentAt = 0, retryAfter = 0;
@@ -260,7 +264,9 @@ export function createCheckoutAccess({client, kind, host, emailInput, getDraft, 
     heading.textContent = verified ? 'Adresse e-mail confirmée' : 'Confirmez votre adresse e-mail';
     status.textContent = message;
     status.className = error ? 'error' : '';
-    help.textContent = verified ? 'Vous pouvez maintenant poursuivre votre demande.' :
+    help.textContent = !verified && record && isOfferReturn(record) && preparePersonalReturn
+      ? 'Votre demande est conservée pendant une heure pour ouvrir le paiement après la confirmation de votre e-mail.'
+      : verified ? 'Vous pouvez maintenant poursuivre votre demande.' :
       saved ? 'Votre demande est conservée pendant une heure sur cet appareil. Après vérification, vous retrouverez vos informations pour continuer.' :
         'Gardez cet onglet ouvert. Après avoir ouvert le lien reçu par e-mail, revenez ici pour poursuivre : votre navigateur ne permet pas de sauvegarder le brouillon.';
     buttons.hidden = verified;
@@ -338,7 +344,16 @@ export function createCheckoutAccess({client, kind, host, emailInput, getDraft, 
       const redirect = new URL(SITE);
       if (kind === 'membership') {
         redirect.searchParams.set('confirmation', isOfferReturn(record) ? 'offre' : 'adhesion');
-        // A public product can be reselected on another device. Keep private offers local.
+        if (isOfferReturn(record) && preparePersonalReturn) {
+          try {
+            const id = await preparePersonalReturn(draft, email);
+            if (!validPersonalCheckoutReturn(id)) throw Error('Reprise du paiement indisponible.');
+            redirect.searchParams.set('paiement', id);
+          } catch (error) {
+            throw Object.assign(Error(error.message || 'Reprise du paiement indisponible.'), {publicAccessError: true});
+          }
+        }
+        // A public product can be reselected on another device.
         if (!new URL(url, SITE).hash && /^[a-z0-9-]{1,100}$/.test(draft?.productId || '')) {
           redirect.searchParams.set('produit', draft.productId);
         }

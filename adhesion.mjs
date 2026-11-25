@@ -6,7 +6,7 @@ import {preparePhoto} from './member-photo.mjs?v=1';
 import {createMemberCamera} from './member-camera.mjs?v=2';
 import {parseEuro,eligibleProducts} from './purchase-links.mjs?v=liens1';
 import {splitAmount,ageOn,validateOrder} from './rules.mjs?v=inscription-20261124';
-import {createCheckoutAccess,verifiedAccount,normalizeEmail,saveOrderLoginReturn} from './checkout-account.mjs?v=confirmation-offre-20261125';
+import {createCheckoutAccess,verifiedAccount,normalizeEmail,saveOrderLoginReturn,validPersonalCheckoutReturn} from './checkout-account.mjs?v=paiement-direct-20261125';
 const $=id=>document.getElementById(id),money=n=>new Intl.NumberFormat('fr-FR',{style:'currency',currency:'EUR'}).format(n/100);
 const client=window.supabase?.createClient('https://tlfewpbgbwesdriklxzb.supabase.co','sb_publishable_OGRSgobOGf54jlfmXGmS8g_04Ftvfsn',{auth:{storageKey:'km16-video-auth',detectSessionInUrl:false,flowType:'implicit'}});
 const endpoint='https://tlfewpbgbwesdriklxzb.supabase.co/functions/v1/km16-adhesions';
@@ -54,8 +54,9 @@ if(stageDetail){
 const requestedStageDate=new URLSearchParams(location.search).get('stage_date')||'';
 const categoryFor=value=>{const s=String(value).toLowerCase();return s.includes('adulte')?'Adultes':s.includes('enfant')?'Enfants':s.includes('ado')?'Ados':['Tous','Stages','Découverte','Équipement'].includes(value)?value:'Tous';};
 let products=[],selected=null,session=null,enabled=false,category=categoryFor(requestedCategory),busy=false,requestId=crypto.randomUUID(),generation=0;
-const linkToken=new URLSearchParams(location.hash.slice(1)).get('offre')||'';
+let linkToken=new URLSearchParams(location.hash.slice(1)).get('offre')||'';
 let specialOffer=null;
+const personalReturn=!adminPanel&&registrationConfirmation==='1'&&paymentReturn.get('paiement');
 if(embedded)window.addEventListener('message',event=>{
  if(event.origin!==location.origin||event.source!==parent||event.data?.type!=='km16-payment-category')return;
  category=categoryFor(event.data.category);
@@ -315,8 +316,12 @@ function showCheckoutFeedback(message,error=false){
 const checkoutAccess=adminPanel?null:createCheckoutAccess({
  client,kind:'membership',host:$('checkout-access'),emailInput:$('contact_email'),
  returnPath:location.pathname+location.search+location.hash,
+ preparePersonalReturn:async(draft,email)=>(await api({action:'prepare-personal-checkout',link_token:linkToken,email,draft})).id,
  getDraft:({manual=false}={})=>({productId:selected.id,reminderSource:stageDetail&&selected.id===requestedProduct&&hasStageAnalyticsConsent()?reminderSource:undefined,requestId,count:Number($('count').value),photo:manual?undefined:photoData,profile:$('purchase-profile').value,fields:Object.fromEntries(draftFields.map(id=>[id,$(id).value])),checks:manual?{}:Object.fromEntries(draftChecks.map(id=>[id,$(id).checked]))}),
- applyDraft:draft=>{
+ applyDraft:applyCheckoutDraft,
+ onVerified:showVerifiedCheckout
+});
+function applyCheckoutDraft(draft){
   const product=specialOffer?.product?.id===draft.productId?specialOffer.product:products.find(p=>p.id===draft.productId&&!p.draft&&(!p.event_date||p.event_date>=today()));
   if(!product)throw Error('Cette formule n’est plus proposée. Choisissez une offre disponible.');
   if(stageDetail&&product.id===requestedProduct)reminderSource??=stageReminderSource(draft.reminderSource);
@@ -334,8 +339,8 @@ const checkoutAccess=adminPanel?null:createCheckoutAccess({
   note(Number(selected?.amount)===0?'Votre demande a été retrouvée. Vérifiez les informations conservées, puis envoyez votre demande gratuite.':'Votre demande a été retrouvée. Vérifiez les informations conservées, puis continuez vers le paiement.');
   $('selection').scrollIntoView({behavior:'smooth',block:'start'});
   $('chosen').tabIndex=-1;$('chosen').focus({preventScroll:true});
- },
- onVerified:next=>{
+}
+function showVerifiedCheckout(next){
   session=next;syncAccountForm();buttonState();
   note(Number(selected?.amount)===0?'Votre e-mail est confirmé. Vérifiez puis envoyez votre demande gratuite.':'Votre e-mail est confirmé. Vérifiez votre demande puis continuez vers le paiement.');
   if(!busy&&selected){
@@ -343,8 +348,7 @@ const checkoutAccess=adminPanel?null:createCheckoutAccess({
    pay.scrollIntoView({block:'center'});
    pay.focus({preventScroll:true});
   }
- }
-});
+}
 $('save-request').onclick=async()=>{
  const button=$('save-request');
  if(!selected)return;
@@ -373,8 +377,9 @@ $('logout').onclick=async()=>{
  if(error)accountMessage('La déconnexion n’a pas abouti. Réessayez.',true);
 };
 if(adminMfaGate)$('adhesion-admin-mfa-logout').onclick=$('logout').onclick;
-if(!adminPanel)$('order').onsubmit=async e=>{
- e.preventDefault();if(busy||photoPreparing||$('member-camera-dialog').open||!selected||!enabled||!$('order').reportValidity())return;
+if(!adminPanel)$('order').onsubmit=submitCheckout;
+async function submitCheckout(e){
+ e?.preventDefault();if(busy||photoPreparing||$('member-camera-dialog').open||!selected||!enabled||!$('order').reportValidity())return;
  const controls=[...$('order').querySelectorAll('input,select')].map(element=>({element,disabled:element.disabled}));
  const photoToUpload=photoData;
  const reminderAccountId=session?.user?.id||null;
@@ -422,7 +427,7 @@ if(!adminPanel)$('order').onsubmit=async e=>{
    catch{checkoutFeedback.firstChild.textContent='Utilisez le lien ci-dessous pour continuer vers Stripe.';}
   }
  }catch(error){showCheckoutFeedback(error.message,true);}finally{for(const {element,disabled} of controls)element.disabled=disabled;busy=false;buttonState();}
-};
+}
 function stripeCheckoutUrl(value){
  let url;
  try{url=new URL(value);}catch{throw Error('Adresse de paiement invalide.');}
@@ -1487,7 +1492,23 @@ try{
  buttonState();
  if(!accountView&&!adminPanel){
   let restored=false;
-  if(!registrationConfirmation&&await checkoutAccess.resumeAvailable())$('resume-request').hidden=false;
+  if(validPersonalCheckoutReturn(personalReturn)){
+   restored=true;
+   try{
+    await restoreAccount();
+    if(!session)throw Error('Votre confirmation a expiré. Demandez un nouveau lien.');
+    if(!enabled)throw Error('Le paiement est temporairement indisponible. Rechargez la page pour réessayer.');
+    const {draft,offer}=await api({action:'restore-personal-checkout',id:personalReturn},session.user);
+    linkToken=draft.linkToken;
+    specialOffer=offer;
+    render();
+    if(draft.profile&&!householdProfiles.some(profile=>profile.id===draft.profile))await loadHouseholdProfiles();
+    if(draft.profile&&!householdProfiles.some(profile=>profile.id===draft.profile))
+     throw Error('Le profil du pratiquant est momentanément indisponible. Rechargez la page pour réessayer.');
+    applyCheckoutDraft(draft);
+    await submitCheckout();
+   }catch(error){note(error.message,true);}
+  }else if(!registrationConfirmation&&await checkoutAccess.resumeAvailable())$('resume-request').hidden=false;
   else if(!reopenOffer)restored=await checkoutAccess.restore();
   if(registrationConfirmation&&!restored){
    if(!reopenOffer&&!linkToken&&stageCatalogueLoaded&&enabled){

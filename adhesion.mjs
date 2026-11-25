@@ -1391,18 +1391,39 @@ function linkPrice(){
  const p=products.find(p=>p.id===$('link-product').value);$('link-standard').value=p?money(p.amount):'';$('link-amount').value=p?(p.amount/100).toFixed(2).replace('.',','):'';
  $('link-count').value='1';for(const o of $('link-count').options)o.disabled=p?.kind!=='annual'&&o.value!=='1';linkSchedule();
 }
-function linkSchedule(){try{const n=Number($('link-count').value),a=splitAmount(parseEuro($('link-amount').value),n);$('link-schedule').textContent=n===1?'Un règlement de '+money(a[0]):'Premier règlement : '+money(a[0])+', puis '+(n-1)+' mensualités de '+money(a[1])+'. Total : '+money(a.reduce((s,x)=>s+x,0));}catch{$('link-schedule').textContent='Saisissez un montant en euros.';}}
+const minimumLinkInstallmentCents=50;
+function linkMinimumMessage(count){
+ const minimum=money(count*minimumLinkInstallmentCents);
+ return count===1?'Saisissez au moins '+minimum+' pour un paiement en une fois.':
+  'Saisissez au moins '+minimum+' pour un paiement en '+count+' fois ('+money(minimumLinkInstallmentCents)+' minimum par échéance).';
+}
+function linkSchedule(){
+ try{
+  const count=Number($('link-count').value),amount=parseEuro($('link-amount').value);
+  if(amount<count*minimumLinkInstallmentCents){
+   $('link-schedule').textContent=linkMinimumMessage(count);
+   return;
+  }
+  const installments=splitAmount(amount,count);
+  $('link-schedule').textContent=count===1?'Un règlement de '+money(amount):
+   'Premier règlement : '+money(installments[0])+', puis '+(count-1)+' mensualités de '+money(installments[1])+'. Total : '+money(amount);
+ }catch{$('link-schedule').textContent='Saisissez un montant en euros.';}
+}
 if(adminPanel){$('link-category').onchange=linkOptions;$('link-product').onchange=linkPrice;$('link-count').onchange=linkSchedule;$('link-amount').oninput=linkSchedule;}
 if(adminPanel)$('link-form').onsubmit=async e=>{
  e.preventDefault();const gen=generation;$('link-create').disabled=true;$('link-status').textContent='Création du lien…';$('link-result').hidden=true;$('link-url').value='';
  try{
-  const r=await api({action:'links-create',product_id:$('link-product').value,total_cents:parseEuro($('link-amount').value),count:Number($('link-count').value),recipient_email:$('link-email').value.trim()});
+  const count=Number($('link-count').value),amount=parseEuro($('link-amount').value);
+  if(amount<count*minimumLinkInstallmentCents)throw Error(linkMinimumMessage(count));
+  const r=await api({action:'links-create',product_id:$('link-product').value,total_cents:amount,count,recipient_email:$('link-email').value.trim()});
   if(gen!==generation)return;
   $('link-url').value=r.url;$('link-result').hidden=false;$('link-expiry').textContent=(r.livemode?'':'TEST · ')+"Ouverture du paiement jusqu’au "+new Date(r.expires_at).toLocaleString('fr-FR')+'. Un seul dossier peut utiliser ce lien.';
-  $('link-status').textContent='Lien créé. Copiez-le avant de quitter cette page. Les paiements restent soumis à l’ouverture des inscriptions.';await listLinks();
+  $('link-status').textContent='Lien créé. Copiez-le avant de quitter cette page. Les paiements restent soumis à l’ouverture des inscriptions.';
+  $('link-result').scrollIntoView({block:'center'});
+  await listLinks();
  }catch(e){if(gen===generation)$('link-status').textContent=e.message;}finally{$('link-create').disabled=false;}
 };
-if(adminPanel)$('link-copy').onclick=async()=>{try{await navigator.clipboard.writeText($('link-url').value);$('link-status').textContent='Lien copié.';}catch{$('link-url').select();$('link-status').textContent='Sélectionnez le lien puis copiez-le avec Cmd+C.';}};
+if(adminPanel)$('link-copy').onclick=async()=>{try{await navigator.clipboard.writeText($('link-url').value);$('link-status').textContent='Lien copié.';}catch{$('link-url').select();$('link-status').textContent='Copiez le lien sélectionné à l’aide du menu Copier de votre appareil.';}};
 if(adminPanel)$('links-refresh').onclick=listLinks;
 async function listLinks(){const gen=generation;try{
  const {links}=await api({action:'links-list'});if(gen!==generation)return;

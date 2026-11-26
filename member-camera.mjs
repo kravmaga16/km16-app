@@ -1,3 +1,5 @@
+import {decodeMemberPhoto} from './member-photo.mjs?v=2';
+
 // Camera access starts only after a deliberate click. No microphone is requested.
 // Both the preview and the exported JPEG use the same portrait crop.
 export function createMemberCamera({dialog,trigger,canOpen,onPhoto,onFile,onNative}){
@@ -27,7 +29,7 @@ export function createMemberCamera({dialog,trigger,canOpen,onPhoto,onFile,onNati
   dialog.dataset.state=value;status.textContent=message;
   video.hidden=!['starting','live','capturing'].includes(value);
   preview.hidden=!['captured','saving'].includes(value);
-  stage.hidden=value==='error';
+  stage.hidden=['error','loading-photo'].includes(value);
   capture.hidden=!['starting','live','capturing'].includes(value);capture.disabled=value!=='live';
   use.hidden=retake.hidden=!['captured','saving'].includes(value);use.disabled=retake.disabled=value!=='captured';
   find('framing').hidden=!['live','captured'].includes(value);
@@ -90,7 +92,7 @@ export function createMemberCamera({dialog,trigger,canOpen,onPhoto,onFile,onNati
  }
  function canFrame(){return ['live','captured'].includes(dialog.dataset.state);}
  zoom.oninput=()=>{if(canFrame()){framing.zoom=Number(zoom.value);renderFraming();}};
- find('reset').onclick=()=>{framing={zoom:1,x:.5,y:.5};renderFraming();};
+ find('reset').onclick=()=>{framing.x=.5;framing.y=.5;renderFraming();};
  stage.addEventListener('pointerdown',event=>{
   if(!canFrame()||event.button!==0||!event.isPrimary)return;
   const box=crop(),bounds=stage.getBoundingClientRect();if(!box)return;
@@ -99,7 +101,14 @@ export function createMemberCamera({dialog,trigger,canOpen,onPhoto,onFile,onNati
  });
  stage.addEventListener('pointermove',event=>{
   if(!drag||drag.id!==event.pointerId||!canFrame())return;
-  const {box,bounds}=drag;
+  const {bounds}=drag;
+  if(drag.box.w===drag.box.width||drag.box.h===drag.box.height){
+   const offsetX=Math.abs(event.clientX-drag.x),offsetY=Math.abs(event.clientY-drag.y);
+   if(Math.max(offsetX,offsetY)<5)return;
+   const blocked=offsetX>=offsetY ? drag.box.w===drag.box.width : drag.box.h===drag.box.height;
+   if(blocked&&framing.zoom===1){framing.zoom=1.25;drag.box=crop();}
+  }
+  const {box}=drag;
   framing.x=(box.x+box.w/2-(event.clientX-drag.x)*box.w/bounds.width)/box.width;
   framing.y=(box.y+box.h/2-(event.clientY-drag.y)*box.h/bounds.height)/box.height;
   renderFraming();
@@ -114,6 +123,31 @@ export function createMemberCamera({dialog,trigger,canOpen,onPhoto,onFile,onNati
   framing.y+=({ArrowUp:1,ArrowDown:-1}[event.key]||0)*box.h/box.height*step;
   renderFraming();
  });
+
+ async function editFile(file){
+  if(!file||dialog.open||!canOpen())return;
+  const current=++revision;
+  framing={zoom:1,x:.5,y:.5};
+  dialog.showModal();trigger.setAttribute('aria-expanded','true');watchViewport();
+  state('loading-photo','Ouverture de la photo…');
+  try{
+   const image=await decodeMemberPhoto(file);
+   if(current!==revision||!dialog.open)return;
+   const scale=Math.min(1,1600/Math.max(image.width,image.height));
+   const canvas=document.createElement('canvas');
+   canvas.width=Math.round(image.width*scale);canvas.height=Math.round(image.height*scale);
+   const context=canvas.getContext('2d');
+   context.fillStyle='#fff';context.fillRect(0,0,canvas.width,canvas.height);
+   context.drawImage(image,0,0,canvas.width,canvas.height);
+   snapshot=canvas;preview.src=canvas.toDataURL('image/jpeg',.95);
+   await preview.decode();
+   if(current!==revision||!dialog.open)return;
+   state('captured','Ajustez le cadrage, puis utilisez cette photo.');
+  }catch(error){
+   if(current!==revision||!dialog.open)return;
+   clearSnapshot();state('error',error.message||'Impossible d’ouvrir cette photo.');
+  }
+ }
 
  async function refreshDevices(current){
   try{
@@ -244,5 +278,5 @@ export function createMemberCamera({dialog,trigger,canOpen,onPhoto,onFile,onNati
  window.addEventListener('message',event=>{
   if(parent!==window&&event.source===parent&&event.origin===location.origin&&event.data?.type==='km16-payment-hidden')close();
  });
- return {open,close};
+ return {open,close,editFile};
 }

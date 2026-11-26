@@ -2,8 +2,8 @@ import {downloadCalendar, downloadCourseCalendar, stageCalendarFile} from './cou
 import {hasStageAnalyticsConsent, prepareStageAnalytics, stageReminderSource, trackStageCheckout, trackStageReminderVisit, trackMembershipStep} from './stage-analytics.mjs?v=adhesion-mesure-20261120';
 import {enhanceBirthDate} from './birth-date-input.mjs?v=1';
 enhanceBirthDate(document.getElementById('birth_date'));
-import {preparePhoto} from './member-photo.mjs?v=1';
-import {createMemberCamera} from './member-camera.mjs?v=2';
+import {preparePhoto} from './member-photo.mjs?v=2';
+import {createMemberCamera} from './member-camera.mjs?v=3';
 import {parseEuro,eligibleProducts} from './purchase-links.mjs?v=liens1';
 import {splitAmount,ageOn,validateOrder} from './rules.mjs?v=inscription-20261124';
 import {createCheckoutAccess,verifiedAccount,normalizeEmail,saveOrderLoginReturn,validPersonalCheckoutReturn} from './checkout-account.mjs?v=paiement-direct-20261125';
@@ -83,13 +83,17 @@ async function selectMemberPhoto(input,file=input?.files?.[0]){
   if(revision===photoRevision){photoPreparing=false;buttonState();}
  }
 }
-for(const id of ['member_photo','member_camera'])$(id).onchange=()=>selectMemberPhoto($(id));
 const memberCamera=createMemberCamera({
  dialog:$('member-camera-dialog'),trigger:$('take-photo'),canOpen:()=>!busy&&!photoPreparing,
  onPhoto:file=>selectMemberPhoto(null,file),
  onFile:()=>$('member_photo').click(),
  onNative:()=>{$('member_camera').value='';$('member_camera').click();}
 });
+for(const id of ['member_photo','member_camera'])$(id).onchange=event=>{
+ const input=event.currentTarget,file=input.files?.[0];
+ input.value='';
+ void memberCamera.editFile(file);
+};
 if(accountView){
  $('account-access').open=true;
  document.body.classList.add('account-view');document.title='Mon espace adhérent · KM16';

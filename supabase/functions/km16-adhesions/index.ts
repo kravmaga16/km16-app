@@ -142,6 +142,45 @@ Deno.serve(async req=>{
    return reply({draft:pending.draft,offer:{product:{...product,amount:link.total_cents},count:link.count}});
   }
   const admin=user.email?.toLowerCase()==='alexandre.marchat@gmail.com';
+  if(data.action==='create-donation' || data.action==='donation-status'){
+   if(!checkoutReturnId(data.order_id))return reply({error:'Dossier invalide.'},400);
+   if(!live()||Deno.env.get('KM16_ADHESIONS_ALLOW_LIVE')!=='true')
+    return reply({error:'Le paiement des dons est temporairement indisponible.'},503);
+   const order=(await db('km16_membership_orders?id=eq.'+data.order_id+'&user_id=eq.'+user.id
+    +'&livemode=eq.true&select=id,approval,total_cents'))[0];
+   if(!order||order.total_cents<=0)return reply({error:'Dossier introuvable.'},404);
+   const metadata={km16_source:'km16-donation-v1',km16_donation_order:order.id};
+   if(data.action==='donation-status'){
+    if(typeof data.session_id!=='string'||!/^cs_live_[a-zA-Z0-9]{1,200}$/.test(data.session_id))
+     return reply({error:'Référence du don invalide.'},400);
+    const session=await stripe.checkout.sessions.retrieve(data.session_id);
+    if(!session.livemode||session.mode!=='payment'||session.currency!=='eur'||
+       session.metadata?.km16_source!==metadata.km16_source||session.metadata?.km16_donation_order!==order.id)
+     return reply({error:'Don introuvable.'},404);
+    return reply({status:session.status==='complete'&&session.payment_status==='paid'?'paid':session.status==='expired'?'expired':'pending',
+     amount_cents:session.amount_total});
+   }
+   const amount=data.amount_cents;
+   if(!checkoutReturnId(data.request_id)||!Number.isSafeInteger(amount)||amount<100||amount>100000)
+    return reply({error:'Saisissez un montant entre 1 € et 1 000 €, avec deux décimales au maximum.'},400);
+   const payments=await db('km16_membership_payments?order_id=eq.'+order.id+'&select=status,amount_cents,refunded_cents');
+   if(order.approval==='rejected'||payments.some(p=>['disputed','refunded','failed'].includes(p.status)||p.refunded_cents>0)||
+      !payments.some(p=>p.status==='paid'&&p.amount_cents>0))
+    return reply({error:'Attendez la confirmation de votre règlement KM16 avant de faire un don.'},409);
+   const returnUrl=SITE+'/adhesion.html?espace=1&paid=1&order='+order.id;
+   const session=await stripe.checkout.sessions.create({
+    mode:'payment',
+    locale:'fr',
+    customer_email:user.email,
+    line_items:[{price_data:{currency:'eur',unit_amount:amount,product_data:{name:'Don à l’association KM16'}},quantity:1}],
+    metadata,
+    payment_intent_data:{metadata,receipt_email:user.email},
+    success_url:returnUrl+'&don={CHECKOUT_SESSION_ID}',
+    cancel_url:returnUrl+'&don=annule',
+   },{idempotencyKey:'km16-donation-'+user.id+'-'+order.id+'-'+data.request_id});
+   if(!session.url)return reply({error:'Ce lien de don a expiré. Actualisez la page pour réessayer.'},409);
+   return reply({url:session.url});
+  }
   if(data.action==='admin-access')return admin?reply({admin:true}):reply({error:'Accès privé'},403);
   if(data.action==='photo-upload'||data.action==='member-photo-add'){
    if(!/^[0-9a-f-]{36}$/i.test(data.request_id))return reply({error:'Demande invalide'},400);

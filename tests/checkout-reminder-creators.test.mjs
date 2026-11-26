@@ -197,7 +197,7 @@ async function creatorHarness(kind, options = {}) {
       return json([{ id: 'stage-fixture', title: 'Cours fixture', amount: options.free ? 0 : 999, kind: 'stage', draft: false }]);
     }
     if (parsed.pathname === '/rest/v1/km16_member_photos') return json([{ id: ORDER }]);
-    if (parsed.pathname === '/rest/v1/km16_membership_payments') return json(options.paid ? [{ order_id: ORDER }] : []);
+    if (parsed.pathname === '/rest/v1/km16_membership_payments') return json(options.paid ? [{ order_id: ORDER, status: 'paid', amount_cents: 999, refunded_cents: 0, ...options.payment }] : []);
     if (['/rest/v1/km16_membership_orders', '/rest/v1/km16_shirt_orders'].includes(parsed.pathname)) {
       if (init.method === 'POST') { sourceOrder = { ...sourceOrder, ...body }; calls.push({ op: 'order-create', body }); return json([sourceOrder]); }
       if (init.method === 'PATCH') { sourceOrder = { ...sourceOrder, ...body }; calls.push({ op: 'order-patch', body }); return json([sourceOrder]); }
@@ -378,3 +378,63 @@ for (const legacy of [false, true]) {
     }
   });
 }
+
+
+test('donation opens a separate Stripe Checkout after a confirmed KM16 payment', async () => {
+  const h = await creatorHarness('membership', {
+    action: 'create-donation', existing: true, paid: true, input: { amount_cents: 1250 },
+  });
+  const result = await h.call();
+  assert.equal(result.status, 200);
+  assert.equal(result.body.url, CHECKOUT_URL);
+  assert.deepEqual(h.calls.map(call => call.op), ['stripe-create']);
+  const [{ params, options }] = h.calls;
+  assert.deepEqual(params.line_items, [{
+    price_data: {
+      currency: 'eur', unit_amount: 1250, product_data: { name: 'Don à l’association KM16' },
+    },
+    quantity: 1,
+  }]);
+  assert.deepEqual(params.metadata, { km16_source: 'km16-donation-v1', km16_donation_order: ORDER });
+  assert.equal(params.payment_intent_data.receipt_email, EMAIL);
+  assert.equal(params.success_url, SITE + '/adhesion.html?espace=1&paid=1&order=' + ORDER + '&don={CHECKOUT_SESSION_ID}');
+  assert.match(options.idempotencyKey, /^km16-donation-/);
+  assert.equal(h.order.total_cents, 999);
+});
+
+test('donation rejects invalid amounts, missing orders, and payments that need review', async () => {
+  for (const [overrides, status] of [
+    [{ input: { amount_cents: 99 } }, 400],
+    [{ input: { amount_cents: 100001 } }, 400],
+    [{ input: { amount_cents: '100' } }, 400],
+    [{ existing: false }, 404],
+    [{ paid: false }, 409],
+    [{ payment: { refunded_cents: 50 } }, 409],
+  ]) {
+    const h = await creatorHarness('membership', {
+      action: 'create-donation', existing: true, paid: true, input: { amount_cents: 100 }, ...overrides,
+    });
+    assert.equal((await h.call()).status, status);
+    assert.equal(h.calls.length, 0);
+  }
+});
+
+test('donation confirmation requires a paid Stripe session for the same order', async () => {
+  const metadata = { km16_source: 'km16-donation-v1', km16_donation_order: ORDER };
+  for (const [session, status, result] of [
+    [{ status: 'complete', payment_status: 'paid', metadata }, 200, 'paid'],
+    [{ status: 'complete', payment_status: 'unpaid', metadata }, 200, 'pending'],
+    [{ status: 'open', metadata }, 200, 'pending'],
+    [{ status: 'expired', metadata }, 200, 'expired'],
+    [{ status: 'complete', payment_status: 'paid' }, 404, undefined],
+    [{ status: 'complete', payment_status: 'paid', metadata: { ...metadata, km16_donation_order: ATTEMPT } }, 404, undefined],
+  ]) {
+    const h = await creatorHarness('membership', {
+      action: 'donation-status', existing: true, input: { session_id: SESSION }, session,
+    });
+    const response = await h.call();
+    assert.equal(response.status, status);
+    assert.equal(response.body.status, result);
+    assert.deepEqual(h.calls.map(call => call.op), ['stripe-retrieve']);
+  }
+});

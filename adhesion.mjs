@@ -1000,6 +1000,51 @@ function renderMyOrders(){
 function renderKm16Reuse(){const box=$('km16-reuse-member'),select=$('km16-reuse-select');if(!box||!select)return;const candidates=(myOrderData.orders||[]).filter(o=>o.first_name&&o.last_name&&o.birth_date);const seen=new Set();const unique=candidates.filter(o=>{const key=[o.first_name,o.last_name,o.birth_date].join('|').toLowerCase();if(seen.has(key))return false;seen.add(key);return true;});box.hidden=!session||!unique.length;if(box.hidden)return;select.replaceChildren();const placeholder=document.createElement('option');placeholder.value='';placeholder.textContent='Choisir un pratiquant déjà enregistré';select.append(placeholder);unique.forEach((o,i)=>{const option=document.createElement('option');option.value=String(i);option.textContent=[o.first_name,o.last_name,o.birth_date].join(' · ');select.append(option);});$('km16-reuse-apply').onclick=()=>{if(!select.value){$('km16-reuse-status').textContent='Choisissez d’abord un dossier.';return;}const o=unique[Number(select.value)];if(!o)return;for(const id of ['first_name','last_name','birth_date','phone','guardian_name']){if(typeof o[id]==='string'&&o[id].trim())$(id).value=o[id].trim();}$('birth_date').dispatchEvent(new Event('change'));$('km16-reuse-status').textContent='Informations reprises. Vérifiez les coordonnées, confirmez les conditions avant de continuer.';};}
 let paymentCheckTimer;
 let paymentChecks=0,ordersRevision=0;
+const donationForm=$('donation-form');
+const donationReturn=returnedOrder ? paymentReturn.get('don') : null;
+let donationRequest;
+if(donationForm)donationForm.onsubmit=async event=>{
+ event.preventDefault();
+ const button=$('donation-pay'),status=$('donation-status');
+ if(button.disabled||donationForm.hidden||!session)return;
+ const user=session.user;
+ status.hidden=false;
+ let amount;
+ try{amount=parseEuro($('donation-amount').value);}catch{amount=0;}
+ if(amount<100||amount>100000){
+  status.textContent='Saisissez un montant entre 1 € et 1 000 €, avec deux décimales au maximum.';
+  $('donation-amount').focus();
+  return;
+ }
+ if(donationRequest?.amount!==amount)donationRequest={amount,id:crypto.randomUUID()};
+ button.disabled=true;
+ $('donation-amount').disabled=true;
+ status.textContent='Ouverture du paiement du don…';
+ try{
+  const result=await api({action:'create-donation',order_id:returnedOrder,amount_cents:amount,request_id:donationRequest.id},user);
+  if(session?.user.id!==user.id)throw Error('Votre connexion a changé.');
+  location.assign(stripeCheckoutUrl(result.url).href);
+ }catch(error){
+  status.textContent=error.message;
+  button.disabled=false;
+  $('donation-amount').disabled=false;
+ }
+};
+async function refreshDonation(order,revision){
+ if(!donationForm||!order||!donationReturn||donationReturn==='annule')return;
+ const status=$('donation-status'),user=session.user;
+ status.hidden=false;
+ status.textContent='Vérification du don…';
+ try{
+  const result=await api({action:'donation-status',order_id:order.id,session_id:donationReturn},user);
+  if(revision!==ordersRevision||session?.user.id!==user.id)return;
+  if(result.status==='paid')status.textContent='Merci pour votre don de '+money(result.amount_cents)+' à l’association KM16.';
+  else if(result.status==='expired')status.textContent='La session Stripe a expiré. Ce don n’a pas été encaissé.';
+  else status.textContent='Le paiement du don est en cours de vérification. Utilisez « Vérifier le paiement » pour actualiser.';
+ }catch{
+  if(revision===ordersRevision&&session?.user.id===user.id)status.textContent='Le statut du don est indisponible. Utilisez « Vérifier le paiement » pour réessayer.';
+ }
+}
 function showPaymentReturn(order, payments=[], failed=false){
  if(!returnedOrder)return;
  const panel=$('payment-return');
@@ -1012,10 +1057,19 @@ function showPaymentReturn(order, payments=[], failed=false){
  ordersLink.hidden=!order;
  if(order)ordersLink.href='#returned-order';
  refresh.hidden=!session;
+ if(donationForm){donationForm.hidden=true;$('donation-status').hidden=true;}
  if(!session){status.textContent='Connectez-vous à votre espace KM16 pour vérifier ce paiement.';return;}
  if(failed){status.textContent='Le statut est momentanément indisponible. Réessayez dans un instant.';return;}
  const paid=payments.filter(p=>p.status==='paid').reduce((sum,p)=>sum+p.amount_cents-(p.refunded_cents||0),0);
- if(order?.approval==='rejected'||payments.some(p=>['disputed','refunded','failed'].includes(p.status)||p.refunded_cents>0)){
+ const paymentNeedsReview=order?.approval==='rejected'||payments.some(p=>['disputed','refunded','failed'].includes(p.status)||p.refunded_cents>0);
+ if(donationForm&&order?.total_cents>0&&paid>0&&!paymentNeedsReview&&(!donationReturn||donationReturn==='annule')){
+  donationForm.hidden=false;
+  if(donationReturn==='annule'&&!donationRequest){
+   $('donation-status').hidden=false;
+   $('donation-status').textContent='Le paiement du don a été annulé.';
+  }
+ }
+ if(paymentNeedsReview){
   status.textContent='Ce dossier ou ce paiement demande une vérification. Consultez votre inscription ou contactez contact@km16.fr.';
  }else if(order&&paid>0&&orderGroup(order)==='Stages'&&paid>=order.total_cents){
   status.textContent='Paiement reçu. Votre inscription au stage est confirmée.';
@@ -1050,6 +1104,7 @@ async function orders(){
   const order=next.orders.find(o=>o.id===returnedOrder&&o.livemode===true);
   const returnedPayments=order?next.payments.filter(p=>p.order_id===order.id):[];
   showPaymentReturn(order,returnedPayments);
+  void refreshDonation(order,revision);
   if(order&&orderGroup(order)==='Adhésions'&&returnedPayments.some(p=>p.status==='paid'&&p.amount_cents>(p.refunded_cents||0))&&hasStageAnalyticsConsent()){
    const key='km16-payment-measured:'+returnedOrder;
    try{if(!sessionStorage.getItem(key)){sessionStorage.setItem(key,'1');void trackMembershipStep('payment_confirmed');}}catch{}

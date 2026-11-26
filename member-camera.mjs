@@ -8,7 +8,8 @@ export function createMemberCamera({dialog,trigger,canOpen,onPhoto,onFile,onNati
  const capture=find('capture'),use=find('use'),retake=find('retake'),switchCamera=find('switch'),retry=find('retry');
  const deviceSelect=find('device'),zoom=find('zoom');
  let stream=null,snapshot=null,revision=0,devices=[],deviceId='',viewportCleanup=()=>{},cancelPreview=()=>{};
- let framing={zoom:1,x:.5,y:.5},drag=null;
+ let framing={zoom:1,x:.5,y:.5},gesture=null,actions={onPhoto,onFile,onNative};
+ const pointers=new Map();
  const clamp=(value,min,max)=>Math.max(min,Math.min(max,value));
 
  function stopStream(){
@@ -33,12 +34,12 @@ export function createMemberCamera({dialog,trigger,canOpen,onPhoto,onFile,onNati
   capture.hidden=!['starting','live','capturing'].includes(value);capture.disabled=value!=='live';
   use.hidden=retake.hidden=!['captured','saving'].includes(value);use.disabled=retake.disabled=value!=='captured';
   find('framing').hidden=!['live','captured'].includes(value);
-  retry.hidden=value!=='error';find('native').hidden=value!=='error';
+  retry.hidden=value!=='error';find('native').hidden=value!=='error'||!actions.onNative;
   showDevices();renderFraming();position();
  }
- function clearSnapshot(){snapshot=null;preview.removeAttribute('src');drag=null;stage.classList.remove('dragging');}
+ function clearSnapshot(){snapshot=null;preview.removeAttribute('src');pointers.clear();gesture=null;stage.classList.remove('dragging');}
  function dispose(){
-  revision++;stopStream();clearSnapshot();viewportCleanup();viewportCleanup=()=>{};
+  revision++;stopStream();clearSnapshot();actions={onPhoto,onFile,onNative};viewportCleanup();viewportCleanup=()=>{};
   trigger.setAttribute('aria-expanded','false');
  }
  function close(){dispose();if(dialog.open)dialog.close();}
@@ -93,28 +94,48 @@ export function createMemberCamera({dialog,trigger,canOpen,onPhoto,onFile,onNati
  function canFrame(){return ['live','captured'].includes(dialog.dataset.state);}
  zoom.oninput=()=>{if(canFrame()){framing.zoom=Number(zoom.value);renderFraming();}};
  find('reset').onclick=()=>{framing.x=.5;framing.y=.5;renderFraming();};
+ function pointerPosition(){
+  const [first,second]=pointers.values();
+  return second ? {x:(first.x+second.x)/2,y:(first.y+second.y)/2,distance:Math.hypot(second.x-first.x,second.y-first.y)} : first;
+ }
+ function startGesture(){
+  const box=crop(),point=pointerPosition();
+  gesture=box&&point ? {point,box,zoom:framing.zoom} : null;
+  stage.classList.toggle('dragging',!!gesture);
+ }
  stage.addEventListener('pointerdown',event=>{
-  if(!canFrame()||event.button!==0||!event.isPrimary)return;
-  const box=crop(),bounds=stage.getBoundingClientRect();if(!box)return;
-  drag={id:event.pointerId,x:event.clientX,y:event.clientY,box,bounds};
-  stage.setPointerCapture(event.pointerId);stage.classList.add('dragging');event.preventDefault();
+  if(!canFrame()||event.button!==0||pointers.size>=2)return;
+  pointers.set(event.pointerId,{x:event.clientX,y:event.clientY});
+  stage.setPointerCapture(event.pointerId);startGesture();event.preventDefault();
  });
  stage.addEventListener('pointermove',event=>{
-  if(!drag||drag.id!==event.pointerId||!canFrame())return;
-  const {bounds}=drag;
-  if(drag.box.w===drag.box.width||drag.box.h===drag.box.height){
-   const offsetX=Math.abs(event.clientX-drag.x),offsetY=Math.abs(event.clientY-drag.y);
-   if(Math.max(offsetX,offsetY)<5)return;
-   const blocked=offsetX>=offsetY ? drag.box.w===drag.box.width : drag.box.h===drag.box.height;
-   if(blocked&&framing.zoom===1){framing.zoom=1.25;drag.box=crop();}
+  if(!gesture||!pointers.has(event.pointerId)||!canFrame())return;
+  pointers.set(event.pointerId,{x:event.clientX,y:event.clientY});
+  const point=pointerPosition(),origin=gesture.point;
+  const bounds=stage.getBoundingClientRect(),width=stage.clientWidth,height=stage.clientHeight;
+  const dx=point.x-origin.x,dy=point.y-origin.y;
+  let {box}=gesture;
+  if(origin.distance){
+   framing.zoom=gesture.zoom*point.distance/origin.distance;
+   const resized=crop();
+   const anchorX=(origin.x-bounds.left-stage.clientLeft)/width;
+   const anchorY=(origin.y-bounds.top-stage.clientTop)/height;
+   framing.x=(box.x+anchorX*box.w+(.5-anchorX-dx/width)*resized.w)/box.width;
+   framing.y=(box.y+anchorY*box.h+(.5-anchorY-dy/height)*resized.h)/box.height;
+  }else{
+   if(framing.zoom===1&&(box.w===box.width||box.h===box.height)){
+    if(Math.max(Math.abs(dx),Math.abs(dy))<5)return;
+    const blocked=Math.abs(dx)>=Math.abs(dy) ? box.w===box.width : box.h===box.height;
+    if(blocked){framing.zoom=1.25;box=gesture.box=crop();}
+   }
+   framing.x=(box.x+box.w/2-dx*box.w/width)/box.width;
+   framing.y=(box.y+box.h/2-dy*box.h/height)/box.height;
   }
-  const {box}=drag;
-  framing.x=(box.x+box.w/2-(event.clientX-drag.x)*box.w/bounds.width)/box.width;
-  framing.y=(box.y+box.h/2-(event.clientY-drag.y)*box.h/bounds.height)/box.height;
   renderFraming();
  });
- const endDrag=()=>{drag=null;stage.classList.remove('dragging');};
- for(const event of ['pointerup','pointercancel','lostpointercapture'])stage.addEventListener(event,endDrag);
+ for(const event of ['pointerup','pointercancel','lostpointercapture']){
+  stage.addEventListener(event,pointer=>{if(pointers.delete(pointer.pointerId))startGesture();});
+ }
  stage.addEventListener('keydown',event=>{
   if(!canFrame()||!['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(event.key))return;
   event.preventDefault();const box=crop();if(!box)return;
@@ -124,10 +145,10 @@ export function createMemberCamera({dialog,trigger,canOpen,onPhoto,onFile,onNati
   renderFraming();
  });
 
- async function editFile(file){
+ async function editFile(file,editActions={onPhoto,onFile,onNative}){
   if(!file||dialog.open||!canOpen())return;
   const current=++revision;
-  framing={zoom:1,x:.5,y:.5};
+  actions=editActions;framing={zoom:1,x:.5,y:.5};
   dialog.showModal();trigger.setAttribute('aria-expanded','true');watchViewport();
   state('loading-photo','Ouverture de la photo…');
   try{
@@ -236,7 +257,7 @@ export function createMemberCamera({dialog,trigger,canOpen,onPhoto,onFile,onNati
    snapshot=canvas;preview.src=canvas.toDataURL('image/jpeg',.95);stopStream();
    await preview.decode();
    if(current!==revision||!dialog.open)return;
-   state('captured','Ajustez encore le cadrage si besoin, puis utilisez cette photo.');
+   state('captured','Déplacez ou zoomez la photo, puis appuyez sur « Utiliser cette photo ».');
    use.focus({preventScroll:true});
   }catch{
    if(current!==revision||!dialog.open)return;
@@ -255,7 +276,8 @@ export function createMemberCamera({dialog,trigger,canOpen,onPhoto,onFile,onNati
    const blob=await new Promise(resolve=>canvas.toBlob(resolve,'image/jpeg',.9));
    if(current!==revision||!dialog.open||!canOpen())return;
    if(!blob)throw Error('Snapshot failed');
-   const file=new File([blob],'portrait-km16.jpg',{type:'image/jpeg'});close();void onPhoto(file);
+   const file=new File([blob],'portrait-km16.jpg',{type:'image/jpeg'});
+   const accept=actions.onPhoto;close();void accept(file);
   }catch{
    if(current===revision&&dialog.open)state('captured','Le portrait n’a pas pu être préparé. Réessayez de l’utiliser ou reprenez la photo.');
   }
@@ -269,7 +291,9 @@ export function createMemberCamera({dialog,trigger,canOpen,onPhoto,onFile,onNati
  };
  navigator.mediaDevices?.addEventListener?.('devicechange',()=>{if(dialog.open)void refreshDevices(revision);});
  find('close').onclick=close;
- find('file').onclick=()=>{close();onFile();};find('native').onclick=()=>{close();onNative();};
+ for(const [id,key] of [['file','onFile'],['native','onNative']]){
+  find(id).onclick=()=>{const choose=actions[key];close();choose?.();};
+ }
  trigger.onclick=open;
  dialog.addEventListener('cancel',event=>{event.preventDefault();close();});
  dialog.addEventListener('close',()=>{if(!dialog.open)dispose();});

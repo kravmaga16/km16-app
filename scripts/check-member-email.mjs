@@ -23,7 +23,7 @@ const server=createServer(async(req,res)=>{try{
 await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
 const origin='http://127.0.0.1:'+server.address().port;
 const engines=process.env.KM16_CHROMIUM_ONLY?[['Chromium',chromium]]:[['Chromium',chromium],['WebKit',webkit]];
-const allScenarios=['guest','session','anonymous','unconfirmed','slow-catalogue','guest-refresh','network-error','network-reload','rate-limit','wrong-identity','draft-new-tab','confirmation-no-draft','confirmation-legacy','confirmation-expired','logout','minor','identity-switch-before-checkout','reminder-free','camera','camera-errors','camera-cancel-pending','camera-embed','camera-desktop-devices','camera-device-recovery','camera-framing'];
+const allScenarios=['guest','session','anonymous','unconfirmed','slow-catalogue','guest-refresh','network-error','network-reload','rate-limit','wrong-identity','draft-new-tab','confirmation-no-draft','confirmation-legacy','confirmation-expired','logout','minor','identity-switch-before-checkout','reminder-free','camera','camera-errors','camera-cancel-pending','camera-embed','camera-desktop-devices','camera-device-recovery','camera-framing','camera-member-order'];
 const scenarios=process.env.KM16_CAMERA_ONLY?allScenarios.filter(name=>name.startsWith('camera')):allScenarios;
 const otpCalls=events=>events.filter(e=>e.type==='otp');
 const writes=events=>events.filter(e=>e.type==='api'&&['photo-upload','checkout'].includes(e.body.action));
@@ -46,7 +46,7 @@ async function harness(browser,width,scenario){
   if(url.hostname==='checkout.stripe.com')return route.fulfill({status:200,contentType:'text/html',body:'<h1>Payment simulation only</h1>'});
   unexpected.push(url.origin+url.pathname);return route.abort();
  });
- const initial=['session','slow-catalogue','logout','identity-switch-before-checkout'].includes(scenario)?confirmed:scenario==='anonymous'?{user:{id:'anon-fixture',is_anonymous:true},access_token:'anonymous-fixture'}:scenario==='unconfirmed'?{user:{id:'unconfirmed-fixture',email:'test@example.invalid',is_anonymous:false,email_confirmed_at:null},access_token:'unconfirmed-fixture'}:null;
+ const initial=['session','slow-catalogue','logout','identity-switch-before-checkout','camera-member-order'].includes(scenario)?confirmed:scenario==='anonymous'?{user:{id:'anon-fixture',is_anonymous:true},access_token:'anonymous-fixture'}:scenario==='unconfirmed'?{user:{id:'unconfirmed-fixture',email:'test@example.invalid',is_anonymous:false,email_confirmed_at:null},access_token:'unconfirmed-fixture'}:null;
  await context.addInitScript(({initial,products,scenario,confirmed})=>{
   if(!['127.0.0.1','localhost'].includes(location.hostname))return;
   const saved=localStorage.getItem('km16-test-auth');
@@ -152,7 +152,15 @@ async function harness(browser,width,scenario){
     data={ok:true};
    }
    else if(body.action==='checkout'){if(window.TEST_CHECKOUT_DELAY)await new Promise(resolve=>setTimeout(resolve,window.TEST_CHECKOUT_DELAY));data=scenario==='reminder-free'?{free:true}:{url:'https://checkout.stripe.com/c/pay/simulated-only'};}
-   else if(body.action==='orders')data={orders:[],payments:[],documents:[]};
+   else if(body.action==='orders'){
+    data={orders:[],payments:[],documents:[]};
+    if(scenario==='camera-member-order'){
+     data.orders.push({id:'fixture-order',title:'Adhésion de test',product_id:'adultes',total_cents:10000,livemode:true,approval:'approved',count:1});
+     data.payments.push({order_id:'fixture-order',amount_cents:10000,status:'paid'});
+     data.photo_order_ids=window.TEST_MEMBER_PHOTO?['fixture-order']:[];
+    }
+   }
+   else if(scenario==='camera-member-order'&&body.action==='member-photo-add'){window.TEST_MEMBER_PHOTO=body.photo;data={ok:true};}
    else if(scenario==='prorata-admin'&&body.action==='admin-access')data={admin:true};
    else if(scenario==='prorata-admin'&&body.action==='admin-page')data={orders:[],payments:[],documents:[],mails:[]};
    else if(scenario==='prorata-admin'&&body.action==='links-list')data={links:[]};
@@ -170,6 +178,10 @@ async function harness(browser,width,scenario){
   const query=scenario==='catalogue-local-error'?'?produit=cours-deux-heures':'?produit=stage-1';
   await page.goto(origin+'/adhesion.html'+query);
   return {context,page,events,errors,unexpected};
+ }
+ if(scenario==='camera-member-order'){
+  await hostPage.goto(origin+'/adhesion.html?espace=1');
+  return {context,page,hostPage,events,errors,unexpected};
  }
  if(scenario==='camera-embed'){
   await hostPage.goto(origin+'/__camera-host.html');
@@ -251,7 +263,8 @@ async function photoFile(page,color='#ccc'){
 }
 async function addPhoto(page,color='#ccc'){
  await page.locator('#member_photo').setInputFiles(await photoFile(page,color));
- await page.waitForFunction(()=>document.querySelector('#photo-status').textContent.includes('Photo prête'));
+ await page.locator('#member-camera-use').click();
+ await page.waitForFunction(()=>!document.querySelector('#member-camera-dialog').open&&document.querySelector('#photo-status').textContent.includes('Photo prête'));
 }
 async function fill(page,{photo=true,minor=false}={}){
  await page.locator('#first_name').fill('Camille');await page.locator('#last_name').fill('Exemple');
@@ -337,14 +350,16 @@ try{
    for(const width of [390,1280])for(const scenario of scenarios){
    const {context,page,hostPage,events,errors,unexpected}=await harness(browser,width,scenario);
    try{
-    assert.equal(await page.locator('#order').isVisible(),true,'form opens before account creation');
-    assert.equal(await page.locator('#guardian').isVisible(),false,'guardian stays hidden until a minor’s date is entered');
-    assert.equal(await page.locator('#checkout-reminder').isChecked(),false,'payment reminders are opt-in only');
-    assert.equal(await page.locator('#checkout-reminder').getAttribute('required'),null,'reminder consent is independent of required terms');
-    assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),true,'no horizontal overflow');
-    if(!['session','slow-catalogue','logout','identity-switch-before-checkout'].includes(scenario)){
-     assert.equal(await page.locator('#contact_email').isEditable(),true,'guest email editable');
-     assert.equal(await page.locator('#login').isVisible(),false,'password is optional');
+    if(scenario!=='camera-member-order'){
+     assert.equal(await page.locator('#order').isVisible(),true,'form opens before account creation');
+     assert.equal(await page.locator('#guardian').isVisible(),false,'guardian stays hidden until a minor’s date is entered');
+     assert.equal(await page.locator('#checkout-reminder').isChecked(),false,'payment reminders are opt-in only');
+     assert.equal(await page.locator('#checkout-reminder').getAttribute('required'),null,'reminder consent is independent of required terms');
+     assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),true,'no horizontal overflow');
+     if(!['session','slow-catalogue','logout','identity-switch-before-checkout'].includes(scenario)){
+      assert.equal(await page.locator('#contact_email').isEditable(),true,'guest email editable');
+      assert.equal(await page.locator('#login').isVisible(),false,'password is optional');
+     }
     }
     if(scenario==='camera'){
      await fill(page,{photo:false});
@@ -446,6 +461,18 @@ try{
      await page.locator('#member-camera-close').click();await cameraStopped(page);
      assert.equal(await page.locator('#photo-preview').getAttribute('src'),previousPhoto,'camera failures do not discard an accepted portrait');
      assert.deepEqual(writes(events),[]);
+    }else if(scenario==='camera-member-order'){
+     await page.locator('#member-order-fixture-order-photo summary').click();
+     const save=page.getByRole('button',{name:'Enregistrer la photo',exact:true});
+     assert.equal(await save.isDisabled(),true);
+     await page.locator('#member-order-fixture-order-photo input').setInputFiles(await photoFile(page));
+     await page.locator('#member-camera-use').click();
+     assert.equal(events.some(event=>event.body?.action==='member-photo-add'),false);
+     await save.click();
+     await page.getByRole('button',{name:'Voir la photo du dossier'}).waitFor();
+     const upload=events.find(event=>event.body?.action==='member-photo-add');
+     assert.equal(upload.body.request_id,'fixture-order');
+     assert.match(upload.body.photo,/^data:image\/jpeg;base64,/);
     }else if(scenario==='camera-framing'){
      await fill(page,{photo:false});await openCamera(page);
      const stage=page.locator('#member-camera-stage');
@@ -455,8 +482,8 @@ try{
      for(let n=0;n<4;n++)await page.keyboard.press('ArrowRight');
      assert.notDeepEqual(await stage.screenshot(),beforeKeys,'keyboard arrows actually change the displayed framing');
      await page.locator('#member-camera-reset').click();
-     assert.equal(Number(await page.locator('#member-camera-zoom').inputValue()),1,'reset restores the full portrait crop');
-     await cameraZoom(page,2);await dragCameraImage(page,[.85,.15],[.2,.85]);
+     assert.equal(Number(await page.locator('#member-camera-zoom').inputValue()),2,'recentering preserves the zoom');
+     await dragCameraImage(page,[.85,.15],[.2,.85]);
      assertFramingColor(await stageSamples(page),'green','live framing selects the green top-right area');
      await captureCamera(page);
      assertFramingColor(await stageSamples(page),'green','capturing preserves the visible crop');
@@ -492,15 +519,18 @@ try{
      const nativeChooser=page.waitForEvent('filechooser');await page.locator('#member-camera-native').click();
      const native=await nativeChooser;assert.equal(await native.element().getAttribute('id'),'member_camera');
      await native.setFiles(await photoFile(page,'#bb5522'));
+     await page.locator('#member-camera-use').click();
      await page.waitForFunction(previous=>document.querySelector('#photo-preview').getAttribute('src')!==previous&&document.querySelector('#photo-status').textContent.includes('Photo prête'),previous);
      const nativePhoto=await page.locator('#photo-preview').getAttribute('src');
      await page.locator('#member_photo').setInputFiles({name:'invalide.png',mimeType:'image/png',buffer:Buffer.from('not an image')});
-     await page.waitForFunction(()=>!document.querySelector('#pay').disabled&&!document.querySelector('#photo-status').textContent.includes('Préparation'));
+     await cameraError(page);
+     await page.locator('#member-camera-close').click();
      assert.equal(await page.locator('#photo-preview').getAttribute('src'),nativePhoto,'invalid replacement preserves a confirmed photo');
      await page.locator('#take-photo').click();await cameraError(page);
      const galleryChooser=page.waitForEvent('filechooser');await page.locator('#member-camera-file').click();
      const gallery=await galleryChooser;assert.equal(await gallery.element().getAttribute('id'),'member_photo');
      await gallery.setFiles(await photoFile(page,'#114477'));
+     await page.locator('#member-camera-use').click();
      await page.waitForFunction(previous=>document.querySelector('#photo-preview').getAttribute('src')!==previous&&document.querySelector('#photo-status').textContent.includes('Photo prête'),nativePhoto);
      assert.deepEqual(writes(events),[],'recovery stays local');
     }else if(scenario==='camera-embed'){

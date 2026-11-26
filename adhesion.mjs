@@ -3,7 +3,7 @@ import {hasStageAnalyticsConsent, prepareStageAnalytics, stageReminderSource, tr
 import {enhanceBirthDate} from './birth-date-input.mjs?v=1';
 enhanceBirthDate(document.getElementById('birth_date'));
 import {preparePhoto} from './member-photo.mjs?v=2';
-import {createMemberCamera} from './member-camera.mjs?v=3';
+import {createMemberCamera} from './member-camera.mjs?v=4';
 import {parseEuro,eligibleProducts} from './purchase-links.mjs?v=liens1';
 import {splitAmount,ageOn,validateOrder} from './rules.mjs?v=inscription-20261124';
 import {createCheckoutAccess,verifiedAccount,normalizeEmail,saveOrderLoginReturn,validPersonalCheckoutReturn} from './checkout-account.mjs?v=paiement-direct-20261125';
@@ -83,8 +83,10 @@ async function selectMemberPhoto(input,file=input?.files?.[0]){
   if(revision===photoRevision){photoPreparing=false;buttonState();}
  }
 }
+const photoDialog=$('member-camera-dialog');
+document.body.append(photoDialog);
 const memberCamera=createMemberCamera({
- dialog:$('member-camera-dialog'),trigger:$('take-photo'),canOpen:()=>!busy&&!photoPreparing,
+ dialog:photoDialog,trigger:$('take-photo'),canOpen:()=>!busy&&!photoPreparing,
  onPhoto:file=>selectMemberPhoto(null,file),
  onFile:()=>$('member_photo').click(),
  onNative:()=>{$('member_camera').value='';$('member_camera').click();}
@@ -959,15 +961,27 @@ function renderMyOrders(){
    const upload=text('details','',box);upload.id=memberOrderAnchor(o)+'-photo';
    text('summary','Ajouter la photo du pratiquant',upload);
    const form=text('form','',upload), input=text('input','',form);
-   input.type='file';input.accept='image/*,.heic,.heif';input.required=true;input.setAttribute('aria-label','Photo du pratiquant');
-   const button=text('button','Enregistrer la photo',form);button.type='submit';
+   input.type='file';input.accept='image/*,.heic,.heif';input.setAttribute('aria-label','Photo du pratiquant');
+   const button=text('button','Enregistrer la photo',form);button.type='submit';button.disabled=true;
    const status=text('p','',form,'muted');status.setAttribute('role','status');
+   let portrait=null;
+   input.onchange=()=>{
+    const file=input.files?.[0];
+    input.value='';
+    void memberCamera.editFile(file,{
+     onPhoto:edited=>{
+      portrait=edited;button.disabled=false;
+      status.textContent='Photo cadrée. Vous pouvez l’enregistrer.';
+     },
+     onFile:()=>input.click()
+    });
+   };
    form.onsubmit=async event=>{
     event.preventDefault();const account=session?.user;
-    if(!account)return;
+    if(!account||!portrait||button.disabled||photoDialog.open)return;
     button.disabled=true;input.disabled=true;status.textContent='Préparation de la photo…';
     try{
-     const photo=await preparePhoto(input.files[0]);
+     const photo=await preparePhoto(portrait);
      await api({action:'member-photo-add',request_id:o.id,photo},account);
      status.textContent='Photo enregistrée.';await orders();
     }catch(error){status.textContent=error.message;}

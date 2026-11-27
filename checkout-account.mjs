@@ -179,7 +179,9 @@ export function takeOrderLoginReturn(session) {
     const value = JSON.parse(localStorage.getItem(ORDER_RETURN_KEY));
     if (!value || value.email !== normalizeEmail(verified.user.email)) return null;
     localStorage.removeItem(ORDER_RETURN_KEY);
-    if (value.expires <= Date.now() || !/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(value.order)) return null;
+    if (value.expires <= Date.now()) return null;
+    if (value.journey === 'account' && !value.order) return '/adhesion.html?espace=1';
+    if (!/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(value.order)) return null;
     if (value.journey === 'trial') return '/adhesion.html?apres_essai=1&essai=' + value.order;
     if (value.journey === 'renewal') return '/adhesion.html?renouveler=' + value.order;
     return '/adhesion.html?espace=1&order=' + value.order;

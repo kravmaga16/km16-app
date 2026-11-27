@@ -13,7 +13,7 @@ const videoModule=[...index.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/gi)].m
 const authCapture=[...index.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/gi)].map(m=>m[1]).find(s=>s.includes('KM16_AUTH_FRAGMENT')&&!s.includes('createCheckoutAccess'));
 assert.ok(videoModule&&authCapture);
 files.set('/video-module.mjs',videoModule);
-files.set('/index.html',index.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi,'')+`<script>${authCapture}\nwindow.showFixtureView=id=>{document.querySelectorAll('.panel').forEach(e=>{e.hidden=e.id!==id;e.classList.toggle('active',e.id===id)});window.dispatchEvent(new CustomEvent('km16-view-change',{detail:{id}}));};window.showFixtureView(location.hash==='#videos'?'videos':'accueil');</script><script type="module" src="/video-module.mjs"></script>`);
+files.set('/index.html',index.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi,'')+`<script>${authCapture}\nwindow.showFixtureView=id=>{document.querySelectorAll('.panel').forEach(e=>{e.hidden=e.id!==id;e.classList.toggle('active',e.id===id)});window.dispatchEvent(new CustomEvent('km16-view-change',{detail:{id}}));};const showHashView=()=>window.showFixtureView(location.hash==='#videos'?'videos':'accueil');window.addEventListener('hashchange',showHashView);showHashView();</script><script type="module" src="/video-module.mjs"></script>`);
 const stub=`
 window.TEST_CALLS=[];window.TEST_OTP=[];window.TEST_VIDEO_QUERIES=0;window.TEST_SESSION=window.TEST_INITIAL_SESSION||null;
 const listeners=[];

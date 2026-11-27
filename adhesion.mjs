@@ -8,7 +8,7 @@ import {preparePhoto} from './member-photo.mjs?v=2';
 import {createMemberCamera} from './member-camera.mjs?v=4';
 import {parseEuro,eligibleProducts} from './purchase-links.mjs?v=liens1';
 import {splitAmount,ageOn,validateOrder} from './rules.mjs?v=inscription-20261124';
-import {createCheckoutAccess,verifiedAccount,normalizeEmail,saveOrderLoginReturn,validPersonalCheckoutReturn} from './checkout-account.mjs?v=paiement-direct-20261125';
+import {createCheckoutAccess,verifiedAccount,normalizeEmail,saveOrderLoginReturn,validPersonalCheckoutReturn} from './checkout-account.mjs?v=member-session-20261127';
 const $=id=>document.getElementById(id),money=n=>new Intl.NumberFormat('fr-FR',{style:'currency',currency:'EUR'}).format(n/100);
 const client=window.supabase?.createClient('https://tlfewpbgbwesdriklxzb.supabase.co','sb_publishable_OGRSgobOGf54jlfmXGmS8g_04Ftvfsn',{auth:{storageKey:'km16-video-auth',detectSessionInUrl:false,flowType:'implicit'}});
 const endpoint='https://tlfewpbgbwesdriklxzb.supabase.co/functions/v1/km16-adhesions';
@@ -115,6 +115,8 @@ function text(tag,t,parent,cls){const e=document.createElement(tag);e.textConten
 async function api(data,expectedUser=null){const s=client&&data.action!=='catalogue'?(await accountTimeout(client.auth.getSession())).data?.session:null;if(expectedUser&&(!verifiedAccount(s)||s.user.id!==expectedUser.id||normalizeEmail(s.user.email)!==normalizeEmail(expectedUser.email)))throw Error('Votre connexion a changé. Vérifiez votre demande avant de continuer.');const r=await fetch(endpoint,{method:'POST',headers:{'Content-Type':'application/json',...(s?{Authorization:'Bearer '+s.access_token}:{})},body:JSON.stringify(data),...(data.action==='catalogue'?{signal:AbortSignal.timeout(8000)}:{})});const result=await r.json();if(!r.ok)throw Error(result.error||'Service indisponible');return result;}
 // Account restoration must not wait for the remote catalogue or order history.
 let accountRevision=0,accountLoginBusy=false,catalogueReady=false;
+let restoringMemberSession=accountView&&!!client;
+if(restoringMemberSession)accountMessage("Vérification de votre connexion…");
 const accountSession=verifiedAccount;
 function accountMessage(message,error=false){const target=$('account-status');target.textContent=message;target.className=error?'error':'muted';}
 function syncAccountForm(){
@@ -123,7 +125,7 @@ function syncAccountForm(){
  $('contact_email').readOnly=ready;
  $('contact-email-help').textContent=ready?'Adresse vérifiée de votre espace KM16. Pour utiliser une autre adresse, déconnectez-vous ci-dessus.':'Vos confirmations et votre accès personnel seront envoyés à cette adresse. Pour un mineur, indiquez l’e-mail du parent ou du représentant légal.';
  $('order').hidden=!selected;
- $('account-access').hidden=ready;
+ $('account-access').hidden=ready||restoringMemberSession;
  $('login-submit').textContent=accountLoginBusy?'Connexion…':selected?'Me connecter et continuer':'Me connecter';
 }
 function focusAccount(){
@@ -140,7 +142,11 @@ async function restoreAccount(){
  if(!client){accountMessage('Connexion indisponible. Rechargez la page pour réessayer.',true);return;}
  const revision=accountRevision;
  try{const {data,error}=await accountTimeout(client.auth.getSession());if(revision!==accountRevision)return;if(error)throw error;await authState(data.session);}
- catch{if(revision===accountRevision)accountMessage('Votre connexion n’a pas pu être rétablie. Connectez-vous ci-dessous.',true);}
+ catch{if(revision===accountRevision){
+  restoringMemberSession=false;
+  syncAccountForm();
+  accountMessage('Votre connexion n’a pas pu être vérifiée. Rechargez la page pour réessayer.',true);
+ }}
 }
 function buttonState(){ $('save-request').disabled=busy||!selected;$('pay').disabled=busy||photoPreparing||!enabled||!selected||selected.draft;$('reset-request').disabled=busy;$('pay').textContent=busy?'Préparation de votre demande…':photoPreparing?'Préparation de la photo…':!enabled?'Paiement indisponible':!accountSession(session)?'Recevoir mon lien de confirmation':selected?.amount===0?'Envoyer ma demande gratuite':'Continuer vers le paiement';for(const id of ['member_photo','member_camera','take-photo'])$(id).disabled=busy||photoPreparing;$('take-photo').textContent=photoData?'Reprendre une photo':'Prendre une photo';}
 function render(){
@@ -274,7 +280,7 @@ $('login').onsubmit=async e=>{
    return;
   }
   void authState(next).catch(()=>accountMessage('Connexion réussie. L’historique est temporairement indisponible.',true));
-  accountMessage('Vous êtes connecté. Vous pouvez poursuivre votre inscription.');
+  accountMessage(accountView?'Vous êtes connecté à votre espace adhérent.':'Vous êtes connecté. Vous pouvez poursuivre votre inscription.');
   if(selected){$('selection').scrollIntoView({behavior:'smooth',block:'start'});$('first_name').focus({preventScroll:true});}
  }catch(error){
   const message=error?.code==='email_not_confirmed'?'Confirmez votre adresse avec le lien reçu par e-mail, puis reconnectez-vous.':error?.status===429?'Trop de tentatives. Réessayez dans quelques minutes.':'Connexion impossible. Vérifiez votre e-mail, votre mot de passe et votre connexion, puis réessayez.';
@@ -422,7 +428,24 @@ $('email-link-login').onsubmit=async event=>{
  event.preventDefault();if(!$('email-link-login').reportValidity())return;
  const button=$('account-email-submit');if(button.disabled)return;button.disabled=true;
  accountMessage('Envoi du lien de connexion…');
- try{if(!client)throw Error('Connexion indisponible');if(requestedOrder)saveOrderLoginReturn(requestedOrder,$('account-email').value);else if(reuseOrder&&(renewalJourney||trialJourney))saveOrderLoginReturn(reuseOrder,$('account-email').value,renewalJourney?'renewal':'trial');const {error}=await accountTimeout(client.auth.signInWithOtp({email:normalizeEmail($('account-email').value),options:{shouldCreateUser:false,emailRedirectTo:prorataView?'https://app.km16.fr/?confirmation=admin-prorata':'https://app.km16.fr/'}}));if(error)throw error;accountMessage('Si vous avez un espace KM16 à cette adresse, consultez votre boîte e-mail pour vous connecter.');}
+ try{
+  if(!client)throw Error('Connexion indisponible');
+  if(accountView){
+   const current=await accountTimeout(client.auth.getSession());
+   if(current.error)throw current.error;
+   if(accountSession(current.data?.session)){
+    void authState(current.data.session).catch(()=>accountMessage('Connexion réussie. L’historique est temporairement indisponible.',true));
+    accountMessage('Vous êtes déjà connecté.');
+    return;
+   }
+  }
+  const email=normalizeEmail($('account-email').value);
+  if(accountView)saveOrderLoginReturn(requestedOrder,email,'account');
+  else if(reuseOrder&&(renewalJourney||trialJourney))saveOrderLoginReturn(reuseOrder,email,renewalJourney?'renewal':'trial');
+  const {error}=await accountTimeout(client.auth.signInWithOtp({email,options:{shouldCreateUser:false,emailRedirectTo:prorataView?'https://app.km16.fr/?confirmation=admin-prorata':'https://app.km16.fr/'}}));
+  if(error)throw error;
+  accountMessage('Si vous avez un espace KM16 à cette adresse, consultez votre boîte e-mail pour vous connecter.');
+ }
  catch(error){accountMessage(error?.status===429?'Un lien a déjà été demandé. Patientez une minute avant de réessayer.':'Le lien n’a pas pu être envoyé. Vérifiez votre adresse puis réessayez.',true);}
  finally{button.disabled=false;}
 };
@@ -1541,6 +1564,10 @@ async function authState(s){
   session=s;
   if(catalogueReady)await restoreAdmin(s);
   return;
+ }
+ if(restoringMemberSession){
+  restoringMemberSession=false;
+  accountMessage('');
  }
  const previous=session;
  const enteredEmail=normalizeEmail($('contact_email').value);

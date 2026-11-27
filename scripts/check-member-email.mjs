@@ -701,10 +701,17 @@ try{
      const expired=scenario==='confirmation-expired';
      const legacy=scenario==='confirmation-legacy';
      await next.goto(origin+(legacy?'':redirect.search)+(expired?'#error_code=otp_expired':'#access_token=fixture&refresh_token=fixture&type=magiclink'));
-     if(legacy)await next.getByRole('link',{name:'Reprendre mon inscription KM16'}).click();
-     await next.waitForURL(new RegExp('/adhesion[.]html[?].*confirmation='+(expired?'erreur':'1')));
-     await next.waitForFunction(expired=>document.querySelector('#status').textContent.includes(expired?'demandez un nouveau lien':'Votre e-mail est confirmé'),expired);
-     if(!legacy){
+     if(legacy){
+      await next.waitForURL('**/adhesion.html?espace=1');
+      await next.locator('#my-orders').waitFor({state:'visible'});
+      assert.equal(await next.locator('#account-access').isVisible(),false,'the session is reused in the member area');
+      await next.reload();
+      await next.locator('#my-orders').waitFor({state:'visible'});
+      assert.equal(await next.locator('#account-access').isVisible(),false,'reloading the member area does not ask for another login');
+      assert.equal(otpCalls(events).length,1);
+     }else{
+      await next.waitForURL(new RegExp('/adhesion[.]html[?].*confirmation='+(expired?'erreur':'1')));
+      await next.waitForFunction(expired=>document.querySelector('#status').textContent.includes(expired?'demandez un nouveau lien':'Votre e-mail est confirmé'),expired);
       assert.equal(await next.locator('#chosen').textContent(),expectedProduct);
       assert.equal(await next.locator('#first_name').inputValue(),'','personal data is never carried by the email URL');
       if(!expired)assert.match(await next.locator('#pay').textContent(),/Continuer vers le paiement/);

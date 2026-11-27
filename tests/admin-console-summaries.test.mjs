@@ -58,3 +58,46 @@ test('admin summaries return scoped history and exact course counts with MFA', a
   await assert.rejects(db.query(summaries,[Array(101).fill(ids[0])]),{code:'22023'});
  }finally{await db.close();}
 });
+
+test('course scope is restricted and omits unchanged rosters', async () => {
+ const db=new PGlite();
+ try{
+  await db.exec(`
+   create role anon;
+   create role authenticated;
+   create function public.km16_ops_is_admin() returns boolean language sql stable as
+   $$ select current_setting('role',true)='authenticated' and current_setting('fixture.admin',true)='yes' $$;
+   create table public.km16_course_sessions(id uuid primary key, course_key text, session_date date, category text, start_time time, end_time time, venue text, enabled boolean);
+   create table public.km16_course_bookings(id uuid primary key, session_id uuid, first_name text, last_name text, email text, status text, created_at timestamptz, cancelled_at timestamptz, read_at timestamptz);
+   create table public.km16_booking_member_links(booking_id uuid primary key,membership_order_id uuid);
+   create table public.km16_booking_external_links(booking_id uuid primary key,external_id uuid,season_id text);
+   create table public.km16_course_attendance(booking_id uuid primary key,present boolean);
+   insert into public.km16_course_sessions(id,session_date,enabled) values
+    ('00000000-0000-0000-0000-000000000001','2026-11-27',true),
+    ('00000000-0000-0000-0000-000000000002','2026-11-28',true);
+   insert into public.km16_course_bookings(id,session_id,email,status) values
+    ('00000000-0000-0000-0000-000000000011','00000000-0000-0000-0000-000000000001','fixture@example.invalid','Inscrit'),
+    ('00000000-0000-0000-0000-000000000012','00000000-0000-0000-0000-000000000002','outside@example.invalid','Inscrit');
+  `);
+  await db.exec(readFileSync(new URL('../supabase/migrations/20261127182516_course_console_scoped_snapshot.sql',import.meta.url),'utf8'));
+  const query='select public.km16_admin_course_scope($1::date,$2::uuid,$3::text) as value';
+  const date='2026-11-27';
+  await db.exec('set role anon');
+  await assert.rejects(db.query(query,[date,null,null]),{code:'42501'});
+  await db.exec('set role authenticated');
+  await assert.rejects(db.query(query,[date,null,null]),{code:'42501'});
+  await db.exec("set fixture.admin='yes'");
+  await assert.rejects(db.query(query,[null,null,null]),{code:'22023'});
+  const call=async (...args)=>(await db.query(query,args)).rows[0].value;
+  const snapshot=await call(date,null,null);
+  assert.equal(snapshot.bookings.length,1);
+  assert.equal(snapshot.bookings[0].email,'fixture@example.invalid');
+  assert.deepEqual(await call(date,null,snapshot.version),{version:snapshot.version,unchanged:true});
+  const id=snapshot.sessions[0].id;
+  assert.deepEqual(await call(null,id,null),snapshot);
+  await db.exec("reset role; insert into public.km16_course_attendance values ('00000000-0000-0000-0000-000000000011',false); set role authenticated");
+  const updated=await call(null,id,snapshot.version);
+  assert.equal(updated.unchanged,false);
+  assert.equal(updated.bookings[0].present,false);
+ }finally{await db.close();}
+});

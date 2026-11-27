@@ -36,7 +36,7 @@ async function harness(browser){
   state.notify=(session,event='SIGNED_IN')=>{state.session=session;for(const listener of listeners)listener(event,session);};
   state.login=()=>state.notify(admin);
   const auth={
-   mfa:{getAuthenticatorAssuranceLevel:async()=>({data:{currentLevel:'aal2'},error:null})},
+   mfa:{getAuthenticatorAssuranceLevel:async()=>({data:{currentLevel:state.assurance||'aal2'},error:null})},
    getSession:async()=>({data:{session:state.session},error:null}),
    onAuthStateChange:listener=>{listeners.push(listener);state.ready=true;return {data:{subscription:{unsubscribe(){}}}};},
    signOut:async()=>{if(state.holdSignOut)await new Promise(done=>{state.finishSignOut=done;});state.notify(null,'SIGNED_OUT');return {error:null};},
@@ -123,7 +123,7 @@ async function harness(browser){
      }
     }else{state.violations.push('review-action:'+body.action);throw Error('Unexpected review operation');}
     state.reviewDelivered++;
-   }else if(url.pathname==='/functions/v1/km16-clients'&&body.action==='clients')data={clients:state.clients||[],test:body.test,season:body.season,seasons:[],updated_at:'2026-11-18T09:00:00Z'};
+   }else if(url.pathname==='/functions/v1/km16-clients'&&body.action==='clients'){state.clientReads=(state.clientReads||0)+1;data={clients:state.clients||[],test:body.test,season:body.season,seasons:[],updated_at:'2026-11-18T09:00:00Z'};}
    else if(url.pathname==='/functions/v1/km16-shirts'&&body.action==='list')data={orders:[]};
    else if(url.pathname==='/functions/v1/km16-communications'&&body.action==='status')data={email_ready:false,campaigns:[]};
    else{state.violations.push('fetch:'+url.pathname+':'+body.action);throw Error('Unexpected external request');}
@@ -215,6 +215,19 @@ for(const [name,engine] of engines)test('Email alerts: '+name,{timeout:90000},as
     await h.page.locator('#client-page-next').click();
     assert.equal(await h.page.locator('#rows tr').count(),1);
     assert.match(await h.page.locator('#rows tr').textContent(),/Fiche 100/);
+    await h.page.locator('#search').fill('Camille');
+    await h.page.waitForFunction(()=>document.querySelector('#client-page-status').textContent.includes('Page 1 sur 3'));
+    await h.page.locator('#client-page-next').click();
+    await h.page.locator('#rows .km16-open-profile').first().click();
+    assert.equal(await h.page.locator('#member-profile').isVisible(),true);
+    const before=await h.page.evaluate(()=>window.__km16EmailTest.clientReads);
+    await h.page.evaluate(()=>{const state=window.__km16EmailTest;state.notify({...state.session,access_token:'renewed-fixture'},'TOKEN_REFRESHED');});
+    await settle(h.page);
+    assert.equal(await h.page.locator('#member-profile').isVisible(),true);
+    assert.equal(await h.page.locator('#search').inputValue(),'Camille');
+    assert.equal(await h.page.evaluate(()=>window.__km16EmailTest.clientReads),before);
+    assert.match(await h.page.locator('#client-page-status').textContent(),/Page 2 sur 3/);
+    await h.page.locator('#member-profile-close').click();
     const workbook=await h.page.evaluate(async()=>{
      const create=URL.createObjectURL;
      let blob;
@@ -226,6 +239,9 @@ for(const [name,engine] of engines)test('Email alerts: '+name,{timeout:90000},as
     await h.page.locator('#search').fill('fixture0@example.invalid');
     await h.page.waitForFunction(()=>document.querySelector('#client-pagination').hidden);
     assert.match(await h.page.locator('#rows tr').textContent(),/Fiche 0 Camille/);
+    await h.page.evaluate(()=>{const state=window.__km16EmailTest;state.assurance='aal1';state.notify({...state.session,access_token:'fixture-aal1'},'TOKEN_REFRESHED');});
+    await h.page.waitForFunction(()=>document.querySelector('#workspace').hidden);
+    assert.equal(await h.page.locator('#rows tr').count(),0);
     await h.check();
    }finally{await h.context.close();}
   });
@@ -408,5 +424,87 @@ for(const [name,engine] of engines)test('Email alerts: '+name,{timeout:90000},as
     await h.check();
    }finally{await h.context.close();}
   });
+ }finally{await browser.close();}
+});
+
+for(const [name,engine] of engines)test('Course console polling: '+name,{timeout:30000},async()=>{
+ const browser=await engine.launch({headless:true});
+ try{
+  const context=await browser.newContext({serviceWorkers:'block'});
+  const errors=[],external=[];
+  await context.route('**/*',route=>{
+   const url=new URL(route.request().url());
+   if(url.origin===origin)return route.continue();
+   if(url.hostname==='cdn.jsdelivr.net')return route.fulfill({contentType:'text/javascript',body:''});
+   external.push(url.pathname);return route.abort();
+  });
+  await context.addInitScript(({admin})=>{
+   const state=window.courseFixture={reads:[],present:null,clock:Date.now()};
+   Date.now=()=>state.clock;
+   const nativeInterval=window.setInterval;
+   window.setInterval=(fn,delay,...args)=>{
+    if(delay===30000){state.tick=()=>{state.clock+=delay;fn(...args);};return 1;}
+    return nativeInterval(fn,delay,...args);
+   };
+   const date=new Date().toLocaleDateString('sv-SE',{timeZone:'Europe/Paris'});
+   const course={id:'fixture-session',session_date:date,start_time:'18:00:00',end_time:'19:00:00',category:'Adultes',venue:'Dojo fictif',enabled:true};
+   const booking={id:'fixture-booking',session_id:course.id,first_name:'Camille',last_name:'Cours',email:'course-fixture@example.invalid',status:'Inscrit'};
+   const courseData={sessions:[course],bookings:[booking]};
+   window.supabase={createClient:()=>({
+    auth:{getSession:async()=>({data:{session:admin}}),onAuthStateChange(){}},
+    rpc:(name,args)=>{
+     state.reads.push({name,args});
+     if(name==='km16_admin_course_scope')return {abortSignal:async()=>{
+      const version=state.present===null?'initial':'presence';
+      const unchanged=version===args.p_previous_version;
+      const data=unchanged?{version,unchanged}:{version,unchanged,sessions:[course],bookings:[{...booking,present:state.present}]};
+      state.lastScope=data;
+      return {data,error:null};
+     }};
+     const data=name==='km16_admin_courses_today_tomorrow'?{today:date,tomorrow:date,sessions:[] }:[];
+     return Promise.resolve({data,error:null});
+    },
+    from:table=>({select:async()=>{state.reads.push({name:table});return {data:[],error:null};}})
+   })};
+   const realFetch=window.fetch.bind(window);
+   window.fetch=async(url,options)=>{
+    if(new URL(url,location.href).origin===location.origin)return realFetch(url,options);
+    const request=JSON.parse(options.body||'{}');
+    state.reads.push({name:request.action});
+    if(request.action!=='admin_list')throw Error('Unexpected course API request');
+    await new Promise(resolve=>{state.releaseGlobal=resolve;});
+    return Response.json(courseData);
+   };
+  },{admin});
+  const page=await context.newPage();
+  page.on('pageerror',e=>errors.push(e.message));
+  await page.goto(origin+'/course-admin.html?mesure=1',{waitUntil:'commit'});
+  await page.waitForFunction(()=>typeof window.courseFixture?.releaseGlobal==='function');
+  assert.match(await page.locator('#rows').textContent(),/Camille Cours/,'daily roster before global data');
+  assert.equal(await page.locator('#active').textContent(),'—');
+  await page.evaluate(()=>window.courseFixture.releaseGlobal());
+  await page.waitForFunction(()=>window.courseFixture.tick);
+  assert.equal(await page.locator('#active').textContent(),'1');
+  await page.locator('#session-rows .session-open').first().click();
+  await page.waitForFunction(()=>window.courseFixture.reads.some(x=>x.args?.p_session_id==='fixture-session'));
+  await settle(page);
+  await page.evaluate(()=>{window.courseFixture.reads=[];});
+  for(let i=1;i<=10;i++){
+   await page.evaluate(()=>window.courseFixture.tick());
+   await page.waitForFunction(i=>window.courseFixture.reads.filter(x=>x.name==='km16_admin_course_scope').length===i,i);
+   await settle(page);
+  }
+  const snapshot=await page.evaluate(()=>({reads:window.courseFixture.reads,last:window.courseFixture.lastScope}));
+  assert.equal(snapshot.reads.filter(x=>x.name==='admin_list').length,0,'no global polls while a session is selected');
+  assert.ok(snapshot.reads.filter(x=>x.name==='km16_admin_course_scope').every(x=>x.args.p_previous_version==='initial'));
+  assert.deepEqual(snapshot.last,{version:'initial',unchanged:true});
+  await page.evaluate(()=>{window.courseFixture.present=true;window.courseFixture.tick();});
+  await page.waitForFunction(()=>document.querySelector('#rows select')?.value==='true');
+  await page.getByText('Mesures de performance locales',{exact:true}).click();
+  const metrics=await page.locator('details').filter({hasText:'Mesures de performance locales'}).textContent();
+  assert.match(metrics,/Vue ciblée.*octets JSON/s);
+  assert.doesNotMatch(metrics,/Camille|course-fixture@example/);
+  assert.deepEqual(errors,[]);
+  assert.deepEqual(external,[]);
  }finally{await browser.close();}
 });

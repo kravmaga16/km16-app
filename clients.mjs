@@ -1,3 +1,5 @@
+import {adminPerformance} from './admin-performance.mjs';
+const diagnostics=adminPerformance();
 import {initAdminMfa} from './admin-mfa.mjs?v=enrollment-20261123';
 import {withClubPayments, clubAmountKnown, clubPaymentLabel} from './club-payments.mjs';
 import {initCommunications} from './communications.mjs?v=ages-5-8';
@@ -633,6 +635,7 @@ function renderClientResults(){
  }
  if(!shown.length){const row=document.createElement('tr'),td=cell(row,financePending?'Recherche en cours de chargement des règlements au club':all.length?'Aucun client pour cette sélection':'Aucun achat encaissé dans cet environnement');td.colSpan=13;km16RowsFragment.append(row);}
  $('rows').replaceChildren(km16RowsFragment);
+ if(pageRows.length)diagnostics.ready('Première fiche affichée');
  for(const b of document.querySelectorAll('[data-group]'))b.setAttribute('aria-pressed',String(b.dataset.group===group));
  $('export').disabled=busy||!all.some(c=>matches(c,query))||Boolean($('club-registration-form')&&!clubPaymentTotals);
 }
@@ -647,6 +650,7 @@ async function load({background=false}={}){
   const {data:{session:current}}=await client.auth.getSession();if(!current)throw Error('Session expirée');
   const r=await fetch(endpoint,{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+current.access_token},body:JSON.stringify({action:'clients',test,season}),signal:controller.signal});
   const data=await r.json();if(!r.ok)throw Error(data.error||'Chargement impossible');
+  diagnostics.response('Fichier clients',data);
   if(gen!==generation||test!==$('test').checked)return;
   if(!Array.isArray(data.clients)||data.test!==test||data.season!==season)throw Error('Réponse inattendue');
   sourceClients=data.clients;
@@ -909,8 +913,24 @@ $('km16-email-review-abandon')?.addEventListener('click',()=>{
  km16ReviewPending=null;$('km16-email-review-decision').value='';$('km16-email-review-note').value='';loadKm16EmailReviews(false);
 });
 
+let tokenRefreshRequest=0;
+async function updateClientSession(event,s){
+ if(event==='TOKEN_REFRESHED'&&isKm16EmailAdmin(s)&&s.user.id===session?.user.id&&isKm16EmailAdmin(session)){
+  const request=++tokenRefreshRequest,revision=authRevision;
+  const assurance=await client.auth.mfa.getAuthenticatorAssuranceLevel(s.access_token).catch(()=>null);
+  if(request!==tokenRefreshRequest||revision!==authRevision)return;
+  if(assurance?.data?.currentLevel==='aal2'){
+   session=s;
+   clearKm16EmailAlerts();
+   return;
+  }
+ }
+ await authState(s);
+}
+
 async function authState(s){
  const revision=++authRevision;
+ diagnostics.reset();
  generation++;controller?.abort();busy=false;session=null;clear();clearKm16EmailAlerts();communications.reset();
  const admin=s?.user.email?.toLowerCase()===ADMIN;
  if(admin){
@@ -1071,6 +1091,6 @@ if (clubRegistrationForm) {
 }
 
 if(!client)status('Connexion indisponible : rechargez la page',true);
-else{client.auth.onAuthStateChange((_event,s)=>{setTimeout(()=>authState(s),0);});const {data}=await client.auth.getSession();await authState(data.session);}
+else{client.auth.onAuthStateChange((event,s)=>{setTimeout(()=>void updateClientSession(event,s),0);});const {data}=await client.auth.getSession();await authState(data.session);}
 // Avoid redundant background reloads; manual refresh remains available.
 setInterval(()=>{if(!document.hidden&&!busy&&session?.user?.email?.toLowerCase()===ADMIN)load({background:true});},120000);

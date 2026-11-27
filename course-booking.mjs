@@ -85,13 +85,20 @@ const todayParis=()=>new Intl.DateTimeFormat('en-CA',{timeZone:'Europe/Paris',ye
 const scrollBehavior=()=>window.matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth';
 const iso=d=>new Date(d+'T12:00:00').toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
 let availableSessions=[];
+function showSelectedSession(){
+ const selected=availableSessions.find(s=>s.id===$('session').value);
+ const summary=$('booking-selection');
+ summary.hidden=!selected;
+ summary.textContent=selected?'Séance sélectionnée · '+iso(selected.session_date)+' · '+selected.start_time.slice(0,5)+'–'+selected.end_time.slice(0,5)+' · '+courseCategoryLabel(selected.category)+' · '+selected.venue:'';
+ $('submit').disabled=!selected;
+}
 function refreshSessionChoices(){
  const category=$('category-filter').value,previous=$('session').value;
  const filtered=availableSessions.filter(s=>s.session_date>=todayParis()&&(!category||s.category===category));
  $('session').replaceChildren(new Option('Choisir une séance',''));
  for(const s of filtered)$('session').add(new Option(iso(s.session_date)+' · '+s.start_time.slice(0,5)+' · '+courseCategoryLabel(s.category)+' · '+s.venue,s.id));
  if(filtered.some(s=>s.id===previous))$('session').value=previous;
- $('submit').disabled=!$('session').value;
+ showSelectedSession();
  if(!filtered.length)$('status').textContent='Aucune séance disponible pour ces filtres.';
  else if($('status').textContent==='Aucune séance disponible pour ces filtres.')$('status').textContent='';
 }
@@ -101,7 +108,7 @@ function setSessionFilters(rows){
  const categories=[...new Set(availableSessions.map(s=>s.category))].sort((a,b)=>a.localeCompare(b,'fr'));
  for(const category of categories)$('category-filter').add(new Option(courseCategoryLabel(category),category));
  $('category-filter').onchange=refreshSessionChoices;
- $('session').onchange=()=>{$('submit').disabled=!$('session').value;};
+ $('session').onchange=showSelectedSession;
  refreshSessionChoices();
 }
 let loadingSessions=false;
@@ -135,7 +142,7 @@ if(group){
   refreshSessionChoices();
  }
 }
-const param=params.get('session');if(param&&availableSessions.some(s=>s.id===param))$('session').value=param;else if(params.has('jour')&&params.has('debut')&&params.has('categorie')&&params.has('lieu')){const dayNames=['dimanche','lundi','mardi','mercredi','jeudi','vendredi','samedi'];const normal=v=>String(v||'').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\s+/g,' ');const time=v=>{const m=String(v||'').match(/^(\d{1,2})[:hH](\d{2})$/);return m?String(Number(m[1])).padStart(2,'0')+':'+m[2]:String(v||'').slice(0,5)};const bookingCategory=v=>normal(v).replace(/(?:6[–-][89]|5[–-]8) ans/g,'6–9 ans').replace(/(?:9|10)[–-]14 ans/g,'10–14 ans');const desired=normal(params.get('jour'));const match=availableSessions.find(s=>normal(dayNames[new Date(s.session_date+'T12:00:00Z').getUTCDay()])===desired&&time(s.start_time)===time(params.get('debut'))&&bookingCategory(s.category)===bookingCategory(params.get('categorie'))&&normal(s.venue)===normal(params.get('lieu')));if(match)$('session').value=match.id;else $('status').textContent='Aucune prochaine séance disponible pour ce créneau. Vous pouvez choisir une autre séance.';}$('submit').disabled=!$('session').value;if(!data.sessions.length)$('status').textContent='Aucune séance ouverte actuellement. Revenez prochainement.';
+const param=params.get('session');if(param&&availableSessions.some(s=>s.id===param))$('session').value=param;else if(params.has('jour')&&params.has('debut')&&params.has('categorie')&&params.has('lieu')){const dayNames=['dimanche','lundi','mardi','mercredi','jeudi','vendredi','samedi'];const normal=v=>String(v||'').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\s+/g,' ');const time=v=>{const m=String(v||'').match(/^(\d{1,2})[:hH](\d{2})$/);return m?String(Number(m[1])).padStart(2,'0')+':'+m[2]:String(v||'').slice(0,5)};const bookingCategory=v=>normal(v).replace(/(?:6[–-][89]|5[–-]8) ans/g,'6–9 ans').replace(/(?:9|10)[–-]14 ans/g,'10–14 ans');const desired=normal(params.get('jour'));const match=availableSessions.find(s=>normal(dayNames[new Date(s.session_date+'T12:00:00Z').getUTCDay()])===desired&&time(s.start_time)===time(params.get('debut'))&&bookingCategory(s.category)===bookingCategory(params.get('categorie'))&&normal(s.venue)===normal(params.get('lieu')));if(match)$('session').value=match.id;else $('status').textContent='Aucune prochaine séance disponible pour ce créneau. Vous pouvez choisir une autre séance.';}showSelectedSession();if(!data.sessions.length)$('status').textContent='Aucune séance ouverte actuellement. Revenez prochainement.';
  else if($('status').textContent==='Chargement des séances disponibles…')$('status').textContent='';
  }catch(e){$('status').className='error';$('status').textContent='Impossible de charger les séances. Vérifiez votre connexion et réessayez.';$('retry-load').hidden=false;}
  finally{loadingSessions=false;$('session').disabled=false;}

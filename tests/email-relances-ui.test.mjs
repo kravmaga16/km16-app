@@ -208,6 +208,8 @@ for(const [name,engine] of engines)test('Email alerts: '+name,{timeout:90000},as
     await login(h.page);
     await h.page.waitForFunction(()=>document.querySelector('#export').disabled===false);
     assert.equal(await h.page.locator('#rows tr').count(),50);
+    assert.equal(await h.page.locator('#rows .km16-mobile-card-summary').first().isVisible(),true);
+    assert.equal(await h.page.locator('#rows tr').first().locator('td').nth(3).isVisible(),false);
     assert.equal(await h.page.locator('#kpi-course-unlinked').textContent(),'7');
     assert.equal(await h.page.locator('#kpi-course-attendance').textContent(),'3');
     await h.page.locator('#client-page-next').click();
@@ -430,7 +432,7 @@ for(const [name,engine] of engines)test('Email alerts: '+name,{timeout:90000},as
 for(const [name,engine] of engines)test('Course console polling: '+name,{timeout:30000},async()=>{
  const browser=await engine.launch({headless:true});
  try{
-  const context=await browser.newContext({serviceWorkers:'block'});
+  const context=await browser.newContext({serviceWorkers:'block',viewport:{width:390,height:844}});
   const errors=[],external=[];
   await context.route('**/*',route=>{
    const url=new URL(route.request().url());
@@ -451,7 +453,7 @@ for(const [name,engine] of engines)test('Course console polling: '+name,{timeout
    const booking={id:'fixture-booking',session_id:course.id,first_name:'Camille',last_name:'Cours',email:'course-fixture@example.invalid',status:'Inscrit'};
    const courseData={sessions:[course],bookings:[booking]};
    window.supabase={createClient:()=>({
-    auth:{getSession:async()=>({data:{session:admin}}),onAuthStateChange(){}},
+    auth:{getSession:async()=>({data:{session:admin}}),getUser:async()=>({data:{user:admin.user}}),onAuthStateChange(){}},
     rpc:(name,args)=>{
      state.reads.push({name,args});
      if(name==='km16_admin_course_scope')return {abortSignal:async()=>{
@@ -464,7 +466,15 @@ for(const [name,engine] of engines)test('Course console polling: '+name,{timeout
      const data=name==='km16_admin_courses_today_tomorrow'?{today:date,tomorrow:date,sessions:[] }:[];
      return Promise.resolve({data,error:null});
     },
-    from:table=>({select:async()=>{state.reads.push({name:table});return {data:[],error:null};}})
+    from:table=>({
+     select:fields=>fields==='present'?{eq:()=>({maybeSingle:async()=>({data:{present:state.present},error:null})})}
+      :Promise.resolve({data:[],error:null}),
+     upsert:async row=>{
+      if(table!=='km16_course_attendance'||row.booking_id!==booking.id)throw Error('Unexpected write');
+      state.present=row.present;
+      return {error:null};
+     }
+    })
    })};
    const realFetch=window.fetch.bind(window);
    window.fetch=async(url,options)=>{
@@ -500,11 +510,96 @@ for(const [name,engine] of engines)test('Course console polling: '+name,{timeout
   assert.deepEqual(snapshot.last,{version:'initial',unchanged:true});
   await page.evaluate(()=>{window.courseFixture.present=true;window.courseFixture.tick();});
   await page.waitForFunction(()=>document.querySelector('#rows select')?.value==='true');
+  await page.locator('#km16-attendance-open').click();
+  const attendanceView=page.locator('#km16-attendance-view');
+  assert.equal(await attendanceView.isVisible(),true);
+  assert.match(await attendanceView.locator('#km16-attendance-count').textContent(),/0 présence/);
+  const absent=attendanceView.getByRole('button',{name:'Absent',exact:true});
+  assert.ok((await absent.boundingBox()).height>=44);
+  await absent.click();
+  await page.waitForFunction(()=>document.querySelector('#km16-attendance-feedback').textContent.includes('Absence enregistrée'));
+  assert.equal(await attendanceView.getByRole('button',{name:'Absent',exact:true}).getAttribute('aria-pressed'),'true');
+  await attendanceView.getByRole('button',{name:'Retour aux inscriptions'}).click();
+  assert.equal(await page.locator('#bookings-panel').isVisible(),true);
   await page.getByText('Mesures de performance locales',{exact:true}).click();
   const metrics=await page.locator('details').filter({hasText:'Mesures de performance locales'}).textContent();
   assert.match(metrics,/Vue ciblée.*octets JSON/s);
   assert.doesNotMatch(metrics,/Camille|course-fixture@example/);
   assert.deepEqual(errors,[]);
   assert.deepEqual(external,[]);
+ }finally{await browser.close();}
+});
+
+for(const [name,engine] of engines)test('Mobile home and booking: '+name,{timeout:30000},async()=>{
+ const browser=await engine.launch({headless:true});
+ try{
+  const context=await browser.newContext({viewport:{width:390,height:844},serviceWorkers:'block'});
+  const date=new Intl.DateTimeFormat('en-CA',{timeZone:'Europe/Paris',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(Date.now()+86400000));
+  const day=new Intl.DateTimeFormat('fr-FR',{weekday:'long',timeZone:'UTC'}).format(new Date(date+'T12:00:00Z'));
+  const child={id:'child-session',session_date:date,start_time:'17:00:00',end_time:'18:00:00',category:'Enfants 5–8 ans',venue:'Dojo des enfants'};
+  const adult={id:'adult-session',session_date:date,start_time:'19:30:00',end_time:'20:30:00',category:'Adultes tous niveaux',venue:'Dojo du soir'};
+  const planning=[child,adult].map(course=>({
+   Jour:day.charAt(0).toUpperCase()+day.slice(1),Catégorie:course.category,
+   'Heure de début':course.start_time.slice(0,5),'Heure de fin':course.end_time.slice(0,5),
+   Lieu:course.venue,Instructeur:'Équipe KM16'
+  }));
+  const bookingRequests=[];
+  await context.addInitScript(({admin})=>{
+   window.supabase={createClient:()=>({
+    auth:{
+     getSession:async()=>({data:{session:location.pathname.endsWith('/course-booking.html')?admin:null}}),
+     onAuthStateChange:()=>({data:{subscription:{unsubscribe(){}}}})
+    },rpc:async()=>({data:[],error:null})
+   })};
+  },{admin});
+  await context.route('**/*',async route=>{
+   const url=new URL(route.request().url());
+   if(url.origin===origin)return route.continue();
+   if(url.hostname==='script.google.com')return route.fulfill({contentType:'text/javascript',body:'KM16_receive('+JSON.stringify({Planning:planning})+')'});
+   if(url.hostname==='cdn.jsdelivr.net')return route.fulfill({contentType:'text/javascript',body:''});
+   if(url.pathname.endsWith('/km16-course-bookings')){
+    const headers={'Access-Control-Allow-Origin':origin,'Access-Control-Allow-Headers':'content-type,authorization','Access-Control-Allow-Methods':'POST, OPTIONS'};
+    if(route.request().method()==='OPTIONS')return route.fulfill({status:204,headers});
+    const body=route.request().postDataJSON();
+    if(body.action==='book'){
+     bookingRequests.push(body);
+     return route.fulfill({headers,json:{cancellation_token:'booking-fixture',account_booking:true}});
+    }
+    return route.fulfill({headers,json:{sessions:[child,adult]}});
+   }
+   if(url.pathname.endsWith('/km16-adhesions')){
+    return route.fulfill({headers:{'Access-Control-Allow-Origin':origin},json:{products:[]}});
+   }
+   return route.abort();
+  });
+  const page=await context.newPage();
+  page.setDefaultTimeout(5000);
+  await page.goto(origin+'/index.html');
+  const hero=page.locator('.hero-copy');
+  assert.equal(await hero.getByRole('link',{name:/Réserver un cours d’essai/}).getAttribute('href'),'./adhesion.html?categorie=D%C3%A9couverte&produit=essai');
+  assert.equal(await hero.getByRole('link',{name:/Mon espace adhérent/}).getAttribute('href'),'./adhesion.html?espace=1');
+  await hero.getByRole('link',{name:'Voir le planning'}).click();
+  const adultLink=page.getByRole('link',{name:/Réserver cette séance.*Adultes/});
+  await adultLink.waitFor();
+  assert.equal(await adultLink.locator('xpath=ancestor::tr').evaluate(row=>getComputedStyle(row).display),'grid');
+  assert.ok((await adultLink.boundingBox()).height>=44);
+  await adultLink.click();
+  await page.waitForURL('**/course-booking.html?*');
+  await page.waitForFunction(()=>document.querySelector('#session').value==='adult-session');
+  assert.match(await page.locator('#booking-selection').textContent(),/Dojo du soir/);
+  await page.locator('#first').fill('Camille');
+  await page.locator('#last').fill('Essai');
+  await page.locator('#submit').click();
+  await page.locator('#confirmation').waitFor({state:'visible'});
+  assert.equal(bookingRequests[0].session_id,'adult-session');
+  await page.goto(origin+'/index.html');
+  const children=page.locator('#accueil article').filter({has:page.getByRole('heading',{name:'Enfants',exact:true})}).first();
+  await children.getByRole('button',{name:'Voir le planning'}).click();
+  await page.waitForFunction(()=>document.querySelector('#planning-filters button[aria-pressed=true]')?.textContent==='Enfants');
+  await page.getByRole('link',{name:/Réserver cette séance.*Enfants/}).click();
+  await page.waitForURL('**/course-booking.html?*');
+  await page.waitForFunction(()=>document.querySelector('#session').value==='child-session');
+  assert.match(await page.locator('#booking-selection').textContent(),/5–8 ans/);
+  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),true);
  }finally{await browser.close();}
 });

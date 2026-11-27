@@ -1,0 +1,55 @@
+/* Shared layout for the public journeys and the three administration consoles. */
+.km16-flow-nav { list-style:none; padding:0; display:flex; flex-wrap:wrap; gap:.5rem; }
+.km16-flow-nav a { display:inline-flex; align-items:center; min-height:44px; padding:.4rem .65rem; border:1px solid #dedbd6; border-radius:.55rem; color:inherit; }
+.km16-flow-nav a[aria-current="step"] { border-color:#a91118; background:#fff0f0; color:#941018; font-weight:700; }
+.km16-flow-step { min-width:0; margin:0 0 1rem; padding:0; border:0; scroll-margin-top:5rem; }
+.km16-flow-step legend { margin-bottom:.5rem; font-size:1.15rem; font-weight:750; }
+.km16-flow-next { display:inline-flex; align-items:center; min-height:44px; padding-inline:.65rem; }
+.km16-formula-link { scroll-margin-top:5rem; }
+#booking-selection { margin:.65rem 0; padding:.65rem .85rem; border-left:3px solid #b51d26; background:#fff3f3; overflow-wrap:anywhere; }
+.km16-attendance-list { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,19rem),1fr)); gap:.65rem; }
+.km16-attendance-item { display:grid; grid-template-columns:1fr 1fr; gap:.45rem; margin:0; padding:.7rem; border:1px solid #dedbd6; border-radius:.75rem; }
+.km16-attendance-item legend { grid-column:1/-1; padding:0 .2rem; font-weight:700; overflow-wrap:anywhere; }
+.km16-attendance-item button { min-height:48px; }
+.km16-attendance-item button[aria-pressed="true"] { background:#202020; border-color:#202020; color:#fff; }
+#km16-attendance-view { scroll-margin-top:5rem; }
+#km16-attendance-feedback { min-height:1.5em; margin:.3rem 0 .65rem; }
+.km16-mobile-card-summary,.km16-mobile-dossier-toggle { display:none; }
+#km16-attendance-view[hidden],#booking-selection[hidden] { display:none; }
+@media(max-width:740px) {
+ .hero-actions .cta { min-height:44px; }
+ .schedule-table-wrap { overflow:visible; background:transparent; border:0; box-shadow:none; }
+ .schedule-table,.schedule-table tbody { display:block; min-width:0; width:100%; }
+ .schedule-table thead { position:absolute; width:1px; height:1px; overflow:hidden; clip-path:inset(50%); }
+ .schedule-table tbody tr { display:grid; grid-template-columns:1fr 1fr; gap:.25rem .55rem; padding:.85rem; margin:0 0 .6rem; border:1px solid #e6e6e6; border-radius:.8rem; background:#fff; }
+ .schedule-table tbody tr:nth-child(even) { background:#fff; }
+ .schedule-table tbody tr>* { min-width:0; padding:0; border:0; overflow-wrap:anywhere; white-space:normal; }
+ .schedule-table .schedule-time { text-align:right; }
+ .schedule-table tbody td:nth-child(5) { grid-column:1/-1; color:#54504c; }
+ .schedule-table tbody td:last-child { grid-column:1/-1; padding-top:.35rem; }
+ .schedule-table .cta { display:flex; min-height:44px; align-items:center; justify-content:center; text-align:center; }
+ .km16-flow-nav { gap:.25rem; }
+ .km16-flow-nav a { font-size:.88rem; }
+ #km16-member-directory .km16-directory-table,#km16-member-directory .km16-directory-table tbody,
+ #admin-orders .km16-dossier-table,#admin-orders .km16-dossier-table tbody { display:block; width:100%; min-width:0; }
+ .km16-directory-table thead,.km16-dossier-table > thead { position:absolute; width:1px; height:1px; overflow:hidden; clip-path:inset(50%); }
+ .km16-directory-table #rows tr,.km16-dossier-table .km16-dossier-row {
+  display:grid; min-width:0; gap:.4rem; border:1px solid #dedbd6; border-radius:.75rem; margin:0 0 .65rem; padding:.7rem; background:#fff;
+ }
+ .km16-directory-table #rows td,.km16-dossier-table .km16-dossier-row > td { padding:0; border:0; min-width:0; overflow-wrap:anywhere; }
+ .km16-directory-table #rows .km16-directory-card td:nth-child(n+3),.km16-dossier-table .km16-dossier-row:not(.km16-dossier-expanded)>td:nth-child(n+2) { display:none; }
+ .km16-directory-table #rows .km16-directory-card td:first-child { color:#6d2528; font-size:.88rem; font-weight:700; }
+ .km16-mobile-card-summary { display:block; margin:.28rem 0; color:#48413b; }
+ .km16-directory-card .km16-open-profile,.km16-mobile-dossier-toggle { display:block; min-height:44px; margin:.35rem 0; }
+ .km16-dossier-table .km16-dossier-expanded>td:nth-child(n+2)::before { content:attr(data-label); display:block; margin-top:.35rem; font-weight:700; color:#55504b; }
+}
+#bookings-panel[hidden],#km16-attendance-open[hidden] { display:none; }
+#km16-attendance-open,#km16-attendance-close { min-height:44px; }
+.km16-flow-nav a[aria-disabled="true"] { opacity:.62; text-decoration:none; cursor:default; }
+@media(max-width:740px) {
+ .km16-dossier-row:not(.km16-dossier-expanded) .km16-dossier-explanation,
+ .km16-dossier-row:not(.km16-dossier-expanded)>td:first-child>details { display:none; }
+ .km16-dossier-row .km16-mobile-dossier-toggle { width:100%; }
+}
+
+.km16-dossier-row[hidden] { display:none !important; }

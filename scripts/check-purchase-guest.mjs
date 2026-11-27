@@ -13,9 +13,9 @@ const videoModule=[...index.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/gi)].m
 const authCapture=[...index.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/gi)].map(m=>m[1]).find(s=>s.includes('KM16_AUTH_FRAGMENT')&&!s.includes('createCheckoutAccess'));
 assert.ok(videoModule&&authCapture);
 files.set('/video-module.mjs',videoModule);
-files.set('/index.html',index.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi,'')+`<script>${authCapture}\ndocument.querySelectorAll('.panel').forEach(e=>{e.hidden=e.id!=='videos';e.classList.toggle('active',e.id==='videos')});</script><script type="module" src="/video-module.mjs"></script>`);
+files.set('/index.html',index.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi,'')+`<script>${authCapture}\nwindow.showFixtureView=id=>{document.querySelectorAll('.panel').forEach(e=>{e.hidden=e.id!==id;e.classList.toggle('active',e.id===id)});window.dispatchEvent(new CustomEvent('km16-view-change',{detail:{id}}));};window.showFixtureView(location.hash==='#videos'?'videos':'accueil');</script><script type="module" src="/video-module.mjs"></script>`);
 const stub=`
-window.TEST_CALLS=[];window.TEST_OTP=[];window.TEST_SESSION=window.TEST_INITIAL_SESSION||null;
+window.TEST_CALLS=[];window.TEST_OTP=[];window.TEST_VIDEO_QUERIES=0;window.TEST_SESSION=window.TEST_INITIAL_SESSION||null;
 const listeners=[];
 window.notifyAuth=(next,event='SIGNED_IN')=>{window.TEST_SESSION=next;listeners.forEach(fn=>fn(event,next));};
 const auth={
@@ -28,6 +28,7 @@ const auth={
  resetPasswordForEmail:async()=>({error:null}),updateUser:async()=>({error:null})
 };
 window.supabase={createClient:()=>({auth,from:table=>{
+ if(table==='km16_videos')window.TEST_VIDEO_QUERIES++;
  const data=table==='km16_videos'?[{id:'video-1',title:'Vidéo test',description:'Présentation',price_cents:999,currency:'eur'}]:table==='km16_purchases'?(window.TEST_OWNED?[{video_id:'video-1'}]:[]):{vimeo_id:'12345',start_seconds:0};
  const query={select(){return this},eq(){return this},order(){return Promise.resolve({data,error:null})},maybeSingle(){return Promise.resolve({data,error:null})},then(resolve,reject){return Promise.resolve({data,error:null}).then(resolve,reject)}};return query;
 }})};`;
@@ -61,6 +62,25 @@ for(const [name,engine]of engines){
     return route.abort();
    });
    const page=await context.newPage();
+   if(kind==='video'){
+    const home=await context.newPage();
+    await home.goto(ORIGIN);
+    await home.waitForFunction(()=>typeof document.getElementById('kv-refresh').onclick==='function');
+    assert.equal(await home.evaluate(()=>window.TEST_VIDEO_QUERIES),0,'home does not query the video catalogue');
+    await home.evaluate(()=>{window.showFixtureView('videos');window.showFixtureView('videos');});
+    await home.locator('#kv-catalog button').first().waitFor();
+    assert.equal(await home.evaluate(()=>window.TEST_VIDEO_QUERIES),1,'opening the video tab loads its catalogue once');
+    await home.close();
+    const paymentReturn=await context.newPage();
+    await paymentReturn.addInitScript(({confirmed})=>{
+     window.TEST_INITIAL_SESSION=confirmed;
+     window.TEST_OWNED=true;
+    },{confirmed});
+    await paymentReturn.goto(ORIGIN+'/?payment=success');
+    await paymentReturn.waitForFunction(()=>document.getElementById('kv-status').textContent.includes('Votre achat est disponible'));
+    assert.ok(await paymentReturn.evaluate(()=>window.TEST_VIDEO_QUERIES>0),'payment return refreshes the library without opening the tab');
+    await paymentReturn.close();
+   }
    await page.goto(ORIGIN+(kind==='shirts'?'/tee-shirts.html'+(width===390?'?sizes=XXS,2XL':'?sizes=M,L,XXS'):'/#videos'));
    const input=kind==='shirts'?'#purchase-email':'#kv-purchase-email';
    const button=kind==='shirts'?'#pay':'#kv-purchase-submit';

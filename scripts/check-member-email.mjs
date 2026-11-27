@@ -363,8 +363,10 @@ try{
      await dossier.waitFor({state:'attached'});
      await page.waitForFunction(()=>window.releaseMembershipCounts&&window.releaseFollowupSummaries);
      assert.equal(events.some(e=>e.type==='rpc'&&e.name==='km16_admin_followup_history'),false);
+     assert.equal(await dossier.getByRole('button',{name:'Valider le dossier'}).isVisible(),false,'mobile summary leaves the decision in the dossier');
+     await dossier.getByRole('button',{name:'Ouvrir le dossier de Camille Dossier'}).click();
+     assert.equal(await dossier.getByRole('button',{name:'Valider le dossier'}).isVisible(),true);
      assert.equal(await dossier.getByRole('button',{name:'Valider le dossier'}).isEnabled(),true);
-     await dossier.locator('.km16-order-followup summary').click();
      await dossier.getByText('Envoi confirmé manuellement').waitFor();
      const historyReads=events.filter(e=>e.type==='rpc'&&['km16_admin_followup_history','km16_admin_followup_delivery_history'].includes(e.name));
      assert.equal(historyReads.length,2);
@@ -674,7 +676,10 @@ try{
      assert.equal(await page.locator('#checkout-reminder').isChecked(),false,'a different identity never inherits consent');
      assert.equal(await page.locator('#first_name').inputValue(),'','different account clears personal data');assert.equal(await page.locator('#photo-preview').isVisible(),false);
     }else if(scenario==='draft-new-tab'){
-     await fill(page);await page.locator('#count').selectOption('4');await page.locator('#installments').check();
+     await fill(page);await page.locator('#km16-review-next').click();
+     assert.equal(await page.locator('[data-registration-step=review]').getAttribute('aria-current'),'step');
+     assert.match(await page.locator('#km16-review-participant').textContent(),/Camille Exemple/);
+     await page.locator('#count').selectOption('4');await page.locator('#installments').check();
      await page.locator('#count').selectOption('3');
      assert.equal(await page.locator('#installments').isChecked(),false,'changing the schedule requires renewed consent');
      await page.locator('#installments').check();await page.locator('#checkout-reminder').check();await submitEmail(page,events);
@@ -682,6 +687,7 @@ try{
      const redirect=new URL(otpCalls(events)[0].args.options.emailRedirectTo);
      const next=await context.newPage();await next.goto(origin+redirect.search+'#access_token=fixture&refresh_token=fixture&type=magiclink');
      await next.waitForURL('**/adhesion.html?confirmation=1');await next.waitForFunction(()=>document.querySelector('#first_name').value==='Camille'&&!document.querySelector('#order').hidden);
+     assert.equal(await next.locator('[data-registration-step=review]').getAttribute('aria-current'),'step');
      assert.equal(await next.locator('#last_name').inputValue(),'Exemple');assert.equal(await next.locator('#birth_date-display').inputValue(),'01/01/1990');assert.equal(await next.locator('#count').inputValue(),'3');
      assert.equal(await next.locator('#photo-preview').getAttribute('src'),photo);assert.equal(await next.locator('#terms').isChecked(),true);assert.equal(await next.locator('#installments').isChecked(),true);assert.equal(await next.locator('#contact_email').inputValue(),confirmed.user.email);assert.deepEqual(writes(events),[]);
      assert.equal(await next.locator('#checkout-reminder').isChecked(),false,'a saved draft cannot reinstate reminder consent');

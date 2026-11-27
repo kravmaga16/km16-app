@@ -202,7 +202,52 @@ function renderRecommendedMembership(offered=products){
  const button=text('button','M’inscrire à cette formule',actions);button.type='button';button.onclick=()=>choose(product);
  const planning=text('a','Voir tous les horaires et dojos',actions);planning.href='./#planning';
 }
-function choose(p,{focus=true}={}){if(busy)return;if(checkoutFeedback)showCheckoutFeedback('');if(selected?.id!==p.id||Number(p.amount)<=0)$('checkout-reminder').checked=false;$('installments').checked=false;if(selected?.id!==p.id)$('eligibility').checked=false;selected=p;if(focus&&p.kind==='annual')void trackMembershipStep('formula_chosen');$('checkout-reminder-wrap').hidden=!(Number(p.amount)>0);if(p.category==='Stages'&&!linkToken&&!embedded)prepareStageAnalytics();requestId=crypto.randomUUID();$('chosen').textContent=p.title;syncAccountForm();$('count').value=String(specialOffer?.count||1);$('count').disabled=!!specialOffer;$('payment-mode').hidden=p.kind!=='annual'||!!specialOffer;for(const o of $('count').options)o.disabled=p.kind!=='annual'&&o.value!=='1';$('eligibility-wrap').hidden=!p.review;$('eligibility').required=p.review;updateSchedule();if(focus){if(reusedMember&&!familyProfile)fillMemberDetails(reusedMember);$('selection').scrollIntoView({behavior:'smooth',block:'start'});$('first_name').focus({preventScroll:true});}}
+let currentRegistrationStep='formula';
+function registrationStep(step,{focus=false}={}){
+ const nav=$('km16-registration-steps');
+ if(!nav)return;
+ currentRegistrationStep=step;
+ for(const link of nav.querySelectorAll('[data-registration-step]')){
+  const available=link.dataset.registrationStep==='formula'||Boolean(selected);
+  link.tabIndex=available?0:-1;
+  link.setAttribute('aria-disabled',String(!available));
+  if(link.dataset.registrationStep===step)link.setAttribute('aria-current','step');
+  else link.removeAttribute('aria-current');
+ }
+ const participant=$('km16-review-participant');
+ const name=[$('first_name').value.trim(),$('last_name').value.trim()].filter(Boolean).join(' ');
+ participant.hidden=!name;
+ participant.textContent=name?'Pratiquant : '+name:'';
+ if(focus){
+  const section=$(step==='formula'?'km16-formula-step':'km16-'+step+'-step');
+  section.tabIndex=-1;
+  section.scrollIntoView({block:'start'});
+  section.focus({preventScroll:true});
+ }
+}
+if($('km16-registration-steps')){
+ $('km16-registration-steps').onclick=event=>{
+  const link=event.target.closest('[data-registration-step]');
+  if(!link)return;
+  event.preventDefault();
+  if(link.getAttribute('aria-disabled')!=='true')registrationStep(link.dataset.registrationStep,{focus:true});
+ };
+ $('km16-review-next').onclick=()=>{
+  for(const input of $('km16-contact-step').querySelectorAll('input,select')){
+   if(!input.reportValidity())return;
+  }
+  registrationStep('review',{focus:true});
+ };
+ $('order').addEventListener('focusin',event=>{
+  if(event.target.closest('#km16-review-step'))registrationStep('review');
+  else if(event.target.closest('#km16-contact-step'))registrationStep('contact');
+ });
+ $('order').addEventListener('input',event=>{
+  if(['first_name','last_name'].includes(event.target.id))registrationStep('contact');
+ });
+}
+
+function choose(p,{focus=true}={}){if(busy)return;if(checkoutFeedback)showCheckoutFeedback('');if(selected?.id!==p.id||Number(p.amount)<=0)$('checkout-reminder').checked=false;$('installments').checked=false;if(selected?.id!==p.id)$('eligibility').checked=false;selected=p;registrationStep('contact');if(focus&&p.kind==='annual')void trackMembershipStep('formula_chosen');$('checkout-reminder-wrap').hidden=!(Number(p.amount)>0);if(p.category==='Stages'&&!linkToken&&!embedded)prepareStageAnalytics();requestId=crypto.randomUUID();$('chosen').textContent=p.title;syncAccountForm();$('count').value=String(specialOffer?.count||1);$('count').disabled=!!specialOffer;$('payment-mode').hidden=p.kind!=='annual'||!!specialOffer;for(const o of $('count').options)o.disabled=p.kind!=='annual'&&o.value!=='1';$('eligibility-wrap').hidden=!p.review;$('eligibility').required=p.review;updateSchedule();if(focus){if(reusedMember&&!familyProfile)fillMemberDetails(reusedMember);$('selection').scrollIntoView({behavior:'smooth',block:'start'});$('first_name').focus({preventScroll:true});}}
 function updateSchedule(){
  if(!selected)return;
  const installments=Number($('count').value)>1;
@@ -308,6 +353,7 @@ function resetRegistration(){
  $('photo-preview').removeAttribute('src');$('photo-preview').hidden=true;$('photo-status').textContent='';
  $('birth_date').dispatchEvent(new Event('change'));
  if(selected){$('count').value=String(specialOffer?.count||1);updateSchedule();}
+ registrationStep(selected?'contact':'formula');
  syncAccountForm();
 }
 const checkoutFeedback=adminPanel?null:text('p','',document.createDocumentFragment(),'muted');
@@ -327,7 +373,7 @@ const checkoutAccess=adminPanel?null:createCheckoutAccess({
  client,kind:'membership',host:$('checkout-access'),emailInput:$('contact_email'),
  returnPath:location.pathname+location.search+location.hash,
  preparePersonalReturn:async(draft,email)=>(await api({action:'prepare-personal-checkout',link_token:linkToken,email,draft})).id,
- getDraft:({manual=false}={})=>({productId:selected.id,reminderSource:stageDetail&&selected.id===requestedProduct&&hasStageAnalyticsConsent()?reminderSource:undefined,requestId,count:Number($('count').value),photo:manual?undefined:photoData,profile:$('purchase-profile').value,fields:Object.fromEntries(draftFields.map(id=>[id,$(id).value])),checks:manual?{}:Object.fromEntries(draftChecks.map(id=>[id,$(id).checked]))}),
+ getDraft:({manual=false}={})=>({productId:selected.id,...(manual?{step:currentRegistrationStep}:{}),reminderSource:stageDetail&&selected.id===requestedProduct&&hasStageAnalyticsConsent()?reminderSource:undefined,requestId,count:Number($('count').value),photo:manual?undefined:photoData,profile:$('purchase-profile').value,fields:Object.fromEntries(draftFields.map(id=>[id,$(id).value])),checks:manual?{}:Object.fromEntries(draftChecks.map(id=>[id,$(id).checked]))}),
  applyDraft:applyCheckoutDraft,
  onVerified:showVerifiedCheckout
 });
@@ -347,17 +393,16 @@ function applyCheckoutDraft(draft){
   // A saved OTP draft can predate a later opt-out in another tab. Ask again.
   $('checkout-reminder').checked=false;
   note(Number(selected?.amount)===0?'Votre demande a été retrouvée. Vérifiez les informations conservées, puis envoyez votre demande gratuite.':'Votre demande a été retrouvée. Vérifiez les informations conservées, puis continuez vers le paiement.');
-  $('selection').scrollIntoView({behavior:'smooth',block:'start'});
-  $('chosen').tabIndex=-1;$('chosen').focus({preventScroll:true});
+  if(registrationConfirmation==='1'||draft.step==='review'||(!draft.step&&verifiedAccount(session))){
+   registrationStep('review',{focus:true});
+  }else{
+   registrationStep('contact',{focus:true});
+  }
 }
 function showVerifiedCheckout(next){
   session=next;syncAccountForm();buttonState();
   note(Number(selected?.amount)===0?'Votre e-mail est confirmé. Vérifiez puis envoyez votre demande gratuite.':'Votre e-mail est confirmé. Vérifiez votre demande puis continuez vers le paiement.');
-  if(!busy&&selected){
-   const pay=$('pay');
-   pay.scrollIntoView({block:'center'});
-   pay.focus({preventScroll:true});
-  }
+  if(!busy&&selected)registrationStep('review',{focus:true});
 }
 $('save-request').onclick=async()=>{
  const button=$('save-request');
@@ -1301,13 +1346,27 @@ async function admin(loadMore=false){if(km16AdminLoading)return;if(!km16ConfirmD
  $('km16-admin-more-wrap').hidden=!km16AdminHasMore;$('km16-admin-loaded').textContent=r.orders.length+' dossier(s) chargé(s)'+(km16AdminServerSearch?' pour « '+km16AdminServerSearch+' »':'')+(km16AdminHasMore?' · autres dossiers disponibles':' · fin de liste');
  const groupByOrder=(items)=>{const map=new Map();for(const item of items||[]){if(!map.has(item.order_id))map.set(item.order_id,[]);map.get(item.order_id).push(item);}return map;};
  const paymentsByOrder=groupByOrder(r.payments),mailsByOrder=groupByOrder(r.mails),documentsByOrder=new Map((r.documents||[]).map(d=>[d.order_id,d]));
- const table=document.createElement('table'),head=document.createElement('tr');
- for(const h of ['Pratiquant','Formule','Échéances','Paiement net','Dossier','Justificatifs','E-mails'])text('th',h,head);table.append(head);
+ const dossierLabels=['Pratiquant','Formule','Échéances','Paiement net','Dossier','Justificatifs','E-mails'];
+ const table=document.createElement('table');table.className='km16-dossier-table';
+ const head=table.createTHead().insertRow();
+ for(const label of dossierLabels)text('th',label,head).scope='col';
+ const dossierBody=table.createTBody();
  for(const o of r.orders.filter(order=>order.livemode===true)){
-  const row=document.createElement('tr');row.id='admin-order-'+o.id;
+  const row=document.createElement('tr');row.id='admin-order-'+o.id;row.className='km16-dossier-row';
   const doc=documentsByOrder.get(o.id);const paidPayments=(paymentsByOrder.get(o.id)||[]).filter(p=>p.status==='paid');const netPaid=paidPayments.reduce((sum,p)=>sum+p.amount_cents-(p.refunded_cents||0),0);const paymentIssue=(paymentsByOrder.get(o.id)||[]).some(p=>['failed','disputed','refunded'].includes(p.status));const docsReady=!!doc&&doc.health_status==='validated'&&(!doc.school_required||doc.school_status==='validated');const triage=o.approval==='approved'?'approved':o.approval==='rejected'?'blocked':netPaid>0&&!paymentIssue&&docsReady?'ready':'blocked';row.dataset.triageStatus=triage;
   const decisionSummary=document.createElement('div');decisionSummary.style.cssText='margin:8px 0;padding:9px 11px;background:#f6f4f0;border-radius:8px;font-size:13px';const decisionItems=[];if(o.approval==='approved')decisionItems.push('Dossier administrativement validé');else if(o.approval==='rejected')decisionItems.push('Dossier refusé : examiner avant toute nouvelle décision');else if(netPaid<=0)decisionItems.push('Paiement non confirmé');else if(paymentIssue)decisionItems.push('Incident de paiement à contrôler');else if(!doc)decisionItems.push('Justificatifs à vérifier');else if(doc.health_status!=='validated'||doc.school_required&&doc.school_status!=='validated')decisionItems.push('Justificatifs à valider');else decisionItems.push('Paiement et justificatifs indiqués conformes · validation finale requise');decisionSummary.textContent='Décision : '+decisionItems.join(' · ');
-  const triageLabel=document.createElement('small');triageLabel.style.display='block';triageLabel.style.marginTop='6px';triageLabel.textContent=triage==='ready'?'Pièces indiquées validées · contrôle final nécessaire':triage==='blocked'?(!netPaid?'Paiement à vérifier':paymentIssue?'Incident de paiement':!doc?'Justificatifs non disponibles':'Justificatifs à vérifier'):triage==='approved'?'Dossier validé':'Dossier à vérifier';const identity=text('td',o.first_name+' '+o.last_name,row);identity.append(triageLabel,decisionSummary);const detail=document.createElement('details');detail.style.marginTop='6px';const detailTitle=document.createElement('summary');detailTitle.textContent='Photo et détails du dossier';detail.append(detailTitle);identity.append(detail);const photo=text('button','Voir la photo',detail);photo.type='button';photo.onclick=async()=>{try{const r=await api({action:'photo-view',order_id:o.id});const img=document.createElement('img');img.src=r.url;img.alt='Photo du pratiquant';img.style.cssText='display:block;max-width:100px;max-height:120px';detail.append(img);photo.remove();}catch(e){note(e.message,true);}};text('td',(o.livemode?'':'[TEST] ')+o.title,row);text('td',o.count+' fois',row);
+  const triageLabel=document.createElement('small');triageLabel.style.display='block';triageLabel.style.marginTop='6px';triageLabel.textContent=triage==='ready'?'Pièces indiquées validées · contrôle final nécessaire':triage==='blocked'?(!netPaid?'Paiement à vérifier':paymentIssue?'Incident de paiement':!doc?'Justificatifs non disponibles':'Justificatifs à vérifier'):triage==='approved'?'Dossier validé':'Dossier à vérifier';const identity=text('td',o.first_name+' '+o.last_name,row);identity.append(triageLabel,decisionSummary);decisionSummary.classList.add('km16-dossier-explanation');
+  const detailsToggle=text('button','Ouvrir le dossier',identity,'km16-mobile-dossier-toggle');
+  detailsToggle.type='button';
+  detailsToggle.setAttribute('aria-label','Ouvrir le dossier de '+o.first_name+' '+o.last_name);
+  detailsToggle.setAttribute('aria-expanded','false');
+  detailsToggle.onclick=()=>{
+   const expanded=row.classList.toggle('km16-dossier-expanded');
+   detailsToggle.textContent=expanded?'Réduire le dossier':'Ouvrir le dossier';
+   detailsToggle.setAttribute('aria-label',detailsToggle.textContent+' de '+o.first_name+' '+o.last_name);
+   detailsToggle.setAttribute('aria-expanded',String(expanded));
+   if(expanded)row.querySelector('.km16-order-followup').open=true;
+  };const detail=document.createElement('details');detail.style.marginTop='6px';const detailTitle=document.createElement('summary');detailTitle.textContent='Photo et détails du dossier';detail.append(detailTitle);identity.append(detail);const photo=text('button','Voir la photo',detail);photo.type='button';photo.onclick=async()=>{try{const r=await api({action:'photo-view',order_id:o.id});const img=document.createElement('img');img.src=r.url;img.alt='Photo du pratiquant';img.style.cssText='display:block;max-width:100px;max-height:120px';detail.append(img);photo.remove();}catch(e){note(e.message,true);}};text('td',(o.livemode?'':'[TEST] ')+o.title,row);text('td',o.count+' fois',row);
   const p=paymentsByOrder.get(o.id)||[];text('td',money(p.filter(x=>x.status==='paid').reduce((s,x)=>s+x.amount_cents-x.refunded_cents,0))+' / '+money(o.total_cents)+(p.some(x=>x.status==='failed')?' · IMPAYÉ':''),row);
   const td=document.createElement('td');const state=text('strong',({pending:'À vérifier',approved:'Validé',rejected:'Refusé'}[o.approval]||'À vérifier'),td);state.style.display='block';state.style.marginBottom='8px';const feedback=text('div','',td,'muted');feedback.setAttribute('role','status');feedback.setAttribute('aria-live','polite');
   const actionSection=(label)=>{const section=document.createElement('section');section.className='km16-dossier-action-section';const heading=document.createElement('strong');heading.textContent=label;section.append(heading);const area=document.createElement('div');area.className='km16-dossier-action-buttons';section.append(area);td.append(section);return area;};
@@ -1356,7 +1415,9 @@ async function admin(loadMore=false){if(km16AdminLoading)return;if(!km16ConfirmD
   async function decide(value){if(value===o.approval)return;if(!confirm((value==='approved'?'Valider administrativement':value==='rejected'?'Refuser':'Remettre à vérifier')+' le dossier de '+o.first_name+' '+o.last_name+' ?')){select.value='';return;}approve.disabled=true;select.disabled=true;feedback.textContent='Enregistrement…';try{await api({action:'approve',order_id:o.id,approval:value});o.approval=value;state.textContent=({pending:'À vérifier',approved:'Validé',rejected:'Refusé'}[value]);approve.hidden=value==='approved';feedback.textContent='Décision enregistrée.';decisionSummary.textContent='Décision : '+(value==='approved'?'Dossier administrativement validé':value==='rejected'?'Dossier refusé : examiner avant toute nouvelle décision':'Dossier à vérifier · contrôle administratif requis');triageLabel.textContent=value==='approved'?'Dossier validé':value==='rejected'?'Dossier refusé':'Dossier à vérifier';if(historyPanel.open){void loadDecisionHistory();}else historyContent.textContent='Nouvelle décision enregistrée · ouvrez pour consulter l’historique.';if(o.livemode===true)void $('km16-overview-refresh').click();if($('km16-admin-activity').getBoundingClientRect().height>0)void km16LoadActivity();note('Dossier de '+o.first_name+' '+o.last_name+' : '+state.textContent+'.');row.dataset.triageStatus=value==='approved'?'approved':value==='rejected'?'blocked':netPaid>0&&!paymentIssue&&docsReady?'ready':'blocked';km16SetTriage(km16AdminTriage);const followupRow=[...$('km16-followup-list').querySelectorAll('tr[data-order-id]')].find(item=>item.dataset.orderId===o.id);if(followupRow?.children[1])followupRow.children[1].textContent=state.textContent;$('km16-admin-sync-after-decision').hidden=false;$('km16-admin-server-filter-status').textContent='Décision enregistrée. Actualisez les listes pour appliquer les filtres et la pagination à jour.';}catch(e){feedback.textContent='Erreur : '+e.message;note(e.message,true);}finally{approve.disabled=false;select.disabled=false;select.value='';}}
   approve.onclick=()=>decide('approved');select.onchange=()=>{if(select.value)decide(select.value);};row.append(td);
   const docs=document.createElement('td');editDocuments(docs,documentsByOrder.get(o.id),o);row.append(docs);
-  const mails=document.createElement('td');for(const m of mailsByOrder.get(o.id)||[])text('div',(m.kind==='initial'?'Demande':'Relance J+7')+' : '+mailStatus[m.status]+(m.sent_at?' · '+new Date(m.sent_at).toLocaleString('fr-FR'):''),mails);row.append(mails);table.append(row);
+  const mails=document.createElement('td');for(const m of mailsByOrder.get(o.id)||[])text('div',(m.kind==='initial'?'Demande':'Relance J+7')+' : '+mailStatus[m.status]+(m.sent_at?' · '+new Date(m.sent_at).toLocaleString('fr-FR'):''),mails);row.append(mails);
+  [...row.cells].forEach((cell,index)=>{cell.dataset.label=dossierLabels[index];});
+  dossierBody.append(row);
  }
  const followupHost=$('km16-followup-list'),followupStatus=$('km16-followup-status');
  const summaryRows=r.orders.filter(o=>o.livemode===true).map(o=>({o,manual:null,delivery:null}));
@@ -1402,7 +1463,7 @@ async function admin(loadMore=false){if(km16AdminLoading)return;if(!km16ConfirmD
  })();
  const rows=[...table.querySelectorAll('tr[data-triage-status]')];const counts={pending:0,ready:0,blocked:0,all:rows.length};for(const row of rows){const state=row.dataset.triageStatus;if(state!=='approved')counts.pending++;if(state==='ready')counts.ready++;if(state==='blocked')counts.blocked++;}for(const key of Object.keys(counts))$('km16-triage-'+key).textContent=String(counts[key]);km16SetTriage(km16AdminTriage);if(km16AdminHasMore)$('km16-triage-status').textContent+=' Résultats partiels : chargez les dossiers suivants pour compléter les totaux et les filtres.';
  const target=new URLSearchParams(location.search).get('admin_order');
- if(target){const selected=[...table.querySelectorAll('tr[id]')].find(row=>row.id==='admin-order-'+target);if(selected){km16SetTriage('all');selected.querySelector('.km16-order-followup').open=true;selected.style.cssText='outline:3px solid #b31c28;background:#fff5f4;scroll-margin-top:24px';selected.scrollIntoView({block:'center',behavior:'smooth'});}}
+ if(target){const selected=[...table.querySelectorAll('tr[id]')].find(row=>row.id==='admin-order-'+target);if(selected){km16SetTriage('all');selected.querySelector('.km16-mobile-dossier-toggle').click();selected.style.cssText='outline:3px solid #b31c28;background:#fff5f4;scroll-margin-top:24px';selected.scrollIntoView({block:'center',behavior:'smooth'});}}
 }catch(e){if(gen===generation){note(e.message,true);$('km16-followup-status').textContent='Actualisation impossible : '+e.message;}}finally{if(gen===generation){if(refreshButton)refreshButton.disabled=false;if(followupRefresh)followupRefresh.disabled=false;if(moreButton){moreButton.disabled=false;moreButton.textContent='Charger 25 dossiers supplémentaires';}km16AdminLoading=false;}}}
 function clearMemberFirstCourse(){
  firstCourseRequest?.abort();firstCourseRequest=null;firstCourseSessions=null;

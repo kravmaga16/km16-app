@@ -43,7 +43,6 @@ async function harness(browser){
    signInWithPassword:async()=>{state.login();return {data:{session:state.session},error:null};}
   };
   const readRpcs=new Set(['km16_admin_action_progress_list','km16_admin_scheduled_campaigns_list','km16_admin_followup_dashboard','km16_admin_external_payment_summary','km16_admin_external_payment_statuses','km16_admin_health_documents']);
-  const readTables=new Set(['km16_booking_member_links','km16_course_attendance','km16_booking_external_links']);
   // The client dashboard also reads the selected season's club payments on login.
   // Only this bounded read is simulated; writes and other tables remain rejected.
   const clubRegistrationRead=()=>{
@@ -63,9 +62,13 @@ async function harness(browser){
    }]));
    return query;
   };
+  async function readRpc(name){
+   if(!readRpcs.has(name)){state.violations.push('rpc:'+name);throw Error('Unexpected RPC');}
+   return {data:[],error:null};
+  }
   window.supabase={createClient:()=>({auth,
-   rpc:async(name)=>{if(!readRpcs.has(name)){state.violations.push('rpc:'+name);throw Error('Unexpected RPC');}return {data:[],error:null};},
-   from:table=>table==='km16_club_registrations'?clubRegistrationRead():({select:async()=>{if(!readTables.has(table)){state.violations.push('table:'+table);throw Error('Unexpected table');}return {data:[],error:null};}})
+   rpc:name=>name==='km16_admin_course_alert_counts'?{single:async()=>({data:{unlinked:7,attendance_due:3},error:null})}:readRpc(name),
+   from:table=>{if(table==='km16_club_registrations')return clubRegistrationRead();state.violations.push('table:'+table);throw Error('Unexpected table');}
   })};
   const row=(id,action,reference='fixture-'+id)=>({categorie:id===3?'emails_programmes':'achats',notification_id:id,reference,destinataire:'test@example.invalid',statut:action==='validation_requise'?'failed':action==='verification_manuelle'?'uncertain':'sending',derniere_tentative:'2026-11-18T08:00:00Z',action_requise:action});
   const first=[row(1,'validation_requise','<img src=x onerror="window.__emailInjected=true">'),row(2,'blocage_a_verifier'),row(3,'verification_manuelle')];
@@ -122,7 +125,6 @@ async function harness(browser){
     state.reviewDelivered++;
    }else if(url.pathname==='/functions/v1/km16-clients'&&body.action==='clients')data={clients:state.clients||[],test:body.test,season:body.season,seasons:[],updated_at:'2026-11-18T09:00:00Z'};
    else if(url.pathname==='/functions/v1/km16-shirts'&&body.action==='list')data={orders:[]};
-   else if(url.pathname==='/functions/v1/km16-course-bookings'&&body.action==='admin_list')data={bookings:[],sessions:[]};
    else if(url.pathname==='/functions/v1/km16-communications'&&body.action==='status')data={email_ready:false,campaigns:[]};
    else{state.violations.push('fetch:'+url.pathname+':'+body.action);throw Error('Unexpected external request');}
    if(url.pathname==='/functions/v1/km16-admin-email-alerts')state.delivered++;
@@ -192,6 +194,38 @@ for(const [name,engine] of engines)test('Email alerts: '+name,{timeout:90000},as
     await row.waitFor({state:'attached'});
     assert.match(await row.textContent(),/12,50/);
     assert.equal(await h.page.locator('#export').isEnabled(),true);
+    await h.check();
+   }finally{await h.context.close();}
+  });
+  await t.test('directory pages contain at most 50 clients and search spans all pages',async()=>{
+   const h=await harness(browser);try{
+    await h.page.evaluate(()=>{
+     window.__km16EmailTest.clients=Array.from({length:101},(_,index)=>({
+      id:'fixture-'+index,group:index<100?'Adultes':'Enfants',first_name:'Camille',last_name:'Fiche '+index,
+      email:'fixture'+index+'@example.invalid',address:[],products:[],amounts:{}
+     }));
+    });
+    await login(h.page);
+    await h.page.waitForFunction(()=>document.querySelector('#export').disabled===false);
+    assert.equal(await h.page.locator('#rows tr').count(),50);
+    assert.equal(await h.page.locator('#kpi-course-unlinked').textContent(),'7');
+    assert.equal(await h.page.locator('#kpi-course-attendance').textContent(),'3');
+    await h.page.locator('#client-page-next').click();
+    assert.match(await h.page.locator('#rows tr').first().textContent(),/Fiche 50/);
+    await h.page.locator('#client-page-next').click();
+    assert.equal(await h.page.locator('#rows tr').count(),1);
+    assert.match(await h.page.locator('#rows tr').textContent(),/Fiche 100/);
+    const workbook=await h.page.evaluate(async()=>{
+     const create=URL.createObjectURL;
+     let blob;
+     URL.createObjectURL=value=>{blob=value;return create.call(URL,value);};
+     try{document.querySelector('#export').click();return await blob.text();}
+     finally{URL.createObjectURL=create;}
+    });
+    assert.ok(workbook.includes('fixture0@example.invalid')&&workbook.includes('fixture100@example.invalid'),'export covers clients outside the rendered page');
+    await h.page.locator('#search').fill('fixture0@example.invalid');
+    await h.page.waitForFunction(()=>document.querySelector('#client-pagination').hidden);
+    assert.match(await h.page.locator('#rows tr').textContent(),/Fiche 0 Camille/);
     await h.check();
    }finally{await h.context.close();}
   });

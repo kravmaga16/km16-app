@@ -24,7 +24,7 @@ await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
 const origin='http://127.0.0.1:'+server.address().port;
 const engines=process.env.KM16_CHROMIUM_ONLY?[['Chromium',chromium]]:[['Chromium',chromium],['WebKit',webkit]];
 const allScenarios=['guest','session','anonymous','unconfirmed','slow-catalogue','guest-refresh','network-error','network-reload','rate-limit','wrong-identity','draft-new-tab','confirmation-no-draft','confirmation-legacy','confirmation-expired','logout','minor','identity-switch-before-checkout','reminder-free','camera','camera-errors','camera-cancel-pending','camera-embed','camera-desktop-devices','camera-device-recovery','camera-framing','camera-member-order'];
-const scenarios=process.env.KM16_CAMERA_ONLY?allScenarios.filter(name=>name.startsWith('camera')):allScenarios;
+const scenarios=process.env.KM16_ADMIN_ONLY?[]:process.env.KM16_CAMERA_ONLY?allScenarios.filter(name=>name.startsWith('camera')):allScenarios;
 const otpCalls=events=>events.filter(e=>e.type==='otp');
 const writes=events=>events.filter(e=>e.type==='api'&&['photo-upload','checkout'].includes(e.body.action));
 let count=0;
@@ -134,7 +134,15 @@ async function harness(browser,width,scenario){
    signOut:async()=>{window.authNotify('SIGNED_OUT',null);return {error:null};},
    setSession:async()=>{window.authNotify('SIGNED_IN',confirmed);return {data:{session:confirmed},error:null};}
   };
-  window.supabase={createClient:()=>({auth,rpc:async()=>({data:[],error:null})})};
+  window.supabase={createClient:()=>({auth,rpc:async(name,args)=>{
+   if(scenario==='prorata-admin'){
+    await window.__record({type:'rpc',name,args});
+    if(name==='km16_admin_membership_counts')return new Promise(resolve=>{window.releaseMembershipCounts=()=>resolve({data:[{total:1,pending:1,approved:0,rejected:0}],error:null});});
+    if(name==='km16_admin_followup_summaries')return new Promise(resolve=>{window.releaseFollowupSummaries=()=>resolve({data:[],error:null});});
+    if(name==='km16_admin_followup_history')return {data:[{recorded_at:'2026-11-18T12:00:00Z'}],error:null};
+   }
+   return {data:[],error:null};
+  }})};
   window.addEventListener('storage',event=>{if(event.key==='km16-test-auth'){window.TEST_SESSION=JSON.parse(event.newValue);for(const listener of listeners)listener(window.TEST_SESSION?'SIGNED_IN':'SIGNED_OUT',window.TEST_SESSION);}});
   const realFetch=window.fetch.bind(window);
   window.fetch=async(input,options)=>{
@@ -162,7 +170,7 @@ async function harness(browser,width,scenario){
    }
    else if(scenario==='camera-member-order'&&body.action==='member-photo-add'){window.TEST_MEMBER_PHOTO=body.photo;data={ok:true};}
    else if(scenario==='prorata-admin'&&body.action==='admin-access')data={admin:true};
-   else if(scenario==='prorata-admin'&&body.action==='admin-page')data={orders:[],payments:[],documents:[],mails:[]};
+   else if(scenario==='prorata-admin'&&body.action==='admin-page')data={orders:[{id:'fixture-admin-order',first_name:'Camille',last_name:'Dossier',title:'Adhésion fictive',total_cents:25000,count:1,livemode:true,approval:'pending'}],payments:[],documents:[],mails:[]};
    else if(scenario==='prorata-admin'&&body.action==='links-list')data={links:[]};
    else if(scenario==='prorata-admin'&&body.action==='links-create')data={url:location.origin+'/adhesion.html#offre='+'a'.repeat(64),expires_at:'2027-12-01T00:00:00Z',livemode:false};
    else throw Error('Unexpected action: '+body.action);
@@ -350,6 +358,21 @@ try{
      assert.equal(write.body.total_cents,25000);
      assert.deepEqual(errors,[]);assert.deepEqual(unexpected,[]);
      console.log(`PASS ${engineName} prorata admin: email return, MFA and simulated link creation`);
+     await page.goto(origin+'/adhesion-admin.html');
+     const dossier=page.locator('#admin-order-fixture-admin-order');
+     await dossier.waitFor({state:'attached'});
+     await page.waitForFunction(()=>window.releaseMembershipCounts&&window.releaseFollowupSummaries);
+     assert.equal(events.some(e=>e.type==='rpc'&&e.name==='km16_admin_followup_history'),false);
+     assert.equal(await dossier.getByRole('button',{name:'Valider le dossier'}).isEnabled(),true);
+     await dossier.locator('.km16-order-followup summary').click();
+     await dossier.getByText('Envoi confirmé manuellement').waitFor();
+     const historyReads=events.filter(e=>e.type==='rpc'&&['km16_admin_followup_history','km16_admin_followup_delivery_history'].includes(e.name));
+     assert.equal(historyReads.length,2);
+     for(const read of historyReads)assert.deepEqual(read.args.p_order_ids,['fixture-admin-order']);
+     await page.evaluate(()=>{window.releaseMembershipCounts();window.releaseFollowupSummaries();});
+     await page.locator('#km16-followup-list tr[data-order-id]').waitFor({state:'attached'});
+     assert.deepEqual(errors,[]);assert.deepEqual(unexpected,[]);
+     console.log(`PASS ${engineName} admin dossiers: table before counts and summaries, history on demand`);
     }finally{await context.close();}
    }
    for(const width of [390,1280])for(const scenario of scenarios){

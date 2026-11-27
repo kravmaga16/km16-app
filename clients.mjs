@@ -11,6 +11,7 @@ const resetLoginMfa=initAdminMfa(client?.auth,mfaGate,{login:true});
 let authRevision=0;
 const endpoint='https://tlfewpbgbwesdriklxzb.supabase.co/functions/v1/km16-clients';
 let sourceClients=[],clubPayments=[],clubRegistrationRequest=0,clubRegistrationPending;
+let lastSupplementaryRefresh=0;
 const clubRegistrationTable = 'km16_club_registrations';
 const clubRegistrationScope = () => ({season_id: $('season').value, test: $('test').checked});
 let session=null,all=[],group='',generation=0,busy=false,controller=null;
@@ -146,7 +147,7 @@ function renderKm16Daily(){const cards=$('km16-daily-cards'),next=$('km16-daily-
  next.replaceChildren();const upcoming=km16UpcomingDeadlines().slice(0,3);if(!upcoming.length){const p=document.createElement('p');p.className='muted';p.textContent='Aucune échéance future renseignée.';next.append(p);return;}
  const ul=document.createElement('ul');ul.className='km16-approval-list';for(const d of upcoming){const li=document.createElement('li');li.textContent=km16DateFr(d.date)+(d.end?' au '+km16DateFr(d.end):'')+' · '+d.label;ul.append(li);}next.append(ul);
 }
-$('km16-daily-refresh').onclick=()=>{refreshCourseAlerts();refreshShirtKpi();refreshAdminActionProgress();refreshKm16AutoMail();refreshKm16FollowupDashboard();refreshKm16HealthDocuments();load();renderKm16Daily();};
+$('km16-daily-refresh').onclick=()=>{refreshCourseAlerts();refreshAdminActionProgress();refreshKm16AutoMail();refreshKm16FollowupDashboard();refreshKm16HealthDocuments();load();renderKm16Daily();};
 const KM16_ACTIONS=[
  {id:'review',label:'Dossiers administratifs à valider',kpi:'kpi-review',url:'./clients.html#km16-dossiers',priority:1},
  {id:'attendance',label:'Présences des cours passés à renseigner',kpi:'kpi-course-attendance',url:'./course-admin.html?view=attendance-pending',priority:1},
@@ -198,7 +199,7 @@ $('km16-priorities-copy').onclick=async()=>{
  const lines=['KM16 · Point de pilotage','Saison : '+$('season').value,'Établi le '+new Date().toLocaleString('fr-FR'),'',...names.map(([id,label])=>label+' : '+($(id).textContent.trim()||'Indisponible')),'','Données issues des modules administratifs ; vérifier les indicateurs indisponibles.'];
  try{await navigator.clipboard.writeText(lines.join('\\n'));$('km16-priorities-status').textContent='Point de pilotage copié. Les compteurs restent consultables ci-dessous.';}catch(e){$('km16-priorities-status').textContent='Copie impossible : '+e.message;}
 };
-$('km16-priorities-refresh').onclick=()=>{refreshCourseAlerts();refreshShirtKpi();refreshAdminActionProgress();load();};
+$('km16-priorities-refresh').onclick=()=>{refreshCourseAlerts();refreshAdminActionProgress();load();};
 let overviewLoaded=false,shirtRefresh=0;
 function renderApprovalDossiers(){const host=$('km16-dossiers-list'),count=$('km16-dossiers-count');host.replaceChildren();if(!overviewLoaded){count.textContent='Chargement des dossiers…';return;}const dossiers=[];const seen=new Set();for(const c of all){for(const p of c.products||[]){if(p.external||p.approval!=='pending'||!p.order_id||seen.has(p.order_id))continue;seen.add(p.order_id);dossiers.push({client:c,product:p});}}count.textContent=dossiers.length+' dossier(s) avec validation administrative en attente · Saison '+$('season').value+($('test').checked?' · Mode test':'');if(!dossiers.length){const p=document.createElement('p');p.className='muted';p.textContent='Aucune validation administrative en attente parmi les achats présents dans ce fichier.';host.append(p);return;}const ul=document.createElement('ul');ul.className='km16-approval-list';const dossierRows=document.createDocumentFragment();for(const d of dossiers){const li=document.createElement('li');const label=document.createElement('span');label.textContent=[d.client.first_name,d.client.last_name].filter(Boolean).join(' ')+' · '+d.product.title+' · '+euro(d.product.net_cents||0)+' encaissé(s)';const a=document.createElement('a');a.href='./adhesion-admin.html?admin_order='+encodeURIComponent(d.product.order_id)+'#admin';a.textContent='Vérifier / valider le dossier';a.setAttribute('aria-label','Ouvrir la validation administrative de '+d.client.first_name+' '+d.client.last_name);li.append(label,a);dossierRows.append(li);}ul.append(dossierRows);host.append(ul);}
 
@@ -310,7 +311,8 @@ window.addEventListener('hashchange',()=>{
 function renderOverview(){renderApprovalDossiers();renderProcessingItems();const put=(id,v)=>{$(id).textContent=v;};if(!overviewLoaded){for(const id of ['kpi-members','kpi-net','kpi-review'])put(id,'—');renderPriorities();return;}const pendingOrders=new Set();for(const c of all){for(const p of c.products||[]){if(!p.external&&p.approval==='pending'&&p.order_id)pendingOrders.add(p.order_id);}}const review=pendingOrders.size;put('kpi-members',String(all.length));put('kpi-net',euro(all.reduce((sum,c)=>sum+(c.amounts?.net_cents||0),0)));put('kpi-review',String(review));$('kpi-members-note').textContent='Fiches du fichier · saison '+$('season').value;$('kpi-net-note').textContent=($('test').checked?'Mode TEST · ':'')+'Hors imports Sportigo/Fighty et boutique';$('kpi-review-note').textContent='Validations administratives en attente · '+($('test').checked?'mode test':'achats réels');$('kpi-updated').textContent='Données du fichier actualisées à '+new Date().toLocaleTimeString('fr-FR');renderPriorities();}
 async function refreshShirtKpi(){if(session?.user.email?.toLowerCase()!==ADMIN)return;const ticket=++shirtRefresh;putShirts('…','Consultation des commandes réelles…');try{const {data:{session:current}}=await client.auth.getSession();if(!current)throw Error('Session expirée');const r=await fetch('https://tlfewpbgbwesdriklxzb.supabase.co/functions/v1/km16-shirts',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+current.access_token},body:JSON.stringify({action:'list'})});const data=await r.json();if(!r.ok||!Array.isArray(data.orders))throw Error(data.error||'Commandes indisponibles');if(ticket!==shirtRefresh)return;const pending=data.orders.filter(o=>o.livemode===true&&o.status==='paid'&&!o.collected_at).length;putShirts(String(pending),'Commandes réelles payées · non retirées');}catch(e){if(ticket===shirtRefresh)putShirts('—','Données indisponibles · ouvrir la boutique');}}
 function putShirts(value,note){$('kpi-shirts').textContent=value;$('kpi-shirts-note').textContent=note;renderPriorities();}
-const euro=n=>new Intl.NumberFormat('fr-FR',{style:'currency',currency:'EUR'}).format(n/100);
+const euroFormatter=new Intl.NumberFormat('fr-FR',{style:'currency',currency:'EUR'});
+const euro=n=>euroFormatter.format(n/100);
 let externalPaymentRequest=0;
 async function refreshExternalPayments(){
  const request=++externalPaymentRequest;
@@ -346,7 +348,7 @@ async function refreshExternalPayments(){
 }
 const moneyFields=[['total_cents','Achats'],['gross_cents','Encaissé brut'],['refunded_cents','Remboursements'],['net_cents','Encaissé net'],['future_cents','Échéances futures'],['planned_cents','CA planifié · net + futur'],['overdue_cents','Échues impayées'],['cancelled_cents','Échéances annulées'],['disputed_cents','Montants contestés inclus dans le net']];
 const status=(text,error=false)=>{$('status').textContent=text;$('status').className=error?'status error':'status';};
-function clear(){sourceClients=[];clubPayments=[];clubRegistrationRequest++;resetClubClientChoice();$('club-registration-list')?.replaceChildren();clubPaymentTotals=null;clubPaymentTotalsError=false;processingRequest++;stageReminderRequest++;processingItems=[];processingStatus='';processingReady=false;$('km16-stage-reminders-rows').replaceChildren();externalPaymentRequest++;if($('external-payment-summary'))$('external-payment-summary').replaceChildren();if($('external-payment-status'))$('external-payment-status').textContent='En attente de connexion.';closeMemberProfile();overviewLoaded=false;renderOverview();shirtRefresh++;courseAlertRequest++;$('kpi-course-unlinked').textContent='—';$('kpi-course-attendance').textContent='—';$('kpi-course-status').textContent='Suivi des cours en attente de connexion.';putShirts('—','En attente de connexion');all=[];$('stage-rows').replaceChildren();$('money-summary').replaceChildren();$('money-breakdown').replaceChildren();$('money-alerts').replaceChildren();$('money-alerts').hidden=true;$('rows').replaceChildren();$('data-status').textContent='';$('imports-note').textContent='';$('export').disabled=true;for(const g of ['enfants','ados','adultes'])$('split-'+g).textContent='';for(const id of ['count-enfants','count-ados','count-adultes'])$(id).textContent='0';}
+function clear(){lastSupplementaryRefresh=0;sourceClients=[];clubPayments=[];clubRegistrationRequest++;resetClubClientChoice();$('club-registration-list')?.replaceChildren();clubPaymentTotals=null;clubPaymentTotalsError=false;processingRequest++;stageReminderRequest++;processingItems=[];processingStatus='';processingReady=false;$('km16-stage-reminders-rows').replaceChildren();externalPaymentRequest++;if($('external-payment-summary'))$('external-payment-summary').replaceChildren();if($('external-payment-status'))$('external-payment-status').textContent='En attente de connexion.';closeMemberProfile();overviewLoaded=false;renderOverview();shirtRefresh++;courseAlertRequest++;$('kpi-course-unlinked').textContent='—';$('kpi-course-attendance').textContent='—';$('kpi-course-status').textContent='Suivi des cours en attente de connexion.';putShirts('—','En attente de connexion');all=[];$('stage-rows').replaceChildren();$('money-summary').replaceChildren();$('money-breakdown').replaceChildren();$('money-alerts').replaceChildren();$('money-alerts').hidden=true;$('rows').replaceChildren();$('data-status').textContent='';$('imports-note').textContent='';$('export').disabled=true;for(const g of ['enfants','ados','adultes'])$('split-'+g).textContent='';for(const id of ['count-enfants','count-ados','count-adultes'])$(id).textContent='0';}
 let selectedMember=null;
 function closeMemberProfile(){selectedMember=null;$('member-profile').hidden=true;$('member-profile-content').replaceChildren();}
 function profileLine(parent,label,value){const p=document.createElement('p');const strong=document.createElement('strong');strong.textContent=label+' : ';p.append(strong,document.createTextNode(value===null||value===undefined||value===''?'Non renseigné':String(value)));parent.append(p);}
@@ -484,7 +486,7 @@ function openMemberProfile(c){if(!all.includes(c))return;selectedMember=c;const 
    if(!Object.keys(changes).length){msg.textContent='Aucune modification à enregistrer.';return;}
    if(!confirm('Enregistrer les corrections de cette fiche importée ? Les paiements et réservations ne seront pas modifiés.'))return;
    save.disabled=true;msg.textContent='Enregistrement…';const season=$('season').value;
-   try{const {error}=await client.rpc('km16_admin_update_external_client',{p_external_id:c.id.slice(7),p_season:season,p_changes:changes});if(error)throw error;Object.assign(c,changes);msg.textContent='Corrections enregistrées. Historique conservé. Actualisez pour recharger le fichier.';save.textContent='Corrections enregistrées';$('member-profile-title').textContent='Fiche · '+[c.first_name,c.last_name].filter(Boolean).join(' ');}
+   try{const {error}=await client.rpc('km16_admin_update_external_client',{p_external_id:c.id.slice(7),p_season:season,p_changes:changes});if(error)throw error;Object.assign(c,changes);clientSearchText.set(c,buildClientSearchText(c));msg.textContent='Corrections enregistrées. Historique conservé. Actualisez pour recharger le fichier.';save.textContent='Corrections enregistrées';$('member-profile-title').textContent='Fiche · '+[c.first_name,c.last_name].filter(Boolean).join(' ');}
    catch(e){msg.textContent='Enregistrement impossible : '+e.message;save.disabled=false;}
   };
  }
@@ -520,7 +522,20 @@ function openMemberProfile(c){if(!all.includes(c))return;selectedMember=c;const 
  }).catch(e=>{if(selectedMember===c)historyText.textContent='Historique indisponible : '+e.message;});
  panel.hidden=false;panel.scrollIntoView({behavior:'smooth',block:'start'});}
 $('member-profile-close').onclick=closeMemberProfile;
-const matches=c=>{const q=$('search').value.normalize('NFKC').toLocaleLowerCase('fr-FR').trim();return !q||[c.last_name,c.first_name,c.email,c.phone,c.guardian_name,...c.address,c.import_email,c.import_phone,c.additional_addresses,...c.products.map(p=>p.title)].join(' ').normalize('NFKC').toLocaleLowerCase('fr-FR').includes(q);};
+const normalizeSearch=value=>value.normalize('NFKC').toLocaleLowerCase('fr-FR');
+const buildClientSearchText=c=>normalizeSearch([
+ c.last_name,c.first_name,c.email,c.phone,c.guardian_name,...c.address,
+ c.import_email,c.import_phone,c.additional_addresses,...c.products.map(p=>p.title)
+].join(' '));
+const clientSearchText=new WeakMap();
+function setClients(rows){
+ for(const row of rows){
+  if(!clientSearchText.has(row))clientSearchText.set(row,buildClientSearchText(row));
+ }
+ all=rows;
+}
+const searchQuery=()=>normalizeSearch($('search').value).trim();
+const matches=(c,query)=>!query||clientSearchText.get(c).includes(query);
 function cell(row,text){const td=document.createElement('td');td.textContent=text;row.appendChild(td);return td;}
 let clubPaymentTotals = null;
 let clubPaymentTotalsError = false;
@@ -599,26 +614,26 @@ function render(){
  renderClientResults();
 }
 function renderClientResults(){
- const km16RowsFragment=document.createDocumentFragment();const shown=all.filter(c=>(!group||c.group===group)&&matches(c));$('client-results-count').textContent=shown.length+' fiche(s) affichée(s) sur '+all.length+' pour cette saison et cet environnement.';$('search-clear').hidden=!$('search').value;
+ const query=searchQuery();
+ const financePending=!overviewLoaded&&busy&&Boolean($('club-registration-form'));
+ const km16RowsFragment=document.createDocumentFragment();const shown=all.filter(c=>(!group||c.group===group)&&matches(c,query));$('client-results-count').textContent=shown.length+' fiche(s) affichée(s) sur '+all.length+' pour cette saison et cet environnement.';$('search-clear').hidden=!$('search').value;
  for(const c of shown){const row=document.createElement('tr');cell(row,c.group);
-  const name=cell(row,c.last_name+' '+c.first_name);const openProfile=document.createElement('button');openProfile.type='button';openProfile.className='km16-open-profile';openProfile.textContent='Voir la fiche';openProfile.setAttribute('aria-label','Ouvrir la fiche de '+c.first_name+' '+c.last_name);openProfile.onclick=()=>openMemberProfile(c);name.append(openProfile);const tariff=document.createElement('div');tariff.className=c.saint_jean?'tag':'muted';tariff.textContent=c.saint_jean?'Tarif Saint-Jean-de-Passy':c.external_only?'Tarif importé · à confirmer':'Autres tarifs';name.append(tariff);if(c.external_import){const badge=document.createElement('div');badge.className='tag';badge.textContent='Import '+c.source;name.append(badge);}if(c.import_notes){const note=document.createElement('div');note.className='muted';note.textContent=c.import_notes;name.append(note);}if(c.guardian_name){const small=document.createElement('div');small.className='muted';small.textContent='Représentant : '+c.guardian_name;name.append(small);}
+  const name=cell(row,c.last_name+' '+c.first_name);const openProfile=document.createElement('button');openProfile.type='button';openProfile.className='km16-open-profile';openProfile.textContent='Voir la fiche';openProfile.disabled=financePending;openProfile.setAttribute('aria-label','Ouvrir la fiche de '+c.first_name+' '+c.last_name);openProfile.onclick=()=>openMemberProfile(c);name.append(openProfile);const tariff=document.createElement('div');tariff.className=c.saint_jean?'tag':'muted';tariff.textContent=c.saint_jean?'Tarif Saint-Jean-de-Passy':c.external_only?'Tarif importé · à confirmer':'Autres tarifs';name.append(tariff);if(c.external_import){const badge=document.createElement('div');badge.className='tag';badge.textContent='Import '+c.source;name.append(badge);}if(c.import_notes){const note=document.createElement('div');note.className='muted';note.textContent=c.import_notes;name.append(note);}if(c.guardian_name){const small=document.createElement('div');small.className='muted';small.textContent='Représentant : '+c.guardian_name;name.append(small);}
   const address=cell(row,c.address.length?c.address.join(', '):'Adresse en attente de facturation');if(c.billing_name){const small=document.createElement('div');small.className='muted';small.textContent='Facturé à : '+c.billing_name;address.append(small);}
   const contact=cell(row,c.email);const phone=document.createElement('div');phone.textContent=c.phone;contact.append(phone);if(c.external_import&&!c.external_only){const extra=document.createElement('div');extra.className='muted';extra.textContent='Coordonnées importées : '+[c.import_email,c.import_phone].filter(Boolean).join(' · ');contact.append(extra);}if(c.emergency_contacts){const extra=document.createElement('div');extra.className='muted';extra.textContent='Urgence : '+c.emergency_contacts;contact.append(extra);}if(c.additional_addresses||c.import_address?.length){const extra=document.createElement('div');extra.className='muted';extra.textContent='Autres coordonnées : '+[c.additional_addresses,c.import_address?.join(', ')].filter(Boolean).join(' · ');address.append(extra);}
-  const td=cell(row,'');const ul=document.createElement('ul');for(const p of c.products){const li=document.createElement('li');li.textContent=p.title+(p.external?'':' · '+euro(p.total_cents));if(p.state!=='Acheté'){const state=document.createElement('span');state.className='tag';state.textContent=p.state;li.append(' ',state);}ul.append(li);}td.append(ul);for(const [key] of moneyFields.slice(0,8))cell(row,!clubAmountKnown(c,key)?'Non intégré':c.forecast_unknown&&['future_cents','planned_cents','overdue_cents','cancelled_cents'].includes(key)?'À vérifier':euro(c.amounts[key]||0));if(c.amounts.disputed_cents){const warning=document.createElement('div');warning.className='tag';warning.textContent='Contesté : '+euro(c.amounts.disputed_cents);td.append(warning);}km16RowsFragment.append(row);
+  const td=cell(row,'');const ul=document.createElement('ul');for(const p of c.products){const li=document.createElement('li');li.textContent=p.title+(p.external?'':' · '+euro(p.total_cents));if(p.state!=='Acheté'){const state=document.createElement('span');state.className='tag';state.textContent=p.state;li.append(' ',state);}ul.append(li);}td.append(ul);for(const [key] of moneyFields.slice(0,8))cell(row,financePending?'En cours…':!clubAmountKnown(c,key)?'Non intégré':c.forecast_unknown&&['future_cents','planned_cents','overdue_cents','cancelled_cents'].includes(key)?'À vérifier':euro(c.amounts[key]||0));if(!financePending&&c.amounts.disputed_cents){const warning=document.createElement('div');warning.className='tag';warning.textContent='Contesté : '+euro(c.amounts.disputed_cents);td.append(warning);}km16RowsFragment.append(row);
  }
- if(!shown.length){const row=document.createElement('tr'),td=cell(row,all.length?'Aucun client pour cette sélection':'Aucun achat encaissé dans cet environnement');td.colSpan=13;km16RowsFragment.append(row);}
+ if(!shown.length){const row=document.createElement('tr'),td=cell(row,financePending?'Recherche en cours de chargement des règlements au club':all.length?'Aucun client pour cette sélection':'Aucun achat encaissé dans cet environnement');td.colSpan=13;km16RowsFragment.append(row);}
  $('rows').replaceChildren(km16RowsFragment);
  for(const b of document.querySelectorAll('[data-group]'))b.setAttribute('aria-pressed',String(b.dataset.group===group));
- $('export').disabled=busy||!all.some(matches)||Boolean($('club-registration-form')&&!clubPaymentTotals);
+ $('export').disabled=busy||!all.some(c=>matches(c,query))||Boolean($('club-registration-form')&&!clubPaymentTotals);
 }
-async function load(){
+async function load({background=false}={}){
  if(busy||session?.user.email?.toLowerCase()!==ADMIN)return;
- refreshExternalPayments();
- if(location.hash!=='#km16-email-relances'){
-  void refreshProcessingItems();
-  void refreshStageReminders();
- }
- busy=true;render();const gen=generation,test=$('test').checked,season=$('season').value;showSeason();controller=new AbortController();
+ const refreshSupplementary=!background||Date.now()-lastSupplementaryRefresh>=6*60*1000;
+ busy=true;$('export').disabled=true;
+ const gen=generation,test=$('test').checked,season=$('season').value;
+ showSeason();controller=new AbortController();
  $('data-status').textContent='Chargement du fichier clients…';
  try{
   const {data:{session:current}}=await client.auth.getSession();if(!current)throw Error('Session expirée');
@@ -627,9 +642,25 @@ async function load(){
   if(gen!==generation||test!==$('test').checked)return;
   if(!Array.isArray(data.clients)||data.test!==test||data.season!==season)throw Error('Réponse inattendue');
   sourceClients=data.clients;
-  if ($('club-registration-form')) await refreshClubRegistrations();
+  const registrationLoad=$('club-registration-form')?refreshClubRegistrations():null;
+  if(!overviewLoaded&&registrationLoad){
+   setClients(sourceClients);
+   renderClientResults();
+   $('data-status').textContent=all.length+' fiche(s) · Chargement des règlements au club…';
+  }
+  if(refreshSupplementary){
+   lastSupplementaryRefresh=Date.now();
+   void refreshExternalPayments();
+   if(location.hash!=='#km16-email-relances'){
+    void refreshProcessingItems();
+    void refreshStageReminders();
+   }
+   void refreshShirtKpi();
+  }
+  await registrationLoad;
   if(gen!==generation)return;
-  all=withClubPayments(sourceClients,clubPayments);updateClubClientChoices();overviewLoaded=true;refreshShirtKpi();$('imports-note').textContent=(data.imported_count||0)+' fiches du fichier actif rattachées à cette saison. Les encaissements Sportigo/Fighty ne sont pas intégrés aux totaux ci-dessous ; les identités concordantes sont rapprochées sans ajouter de paiement.';
+  setClients(withClubPayments(sourceClients,clubPayments));
+  updateClubClientChoices();overviewLoaded=true;$('imports-note').textContent=(data.imported_count||0)+' fiches du fichier actif rattachées à cette saison. Les encaissements Sportigo/Fighty ne sont pas intégrés aux totaux ci-dessous ; les identités concordantes sont rapprochées sans ajouter de paiement.';
   for(const value of data.seasons||[]){if(![...$('season').options].some(o=>o.value===value)){const o=document.createElement('option');o.value=value;o.textContent=value;$('season').append(o);}}
   $('test-notice').hidden=!test;
   const missing=all.filter(c=>!c.address.length).length,unchecked=all.filter(c=>c.group==='À vérifier').length;
@@ -892,7 +923,7 @@ async function authState(s){
  $('km16-email-relances').hidden=!isKm16EmailAdmin(s);
  $('password').value='';$('test').checked=false;$('test-notice').hidden=true;group='';$('search').value='';
  $('identity').textContent=admin?s.user.email:'';
- if(admin){refreshShirtKpi();refreshCourseAlerts();refreshAdminActionProgress();refreshKm16AutoMail();refreshKm16FollowupDashboard();await load();communications.load();}else{void refreshKm16AutoMail();void refreshKm16FollowupDashboard();km16ActionRequest++;km16ActionState.clear();km16ActionLoaded=false;km16ActionError='';}
+ if(admin){const loading=load();refreshCourseAlerts();refreshAdminActionProgress();refreshKm16AutoMail();refreshKm16FollowupDashboard();await loading;if(revision===authRevision)communications.load();}else{void refreshKm16AutoMail();void refreshKm16FollowupDashboard();km16ActionRequest++;km16ActionState.clear();km16ActionLoaded=false;km16ActionError='';}
 }
 $('login-form').onsubmit=async event=>{event.preventDefault();if(!client)return;const button=$('login-button');button.disabled=true;status('');try{const {error}=await client.auth.signInWithPassword({email:$('email').value.trim(),password:$('password').value});if(error)throw error;}catch(e){status(e.message,true);}finally{button.disabled=false;$('password').value='';}};
 const logout=async()=>{await authState(null);try{const {error}=await client.auth.signOut();if(error)throw error;}catch{status('Déconnexion non confirmée. Réessaie avant de fermer la console.',true);}};
@@ -902,7 +933,7 @@ $('refresh').onclick=()=>{load();refreshCourseAlerts();};let km16SearchTimer; $(
 $('all').onclick=()=>{group='';renderClientResults();};
 for(const b of document.querySelectorAll('[data-group]'))b.onclick=()=>{group=b.dataset.group;renderClientResults();};
 $('test').onchange=()=>{generation++;controller?.abort();busy=false;clear();load();};
-$('export').onclick=()=>{try{const rows=all.filter(matches);if(!rows.length||($('club-registration-form')&&!clubPaymentTotals))return;const bytes=clientsWorkbook(rows,all);const url=URL.createObjectURL(new Blob([bytes],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}));const a=document.createElement('a');a.href=url;a.download=($('test').checked?'TEST-':'')+'KM16-Clients-'+$('season').value.replace('/','-')+'-'+new Date().toISOString().slice(0,10)+'.xlsx';document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),30000);status('Export créé : Enfants, Ados, Adultes, Synthèse et Stages par mois.');}catch(e){status(e.message,true);}};
+$('export').onclick=()=>{try{const query=searchQuery();const rows=all.filter(c=>matches(c,query));if(!rows.length||($('club-registration-form')&&!clubPaymentTotals))return;const bytes=clientsWorkbook(rows,all);const url=URL.createObjectURL(new Blob([bytes],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}));const a=document.createElement('a');a.href=url;a.download=($('test').checked?'TEST-':'')+'KM16-Clients-'+$('season').value.replace('/','-')+'-'+new Date().toISOString().slice(0,10)+'.xlsx';document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),30000);status('Export créé : Enfants, Ados, Adultes, Synthèse et Stages par mois.');}catch(e){status(e.message,true);}};
 function resetClubClientChoice() {
  const select = $('club-client-id');
  if (!select) return;
@@ -1029,4 +1060,4 @@ if (clubRegistrationForm) {
 if(!client)status('Connexion indisponible : rechargez la page',true);
 else{client.auth.onAuthStateChange((_event,s)=>{setTimeout(()=>authState(s),0);});const {data}=await client.auth.getSession();await authState(data.session);}
 // Avoid redundant background reloads; manual refresh remains available.
-setInterval(()=>{if(!document.hidden&&!busy&&session?.user?.email?.toLowerCase()===ADMIN)load();},120000);
+setInterval(()=>{if(!document.hidden&&!busy&&session?.user?.email?.toLowerCase()===ADMIN)load({background:true});},120000);

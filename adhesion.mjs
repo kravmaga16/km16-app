@@ -22,6 +22,8 @@ if(prorataView){
  $('registration-intro').textContent='Accédez au formulaire de création d’un lien au prorata après connexion et vérification de votre session.';
  const links=$('payment-links');
  adminPanel.firstElementChild.after(links);
+ $('admin-refresh').textContent='Charger les dossiers';
+ $('links-refresh').textContent='Afficher les liens récents';
  if(paymentReturn.get('connexion')==='expiree'){
   $('account-status').textContent='Ce lien de connexion ne peut plus être utilisé. Demandez un nouveau lien ou utilisez votre mot de passe.';
  }
@@ -1400,7 +1402,7 @@ async function restoreAdmin(s){
   initLinks();
   const target=prorataView?$('payment-links'):$(location.hash.slice(1));
   target?.scrollIntoView({block:'start'});
-  await Promise.all([admin(),listLinks()]);
+  if(!prorataView)await Promise.all([admin(),listLinks()]);
  }catch(error){
   if(currentGeneration!==generation)return;
   resetAdhesionMfa?.();

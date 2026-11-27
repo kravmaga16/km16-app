@@ -336,6 +336,11 @@ try{
      await page.getByRole('button',{name:'Vérifier le code'}).click();
      await page.locator('#link-form').waitFor({state:'visible'});
      assert.equal(await page.locator('#admin > :nth-child(2)').getAttribute('id'),'payment-links');
+     await page.waitForFunction(()=>document.querySelector('#link-product').value!=='');
+     assert.equal(events.some(e=>['admin-page','links-list'].includes(e.body?.action)),false,'direct access needs neither dossiers nor link history');
+     await page.locator('#links-refresh').click();
+     await page.locator('#links-list table').waitFor({state:'visible'});
+     assert.equal(events.filter(e=>e.body?.action==='links-list').length,1,'history stays available on demand');
      await page.locator('#link-amount').fill('250,00');
      await page.locator('#link-email').fill('payer@example.invalid');
      await page.locator('#link-create').click();

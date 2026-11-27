@@ -2,7 +2,7 @@ import {readFileSync} from 'node:fs';
 import assert from 'node:assert/strict';
 const js=readFileSync('clients.mjs','utf8');
 const start=js.indexOf('function render(){');
-const end=js.indexOf('async function load(){',start);
+const end=js.indexOf('async function load(',start);
 assert.ok(start>=0&&end>start,'Render function not found');
 const render=js.slice(start,end);
 assert.match(render,/const km16RowsFragment=document\.createDocumentFragment\(\)/,'Fragment missing');

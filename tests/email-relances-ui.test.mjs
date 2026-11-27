@@ -57,7 +57,9 @@ async function harness(browser){
     if(!next||next[0]!==method||JSON.stringify(next[1])!==JSON.stringify(args)){
      state.violations.push('table:km16_club_registrations:'+method);throw Error('Unexpected club registration read');
     }
-    return method==='range'?Promise.resolve({data:[],error:null}):query;
+    if(method!=='range')return query;
+    if(state.holdClub)return new Promise(resolve=>{state.releaseClub=data=>resolve({data,error:null});});
+    return Promise.resolve({data:[],error:null});
    }]));
    return query;
   };
@@ -118,7 +120,7 @@ async function harness(browser){
      }
     }else{state.violations.push('review-action:'+body.action);throw Error('Unexpected review operation');}
     state.reviewDelivered++;
-   }else if(url.pathname==='/functions/v1/km16-clients'&&body.action==='clients')data={clients:[],test:body.test,season:body.season,seasons:[],updated_at:'2026-11-18T09:00:00Z'};
+   }else if(url.pathname==='/functions/v1/km16-clients'&&body.action==='clients')data={clients:state.clients||[],test:body.test,season:body.season,seasons:[],updated_at:'2026-11-18T09:00:00Z'};
    else if(url.pathname==='/functions/v1/km16-shirts'&&body.action==='list')data={orders:[]};
    else if(url.pathname==='/functions/v1/km16-course-bookings'&&body.action==='admin_list')data={bookings:[],sessions:[]};
    else if(url.pathname==='/functions/v1/km16-communications'&&body.action==='status')data={email_ready:false,campaigns:[]};
@@ -164,6 +166,32 @@ for(const [name,engine] of engines)test('Email alerts: '+name,{timeout:90000},as
     await h.page.waitForFunction(()=>!document.querySelector('#forbidden').hidden);
     assert.equal(await h.page.locator('#km16-email-relances').isVisible(),false);
     assert.equal(await h.page.evaluate(()=>window.__km16EmailTest.calls.length),0);
+    await h.check();
+   }finally{await h.context.close();}
+  });
+  await t.test('client results are searchable while the club payment read is pending',async()=>{
+   const h=await harness(browser);try{
+    await h.page.evaluate(()=>{
+     const state=window.__km16EmailTest;
+     state.holdClub=true;
+     state.clients=[{id:'fixture-client',group:'Adultes',first_name:'Élise',last_name:'Martin',
+      email:'elise@example.invalid',address:[],products:[],amounts:{}}];
+    });
+    await login(h.page);
+    const row=h.page.locator('#rows tr').filter({hasText:'Martin Élise'});
+    await row.waitFor({state:'attached'});
+    assert.match(await row.textContent(),/En cours/);
+    assert.equal(await h.page.locator('#export').isDisabled(),true);
+    await h.page.locator('#search').fill('E\u0301LISE');
+    await h.page.waitForFunction(()=>document.querySelector('#client-results-count').textContent.startsWith('1 fiche'));
+    await h.page.locator('#search').fill('inconnu');
+    await h.page.waitForFunction(()=>document.querySelector('#client-results-count').textContent.startsWith('0 fiche'));
+    await h.page.evaluate(()=>window.__km16EmailTest.releaseClub([{id:'fixture-payment',client_id:'fixture-client',
+     first_name:'Élise',last_name:'Martin',email:'elise@example.invalid',method:'cash',amount_cents:1250,received_on:'2026-11-18'}]));
+    await h.page.locator('#search').fill('règlement au club');
+    await row.waitFor({state:'attached'});
+    assert.match(await row.textContent(),/12,50/);
+    assert.equal(await h.page.locator('#export').isEnabled(),true);
     await h.check();
    }finally{await h.context.close();}
   });

@@ -1,8 +1,13 @@
+import {adminPerformance} from './admin-performance.mjs';
+const diagnostics=adminPerformance();
 const $=id=>document.getElementById(id);
 const ADMIN='alexandre.marchat@gmail.com';
 const supa=window.supabase.createClient('https://tlfewpbgbwesdriklxzb.supabase.co','sb_publishable_OGRSgobOGf54jlfmXGmS8g_04Ftvfsn',{auth:{storageKey:'km16-video-auth',detectSessionInUrl:false,flowType:'implicit'}});
 const endpoint='https://tlfewpbgbwesdriklxzb.supabase.co/functions/v1/km16-course-bookings';
 let session=null,bookings=[],sessions=[],busy=false,attendance=new Map(),memberLinks=new Map(),externalLinks=new Map();
+let accessRevision=0,rosterRevision=0,rosterWrites=0,fullLoaded=false,lastFullRefresh=0;
+let activeScopeKey='',scopeVersion=null,scopeRequest=null;
+const globalRefreshMs=120000;
 const status=(msg,error=false)=>{$('status').textContent=msg;$('status').className=error?'status error':'status';};
 async function call(action,other={}){
  const {data:{session:current}}=await supa.auth.getSession();if(!current)throw Error('Session expirée');
@@ -31,8 +36,8 @@ async function openMemberDialog(b,linked){
   if(error)throw error;memberDialogChoices=[...(data||[]).map(c=>({...c,source:'KM16'})),...(external||[]).map(c=>({...c,order_id:'external:'+c.external_id+':'+c.season_id,source:c.source||'Import',external_key:c.external_id}))];renderMemberChoices();if(!memberDialogChoices.length)$('member-selection-warning').textContent='Aucun dossier KM16 ou importé compatible trouvé. Vérifiez le nom et les coordonnées dans le fichier adhérents.';
  }catch(e){if(request===memberDialogRequest&&memberDialog.open)$('member-candidate-count').textContent='Recherche impossible : '+e.message;}
 }
-async function saveMemberLink(id){const b=memberDialogBooking;if(!b||memberDialogSaving)return;if(id&&(!memberDialogSelected||!memberCheck.checked))return;memberDialogSaving=true;updateMemberConfirm();$('member-dialog-unlink').disabled=true;
- try{if(id&&((memberLinks.get(b.id)||externalLinks.get(b.id))===id)){memberDialog.close();status('Ce dossier est déjà associé à cette réservation. Aucune modification nécessaire.');return;}if(!id){const [a,z]=await Promise.all([supa.from('km16_booking_member_links').delete().eq('booking_id',b.id),supa.from('km16_booking_external_links').delete().eq('booking_id',b.id)]);if(a.error||z.error)throw a.error||z.error;memberLinks.delete(b.id);externalLinks.delete(b.id);}else if(memberDialogSelected?.external_key){const {data:{user}}=await supa.auth.getUser();if(!user)throw Error('Session expirée');if(memberLinks.has(b.id)||externalLinks.has(b.id))throw Error('Retirez d’abord l’association existante');const {error}=await supa.from('km16_booking_external_links').upsert({booking_id:b.id,external_id:memberDialogSelected.external_key,season_id:memberDialogSelected.season_id,linked_by:user.id},{onConflict:'booking_id'});if(error)throw error;externalLinks.set(b.id,id);}else{if(externalLinks.has(b.id))throw Error('Retirez d’abord le dossier importé existant');const {data:{user}}=await supa.auth.getUser();if(!user)throw Error('Session expirée');const {error}=await supa.from('km16_booking_member_links').upsert({booking_id:b.id,membership_order_id:id,linked_by:user.id,linked_at:new Date().toISOString()},{onConflict:'booking_id'});if(error)throw error;memberLinks.set(b.id,id);}memberDialog.close();status(id?'Dossier associé après vérification manuelle.':'Association retirée.');render();}catch(e){$('member-selection-warning').textContent='Enregistrement impossible : '+e.message;}finally{memberDialogSaving=false;$('member-dialog-unlink').disabled=false;updateMemberConfirm();}
+async function saveMemberLink(id){const b=memberDialogBooking;if(!b||memberDialogSaving)return;if(id&&(!memberDialogSelected||!memberCheck.checked))return;memberDialogSaving=true;rosterWrites++;rosterRevision++;scopeVersion=null;updateMemberConfirm();$('member-dialog-unlink').disabled=true;
+ try{if(id&&((memberLinks.get(b.id)||externalLinks.get(b.id))===id)){memberDialog.close();status('Ce dossier est déjà associé à cette réservation. Aucune modification nécessaire.');return;}if(!id){const [a,z]=await Promise.all([supa.from('km16_booking_member_links').delete().eq('booking_id',b.id),supa.from('km16_booking_external_links').delete().eq('booking_id',b.id)]);if(a.error||z.error)throw a.error||z.error;memberLinks.delete(b.id);externalLinks.delete(b.id);}else if(memberDialogSelected?.external_key){const {data:{user}}=await supa.auth.getUser();if(!user)throw Error('Session expirée');if(memberLinks.has(b.id)||externalLinks.has(b.id))throw Error('Retirez d’abord l’association existante');const {error}=await supa.from('km16_booking_external_links').upsert({booking_id:b.id,external_id:memberDialogSelected.external_key,season_id:memberDialogSelected.season_id,linked_by:user.id},{onConflict:'booking_id'});if(error)throw error;externalLinks.set(b.id,id);}else{if(externalLinks.has(b.id))throw Error('Retirez d’abord le dossier importé existant');const {data:{user}}=await supa.auth.getUser();if(!user)throw Error('Session expirée');const {error}=await supa.from('km16_booking_member_links').upsert({booking_id:b.id,membership_order_id:id,linked_by:user.id,linked_at:new Date().toISOString()},{onConflict:'booking_id'});if(error)throw error;memberLinks.set(b.id,id);}memberDialog.close();status(id?'Dossier associé après vérification manuelle.':'Association retirée.');render();}catch(e){$('member-selection-warning').textContent='Enregistrement impossible : '+e.message;}finally{rosterWrites--;rosterRevision++;memberDialogSaving=false;$('member-dialog-unlink').disabled=false;updateMemberConfirm();}
 }
 $('member-candidate-search').oninput=renderMemberChoices;
 memberCheck.onchange=updateMemberConfirm;
@@ -58,6 +63,10 @@ function render(){
  $('unlinked-count').textContent=bookings.filter(b=>b.status==='Inscrit'&&!memberLinks.has(b.id)&&!externalLinks.has(b.id)).length;
  $('attendance-pending-count').textContent=bookings.filter(b=>b.status==='Inscrit'&&byId.get(b.session_id)?.session_date<today&&!attendance.has(b.id)).length;
  $('course-priority-summary').textContent=$('unlinked-count').textContent+' inscription(s) sans dossier · '+$('attendance-pending-count').textContent+' présence(s) à compléter · '+$('new').textContent+' nouveauté(s) non lue(s).';
+ if(!fullLoaded){
+  for(const id of ['active','cancelled','new','sessions','upcoming','today-count','unlinked-count','attendance-pending-count'])$(id).textContent='—';
+  $('course-priority-summary').textContent='Chargement des compteurs de la vue générale…';
+ }
  const selectedCourse=$('filter-course').value;
  const options=[...new Set(sessions.map(s=>s.category+' · '+s.venue))].sort((a,b)=>a.localeCompare(b,'fr'));
  $('filter-course').replaceChildren(new Option('Tous les cours',''));
@@ -121,6 +130,7 @@ function render(){
    select.value=attendance.has(b.id)?String(attendance.get(b.id)):'';
    select.onchange=async()=>{
     const previous=attendance.has(b.id)?String(attendance.get(b.id)):'';select.disabled=true;
+    rosterWrites++;rosterRevision++;scopeVersion=null;
     try{
      if(select.value===''){
       const {error}=await supa.from('km16_course_attendance').delete().eq('booking_id',b.id);if(error)throw error;const {data:remaining,error:checkError}=await supa.from('km16_course_attendance').select('booking_id').eq('booking_id',b.id);if(checkError)throw checkError;if(remaining?.length)throw Error('La présence existe toujours dans la base');attendance.delete(b.id);
@@ -129,7 +139,7 @@ function render(){
       const value=select.value==='true';const {error}=await supa.from('km16_course_attendance').upsert({booking_id:b.id,present:value,recorded_by:user.id,recorded_at:new Date().toISOString()},{onConflict:'booking_id'});if(error)throw error;const {data:verified,error:checkError}=await supa.from('km16_course_attendance').select('present').eq('booking_id',b.id).maybeSingle();if(checkError)throw checkError;if(!verified||verified.present!==value)throw Error('La présence n’a pas été confirmée dans la base');attendance.set(b.id,value);
      }
      status('Présence enregistrée pour '+b.first_name+' '+b.last_name+'.');render();
-    }catch(e){select.value=previous;status('Enregistrement de présence impossible : '+e.message,true);}finally{select.disabled=false;}
+    }catch(e){select.value=previous;status('Enregistrement de présence impossible : '+e.message,true);}finally{rosterWrites--;rosterRevision++;select.disabled=false;}
    };
    presence.append(select);
   }else presence.textContent='—';
@@ -144,6 +154,7 @@ function render(){
   $('rows').append(tr);
  }
  if(!shown.length){const tr=document.createElement('tr'),td=document.createElement('td');td.colSpan=9;td.textContent='Aucune inscription pour cette sélection';tr.append(td);$('rows').append(tr);}
+ if(shown.some(b=>b.status==='Inscrit'))diagnostics.ready('Liste des présences utilisable');
  $('mark-read').disabled=busy||!shown.some(b=>!b.read_at);
  $('mark-read').onclick=async()=>{if(busy)return;const ids=shown.filter(b=>!b.read_at).map(b=>b.id);if(!ids.length)return;$('mark-read').disabled=true;try{await call('admin_read',{ids});await load();}catch(e){status(e.message,true);$('mark-read').disabled=false;}};
  const counts=new Map();
@@ -178,6 +189,7 @@ function render(){
  for(const [id,value] of [['show-new','new'],['show-upcoming','upcoming'],['show-active','active'],['show-cancelled','cancelled'],['show-all','all'],['show-unlinked','unlinked'],['show-attendance-pending','attendance-pending']]){
   $(id).classList.toggle('primary',view===value);$(id).setAttribute('aria-pressed',String(view===value));
  }
+ if(fullLoaded&&!busy)syncCourseScope();
 }
 let pendingReplacementsLoading=false;
 async function loadPendingReplacements(){
@@ -189,6 +201,7 @@ async function loadPendingReplacements(){
   const {data,error}=await supa.rpc('km16_admin_pending_course_replacements');
   if(session?.user?.id!==owner)return;
   if(error)throw error;
+  diagnostics.response('Remplacements en attente',data);
   const fragment=document.createDocumentFragment();
   for(const slot of data){
    const entry=document.createElement('li');
@@ -257,6 +270,7 @@ async function loadDailyCourses(){
    }
   }
   results.replaceChildren(fragment);feedback.textContent='';
+  diagnostics.response('Planning du jour et de demain',data);diagnostics.ready('Planning du jour consultable');
  }catch{
   if(session?.user?.id===owner)feedback.textContent='Planning temporairement indisponible. Réessayez avec Actualiser le planning.';
  }finally{dailyCourseLoading=false;refresh.disabled=false;}
@@ -274,6 +288,7 @@ async function loadCourseAlertQueue(){
   const {data,error}=await supa.rpc('km16_admin_course_alert_queue');
   if(session?.user?.id!==accountId)return;
   if(error)throw error;
+  diagnostics.response('Alertes de cours',data);
   const fragment=document.createDocumentFragment();
   for(const item of data){
    const card=document.createElement('div');card.className='summary';
@@ -362,6 +377,7 @@ async function loadSessionMail(){
   const {data,error}=await supa.rpc('km16_admin_course_mail_summary',{p_session:mailSession});
   if(request!==mailRequest)return;
   if(error)throw error;
+  diagnostics.response('Envois de la séance',data);
   target.replaceChildren();
   statusNode.textContent=data.length?'20 changements les plus récents au maximum. « Accepté » indique la prise en charge par la messagerie.':'Aucun e-mail de changement enregistré pour cette séance.';
   if(!data.length)return;
@@ -383,10 +399,115 @@ async function loadSessionMail(){
  }
 }
 $('session-mail-refresh').onclick=loadSessionMail;
-async function load(){if(busy||!session)return;busy=true;try{const data=await call('admin_list');bookings=data.bookings;sessions=data.sessions;const attendanceResult=await supa.from('km16_course_attendance').select('booking_id,present');if(attendanceResult.error)throw attendanceResult.error;attendance=new Map((attendanceResult.data||[]).map(row=>[row.booking_id,row.present]));const linksResult=await supa.from('km16_booking_member_links').select('booking_id,membership_order_id');if(linksResult.error)throw linksResult.error;memberLinks=new Map((linksResult.data||[]).map(row=>[row.booking_id,row.membership_order_id]));const externalResult=await supa.from('km16_booking_external_links').select('booking_id,external_id,season_id');if(externalResult.error)throw externalResult.error;externalLinks=new Map((externalResult.data||[]).map(row=>[row.booking_id,'external:'+row.external_id+':'+row.season_id]));$('updated').textContent='Mis à jour à '+new Date().toLocaleTimeString('fr-FR')+' · Actualisation toutes les 30 secondes';status('');}catch(e){status(e.message,true)}finally{busy=false;render();void loadCourseAlertQueue();void loadDailyCourses();void loadPendingReplacements();}}
-async function authState(s){session=s;const admin=s?.user?.email?.toLowerCase()===ADMIN;$('login').hidden=!!s;$('workspace').hidden=!admin;$('identity').textContent=admin?s.user.email:'';if(s&&!admin)$('global-status').textContent='Accès réservé à l’administrateur KM16';if(admin)await load();}
+function courseScope(){
+ const id=selectedSessionId,date=id?null:($('filter-date').value||todayParis());
+ return {id,date,key:id?'session:'+id:'date:'+date};
+}
+function syncCourseScope(){
+ const scope=courseScope();
+ if(scope.key===activeScopeKey)return;
+ activeScopeKey=scope.key;
+ scopeVersion=null;
+ if(!selectedSessionId&&!$('filter-date').value&&Date.now()-lastFullRefresh>=globalRefreshMs)void load();
+ else void refreshCourseScope(scope);
+}
+function applyCourseScope(data,{id,date}){
+ const scopedIds=new Set(sessions.filter(s=>id?s.id===id:s.session_date===date).map(s=>s.id));
+ for(const course of data.sessions)scopedIds.add(course.id);
+ for(const booking of bookings){
+  if(scopedIds.has(booking.session_id)){
+   attendance.delete(booking.id);memberLinks.delete(booking.id);externalLinks.delete(booking.id);
+  }
+ }
+ sessions=[...sessions.filter(s=>!scopedIds.has(s.id)),...data.sessions];
+ bookings=bookings.filter(b=>!scopedIds.has(b.session_id));
+ for(const row of data.bookings){
+  const {present,membership_order_id,external_id,season_id,...booking}=row;
+  bookings.push(booking);
+  if(typeof present==='boolean')attendance.set(row.id,present);
+  if(membership_order_id)memberLinks.set(row.id,membership_order_id);
+  if(external_id)externalLinks.set(row.id,'external:'+external_id+':'+season_id);
+ }
+}
+async function refreshCourseScope(scope=courseScope()){
+ if(busy||rosterWrites||changeSaving||!session||scopeRequest?.key===scope.key)return;
+ const request={key:scope.key,access:accessRevision,roster:rosterRevision};
+ scopeRequest=request;
+ try{
+  const {data,error}=await supa.rpc('km16_admin_course_scope',{
+   p_date:scope.date,p_session_id:scope.id,p_previous_version:scope.key===activeScopeKey?scopeVersion:null
+  }).abortSignal(AbortSignal.timeout(5000));
+  if(scopeRequest!==request||request.access!==accessRevision||request.roster!==rosterRevision||courseScope().key!==scope.key||busy)return;
+  if(error)throw error;
+  if(typeof data?.version!=='string'||typeof data.unchanged!=='boolean')throw Error('Réponse de la séance invalide');
+  diagnostics.response('Vue ciblée',data);
+  if(!data.unchanged){
+   if(!Array.isArray(data.sessions)||!Array.isArray(data.bookings))throw Error('Réponse de la séance invalide');
+   applyCourseScope(data,scope);
+   activeScopeKey=scope.key;scopeVersion=data.version;
+   render();
+  }
+  $('updated').textContent='Vue ciblée vérifiée à '+new Date().toLocaleTimeString('fr-FR')+' · Vue générale actualisée séparément';
+ }catch(e){
+  if(scopeRequest===request&&request.access===accessRevision&&courseScope().key===scope.key)status('Actualisation ciblée indisponible : '+e.message,true);
+ }finally{if(scopeRequest===request)scopeRequest=null;}
+}
+async function load({initial=false}={}){
+ if(busy||rosterWrites||!session)return;
+ busy=true;$('course-refresh-all').disabled=true;
+ const access=accessRevision,revision=++rosterRevision;
+ try{
+  const data=await call('admin_list');
+  const results=await Promise.all([
+   supa.from('km16_course_attendance').select('booking_id,present'),
+   supa.from('km16_booking_member_links').select('booking_id,membership_order_id'),
+   supa.from('km16_booking_external_links').select('booking_id,external_id,season_id')
+  ]);
+  if(access!==accessRevision||revision!==rosterRevision||rosterWrites)return;
+  for(const result of results)if(result.error)throw result.error;
+  const [attendanceRows,linkRows,externalRows]=results.map(result=>result.data||[]);
+  diagnostics.response('Vue générale · réservations et séances',data);
+  for(const rows of [attendanceRows,linkRows,externalRows])diagnostics.response('Vue générale · suivi des réservations',rows);
+  bookings=data.bookings;sessions=data.sessions;
+  attendance=new Map(attendanceRows.map(row=>[row.booking_id,row.present]));
+  memberLinks=new Map(linkRows.map(row=>[row.booking_id,row.membership_order_id]));
+  externalLinks=new Map(externalRows.map(row=>[row.booking_id,'external:'+row.external_id+':'+row.season_id]));
+  fullLoaded=true;scopeVersion=null;lastFullRefresh=Date.now();
+  $('updated').textContent='Vue générale mise à jour à '+new Date().toLocaleTimeString('fr-FR');
+  status('');
+ }catch(e){if(access===accessRevision)status(e.message,true);}
+ finally{
+  if(access===accessRevision){
+   busy=false;$('course-refresh-all').disabled=false;render();void loadCourseAlertQueue();if(!initial)void loadDailyCourses();void loadPendingReplacements();
+  }
+ }
+}
+async function authState(s){
+ const admin=s?.user?.email?.toLowerCase()===ADMIN;
+ if(admin&&session?.user.id===s.user.id){session=s;return;}
+ accessRevision++;rosterRevision++;
+ busy=false;fullLoaded=false;lastFullRefresh=0;activeScopeKey='';scopeVersion=null;scopeRequest=null;
+ session=admin?s:null;
+ bookings=[];sessions=[];attendance.clear();memberLinks.clear();externalLinks.clear();
+ selectedSessionId=null;
+ $('course-refresh-all').disabled=false;
+ syncSessionMail(null);
+ diagnostics.reset();
+ $('login').hidden=!!s;$('workspace').hidden=!admin;$('identity').textContent=admin?s.user.email:'';
+ if(!admin){
+  $('rows').replaceChildren();$('session-rows').replaceChildren();$('course-today-results').replaceChildren();
+  if(memberDialog.open)memberDialog.close();
+  if(s)$('global-status').textContent='Accès réservé à l’administrateur KM16';
+  return;
+ }
+ void loadDailyCourses();
+ const access=accessRevision;
+ await refreshCourseScope();
+ if(access===accessRevision)await load({initial:true});
+}
 $('login-form').onsubmit=async e=>{e.preventDefault();try{const {error}=await supa.auth.signInWithPassword({email:$('email').value.trim(),password:$('password').value});if(error)throw error;}catch(e){$('global-status').textContent=e.message}finally{$('password').value=''}};
 $('logout').onclick=()=>supa.auth.signOut();
+$('course-refresh-all').onclick=()=>void load();
 for(const id of ['filter-season','filter-date','filter-course','filter-status'])$(id).onchange=render;
 $('filter-search').oninput=render;
 for(const [id,value] of [['show-new','new'],['show-upcoming','upcoming'],['show-active','active'],['show-cancelled','cancelled'],['show-all','all'],['show-unlinked','unlinked'],['show-attendance-pending','attendance-pending']])$(id).onclick=()=>{view=value;selectedSessionId=null;render();};
@@ -398,6 +519,8 @@ async function bulkAttendance(present){
  const pending=bookings.filter(b=>b.session_id===selectedSessionId&&b.status==='Inscrit'&&!attendance.has(b.id));if(!pending.length)return;
  const label=present?'Présent':'Absent';if(!confirm('Confirmer « '+label+' » pour '+pending.length+' inscription(s) non renseignée(s) du '+dateFr(selected.session_date)+' ? Les présences déjà saisies seront conservées.'))return;
  $('session-mark-present').disabled=true;$('session-mark-absent').disabled=true;
+ rosterWrites++;rosterRevision++;scopeVersion=null;
+ let retry=false;
  try{const {data:{user}}=await supa.auth.getUser();if(!user)throw Error('Session expirée');
   const rows=pending.map(b=>({booking_id:b.id,present,recorded_by:user.id,recorded_at:new Date().toISOString()}));
   const {error}=await supa.from('km16_course_attendance').upsert(rows,{onConflict:'booking_id',ignoreDuplicates:true});if(error)throw error;
@@ -405,7 +528,9 @@ async function bulkAttendance(present){
   for(const entry of check.data||[])attendance.set(entry.booking_id,entry.present);
   const confirmed=(check.data||[]).filter(x=>x.present===present).length;
   status(confirmed+' présence(s) confirmée(s) dans la base : '+label+(confirmed<pending.length?' · Certaines étaient déjà renseignées ou ont été modifiées entre-temps.':''));render();
- }catch(e){status('Pointage collectif impossible : '+e.message,true);await load();}
+ }catch(e){status('Pointage collectif impossible : '+e.message,true);retry=true;}
+ finally{rosterWrites--;rosterRevision++;}
+ if(retry)await load();
 }
 $('session-only-absent').onclick=()=>{sessionAbsentOnly=true;sessionPendingOnly=false;sessionUnlinkedOnly=false;view='all';$('filter-date').value='';quickDateRange=null;render();};
 $('session-only-pending').onclick=()=>{sessionAbsentOnly=false;sessionUnlinkedOnly=false;sessionPendingOnly=true;view='all';$('filter-date').value='';quickDateRange=null;render();};
@@ -529,4 +654,12 @@ $('session-form').onsubmit=async e=>{
 };
 supa.auth.onAuthStateChange((_event,s)=>{setTimeout(()=>authState(s),0)});
 const {data}=await supa.auth.getSession();await authState(data.session);
-setInterval(()=>{if(!document.hidden){void load();if(!$('session-mail-panel').hidden&&!$('session-mail-refresh').disabled)void loadSessionMail();}},30000);
+setInterval(()=>{
+ if(document.hidden||!session||busy||rosterWrites||changeSaving)return;
+ const focused=selectedSessionId||$('filter-date').value;
+ if(!fullLoaded||(!focused&&Date.now()-lastFullRefresh>=globalRefreshMs))void load();
+ else void refreshCourseScope();
+ const mailPanel=$('session-mail-panel');
+ const bounds=mailPanel.getBoundingClientRect();
+ if(selectedSessionId&&!mailPanel.hidden&&bounds.top<innerHeight&&bounds.bottom>0&&!$('session-mail-refresh').disabled)void loadSessionMail();
+},30000);

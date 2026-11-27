@@ -1,3 +1,5 @@
+import {adminPerformance} from './admin-performance.mjs';
+const diagnostics=adminPerformance();
 import {downloadCalendar, downloadCourseCalendar, stageCalendarFile} from './course-calendar-export.mjs?v=ages-5-8';
 import {hasStageAnalyticsConsent, prepareStageAnalytics, stageReminderSource, trackStageCheckout, trackStageReminderVisit, trackMembershipStep} from './stage-analytics.mjs?v=adhesion-mesure-20261120';
 import {enhanceBirthDate} from './birth-date-input.mjs?v=1';
@@ -1374,6 +1376,7 @@ async function admin(loadMore=false){if(km16AdminLoading)return;if(!km16ConfirmD
  $('km16-followup-search').onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();$('km16-admin-server-search-button').click();}};
  $('km16-followup-filter').onchange=()=>{followupPage=0;renderFollowupCenter();};$('km16-followup-refresh').onclick=()=>admin(false);
  $('admin-orders').replaceChildren(table);
+ if(table.rows.length>1)diagnostics.ready('Premier dossier consultable');
  followupHost.replaceChildren();
  $('km16-followup-page-prev').disabled=true;$('km16-followup-page-next').disabled=true;
  $('km16-followup-page-status').textContent='';
@@ -1413,6 +1416,7 @@ async function restoreAdmin(s){
  adminSessionToken=token;
  session=s;
  const currentGeneration=++generation;
+ diagnostics.reset();
  km16AdminLoading=false;
  $('km16-overview-refresh').disabled=false;
  for(const key of ['total','pending','approved','rejected'])$('km16-overview-'+key).textContent='—';

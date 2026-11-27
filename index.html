@@ -375,7 +375,7 @@ import {createCheckoutAccess, verifiedAccount, normalizeEmail, getPendingCheckou
   const el = id => document.getElementById(id);
   let client, session = null, recovery = false, checkoutAccess, selectedVideo = null;
   let catalog = [], owned = new Set(), generation = 0, playerVideo = null;
-  let busy = false, pollCount = 0, paymentTimer;
+  let busy = false, pollCount = 0, paymentTimer, videoLoad;
   const emptyCatalog = el('kv-catalog').innerHTML;
   const paymentReturn = new URLSearchParams(location.search).get('payment');
   function message(text, error = false) {
@@ -546,7 +546,7 @@ import {createCheckoutAccess, verifiedAccount, normalizeEmail, getPendingCheckou
       setTimeout(()=>{
         const changed=next?.user.id!==session?.user.id;
         account(next);window.dispatchEvent(new Event('km16-auth-change'));
-        if(changed)void refresh();
+        if(changed && videoLoad)void refresh();
       },0);
     });
     const fragment=new URLSearchParams(window.KM16_AUTH_FRAGMENT || '');
@@ -642,11 +642,22 @@ import {createCheckoutAccess, verifiedAccount, normalizeEmail, getPendingCheckou
       account(null);await checkoutAccess.clear();
       message('Vous êtes déconnecté.');
     };
-    el('kv-refresh').onclick=()=>refresh();
     document.addEventListener('click',event=>{const tab=event.target.closest('[data-go]');if(tab && tab.dataset.go!=='videos')clearPlayer();});
     window.addEventListener('hashchange',()=>{if(location.hash!=='#videos')clearPlayer();});
-    await refresh();
-    if(!recovery){await checkoutAccess.restore();checkoutAccess.sync(session);}
+    function loadVideoLibrary() {
+      videoLoad ??= (async()=>{
+        await refresh();
+        if(!recovery){await checkoutAccess.restore();checkoutAccess.sync(session);}
+      })();
+      return videoLoad;
+    }
+    el('kv-refresh').onclick=()=>videoLoad?refresh():loadVideoLibrary();
+    window.addEventListener('km16-view-change',event=>{
+      if(event.detail.id==='videos')void loadVideoLibrary();
+    });
+    if(!el('videos').hidden || paymentReturn || recovery || fragment.has('access_token') || fragment.has('error') || fragment.has('error_code')){
+      await loadVideoLibrary();
+    }
     if(fragment.get('error')||fragment.get('error_code'))message('Ce lien a expiré ou ne peut pas être utilisé. Demandez un nouveau lien depuis votre demande.',true);
     if (recovery) message('Choisissez votre nouveau mot de passe.');
     if (paymentReturn==='cancelled') message('Paiement annulé. Aucun accès supplémentaire n’a été accordé.');
@@ -654,7 +665,7 @@ import {createCheckoutAccess, verifiedAccount, normalizeEmail, getPendingCheckou
       const poll=async()=>{await refresh();if(!owned.size && ++pollCount<12)paymentTimer=setTimeout(poll,5000);};
       paymentTimer=setTimeout(poll,3000);
     }
-    setInterval(()=>{if(session && !document.hidden && !el('videos').hidden)refresh(true);},30000);
+    setInterval(()=>{if(videoLoad && session && !document.hidden && !el('videos').hidden)refresh(true);},30000);
   } catch { message('L’espace vidéo ne peut pas se charger. Vérifiez votre connexion et rechargez la page.',true); }
 })();
 

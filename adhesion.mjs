@@ -10,7 +10,7 @@ import {parseEuro,eligibleProducts} from './purchase-links.mjs?v=liens1';
 import {splitAmount,ageOn,validateOrder} from './rules.mjs?v=inscription-20261124';
 import {createCheckoutAccess,verifiedAccount,normalizeEmail,saveOrderLoginReturn,validPersonalCheckoutReturn} from './checkout-account.mjs?v=member-session-20261127';
 const $=id=>document.getElementById(id),money=n=>new Intl.NumberFormat('fr-FR',{style:'currency',currency:'EUR'}).format(n/100);
-const client=window.supabase?.createClient('https://tlfewpbgbwesdriklxzb.supabase.co','sb_publishable_OGRSgobOGf54jlfmXGmS8g_04Ftvfsn',{auth:{storageKey:'km16-video-auth',detectSessionInUrl:false,flowType:'implicit'}});
+const client=window.supabase?.createClient('https://tlfewpbgbwesdriklxzb.supabase.co','sb_publishable_OGRSgobOGf54jlfmXGmS8g_04Ftvfsn',{auth:{storageKey:'km16-video-auth',detectSessionInUrl:false,flowType:'implicit',experimental:{passkey:true}}});
 const endpoint='https://tlfewpbgbwesdriklxzb.supabase.co/functions/v1/km16-adhesions';
 const adminPanel=$('admin');
 const adminMfaGate=$('adhesion-admin-mfa');
@@ -454,6 +454,60 @@ $('logout').onclick=async()=>{
  const {error}=await client.auth.signOut({scope:'local'});
  if(error)accountMessage('La déconnexion n’a pas abouti. Réessayez.',true);
 };
+const passkeySignIn=$('passkey-sign-in');
+const passkeySetup=$('passkey-setup');
+const passkeyRegister=$('passkey-register');
+const passkeysSupported=accountView&&!adminPanel&&window.isSecureContext&&
+ typeof window.PublicKeyCredential==='function'&&
+ typeof client?.auth.signInWithPasskey==='function'&&typeof client?.auth.registerPasskey==='function';
+
+if(passkeysSupported&&passkeySignIn&&passkeySetup&&passkeyRegister){
+ passkeySignIn.hidden=false;
+ passkeySetup.hidden=false;
+
+ passkeySignIn.onclick=async()=>{
+  if(accountLoginBusy||$('account-email-submit').disabled)return;
+  accountLoginBusy=true;
+  passkeySignIn.disabled=true;
+  $('login-submit').disabled=true;
+  $('account-email-submit').disabled=true;
+  accountMessage('Validez la connexion sur votre appareil…');
+  try{
+   const {data,error}=await client.auth.signInWithPasskey();
+   if(error)throw error;
+   if(!accountSession(data?.session))throw Error('Session indisponible');
+   // The shared auth listener restores the member area from the new session.
+   accountMessage('Vous êtes connecté à votre espace adhérent.');
+  }catch(error){
+   accountMessage(error?.status===429
+    ? 'Trop de tentatives. Réessayez dans quelques minutes.'
+    : 'Connexion par clé d’accès impossible. Réessayez ou utilisez le lien par e-mail ou votre mot de passe.',true);
+  }finally{
+   accountLoginBusy=false;
+   passkeySignIn.disabled=false;
+   $('login-submit').disabled=false;
+   $('account-email-submit').disabled=false;
+  }
+ };
+
+ passkeyRegister.onclick=async()=>{
+  const memberId=accountSession(session)?.user.id;
+  if(!memberId||passkeyRegister.disabled)return;
+  passkeyRegister.disabled=true;
+  $('logout').disabled=true;
+  accountMessage('Validez la création de la clé d’accès sur votre appareil…');
+  try{
+   const {error}=await client.auth.registerPasskey();
+   if(error)throw error;
+   if(session?.user.id===memberId)accountMessage('Clé d’accès créée. Vous pouvez l’utiliser à votre prochaine connexion.');
+  }catch{
+   if(session?.user.id===memberId)accountMessage('La clé d’accès n’a pas pu être créée. Réessayez depuis Safari sur iPhone ou Chrome sur Android.',true);
+  }finally{
+   passkeyRegister.disabled=false;
+   $('logout').disabled=false;
+  }
+ };
+}
 if(adminMfaGate)$('adhesion-admin-mfa-logout').onclick=$('logout').onclick;
 if(!adminPanel)$('order').onsubmit=submitCheckout;
 async function submitCheckout(e){

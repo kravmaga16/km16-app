@@ -105,7 +105,7 @@ if(accountView){
  document.body.classList.add('account-view');document.title='Mon espace adhérent · KM16';
  document.querySelector('header h1').textContent='Mon espace adhérent';
  document.querySelector('header>p:last-child').textContent='Retrouvez vos inscriptions, vos stages et le suivi de vos paiements.';
- const bookings=document.createElement('a');bookings.href='./course-operations.html';bookings.textContent='Mes réservations de cours';$('account').before(bookings);
+ $('member-shortcuts').hidden=false;
  const link=document.createElement('a');link.href='./#tarifs';link.className='member-purchase-link';link.textContent='Acheter une adhésion ou un stage →';$('my-orders').querySelector('.row').append(link);
 }
 
@@ -1578,6 +1578,10 @@ async function authState(s){
  if(identityChanged||differentEmail){clearMemberFirstCourse();$('membership-recommendation').replaceChildren();reusedMember=null;trialReuseAttempt='';await checkoutAccess.clear();resetRegistration();if(differentEmail)note('Une autre adresse a été confirmée. Renseignez la demande pour le compte affiché ou déconnectez-vous.',true);}
  km16AdminLoaded=null;km16AdminNextPage=0;km16AdminHasMore=false;km16AdminServerSearch='';km16AdminServerApproval='all';
  syncAccountForm();checkoutAccess.sync(s);$('login').hidden=!!s;$('connected').hidden=!s;$('identity').textContent=s?.user.email||'';$('my-orders').hidden=!s;
+ if(accountView){
+  $('member-stages-shortcut').hidden=!s;
+  $('member-orders-shortcut').hidden=!s;
+ }
  showMembershipJourney();
  buttonState();
 

@@ -1,6 +1,9 @@
 import { courseCategoryLabel } from './course-category-label.mjs?v=ages-5-8';
 const get = id => document.getElementById(id);
 const profile = get('next-profile');
+const categorySelect = get('next-profile-category');
+const categoryPrefix = 'category:';
+const categories = [...categorySelect.options].filter(option => option.value);
 const message = get('next-session');
 const book = get('next-book');
 const remove = get('next-profile-remove');
@@ -16,16 +19,22 @@ try{
  const saved = JSON.parse(localStorage.getItem(key));
  if(Array.isArray(saved?.profiles)){
   state.profiles = saved.profiles.filter(p=>typeof p?.name==='string' && typeof p.id==='string' && Object.hasOwn(matchers,p.category));
-  state.selected = state.profiles.some(p=>p.id===saved.selected) ? saved.selected : '';
+  state.selected = (state.profiles.some(p=>p.id===saved.selected) || categories.some(option=>categoryPrefix+option.value===saved.selected)) ? saved.selected : '';
  }
 }catch{}
 function save(){
  try{localStorage.setItem(key,JSON.stringify(state));}catch{}
 }
 function render(){
- profile.replaceChildren(new Option('Tous les cours',''), ...state.profiles.map(p=>new Option(p.name,p.id)));
+ profile.replaceChildren(
+  new Option('Tous les cours',''),
+  ...categories.map(option=>new Option(option.textContent,categoryPrefix+option.value)),
+  ...state.profiles.map(p=>new Option(p.name,p.id)),
+ );
  profile.value = state.selected;
  const selected = state.profiles.find(p=>p.id===state.selected);
+ const category = selected?.category ?? state.selected.slice(categoryPrefix.length);
+ const matcher = matchers[category];
  remove.hidden = !selected;
  clear.hidden = state.profiles.length === 0;
  book.href = './course-booking.html';
@@ -35,9 +44,11 @@ function render(){
   return;
  }
  const now = clock.format(new Date()).replace(' ','T');
- const next = sessions.find(s=>s.session_date+'T'+s.start_time.slice(0,5)>now.slice(0,16) && (!selected || matchers[selected.category].test(s.category)));
+ const next = sessions.find(s=>s.session_date+'T'+s.start_time.slice(0,5)>now.slice(0,16) && (!matcher || matcher.test(s.category)));
  if(!next){
-  message.textContent = 'Aucune séance ouverte pour ce profil dans le calendrier actuel.';
+  message.textContent = matcher
+   ? 'Aucune séance ouverte pour cette catégorie dans le calendrier actuel.'
+   : 'Aucune séance ouverte dans le calendrier actuel.';
   return;
  }
  message.textContent = dateFormat.format(new Date(next.session_date+'T12:00:00Z'))+' · '+next.start_time.slice(0,5)+'–'+next.end_time.slice(0,5)+' · '+next.venue+' · '+courseCategoryLabel(next.category);
@@ -48,7 +59,7 @@ profile.addEventListener('change',()=>{state.selected=profile.value;save();rende
 get('next-profile-form').addEventListener('submit',event=>{
  event.preventDefault();
  const name = get('next-profile-name').value.trim();
- const category = get('next-profile-category').value;
+ const category = categorySelect.value;
  if(!name || !Object.hasOwn(matchers,category))return;
  const id = globalThis.crypto.randomUUID();
  state.profiles.push({id,name,category});

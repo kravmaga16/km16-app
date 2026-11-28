@@ -458,6 +458,7 @@ const passkeySignIn=$('passkey-sign-in');
 const passkeySetup=$('passkey-setup');
 const passkeyRegister=$('passkey-register');
 const passkeysSupported=accountView&&!adminPanel&&window.isSecureContext&&
+ window.location.origin==='https://app.km16.fr'&&
  typeof window.PublicKeyCredential==='function'&&
  typeof client?.auth.signInWithPasskey==='function'&&typeof client?.auth.registerPasskey==='function';
 
@@ -474,6 +475,10 @@ if(passkeysSupported&&passkeySignIn&&passkeySetup&&passkeyRegister){
   accountMessage('Validez la connexion sur votre appareil…');
   try{
    const {data,error}=await client.auth.signInWithPasskey();
+   if(error?.code==='passkey_disabled'){
+    accountMessage('La connexion par clé d’accès est indisponible. Utilisez le lien par e-mail ou votre mot de passe.',true);
+    return;
+   }
    if(error)throw error;
    if(!accountSession(data?.session))throw Error('Session indisponible');
    // The shared auth listener restores the member area from the new session.
@@ -498,6 +503,10 @@ if(passkeysSupported&&passkeySignIn&&passkeySetup&&passkeyRegister){
   accountMessage('Validez la création de la clé d’accès sur votre appareil…');
   try{
    const {error}=await client.auth.registerPasskey();
+   if(error?.code==='passkey_disabled'){
+    if(session?.user.id===memberId)accountMessage('La création de clés d’accès est indisponible pour le moment.',true);
+    return;
+   }
    if(error)throw error;
    if(session?.user.id===memberId)accountMessage('Clé d’accès créée. Vous pouvez l’utiliser à votre prochaine connexion.');
   }catch{
